@@ -1,0 +1,52 @@
+{
+  "model": "Archerkattri/hermit-trellis2-plus-plus",
+  "commit": "2c8402a92ea97c510c09e278fae557771aad774d",
+  "pipeline": "1024_cascade",
+  "acceleration": "hermite",
+  "gpu": "L40S",
+  "python": "3.11",
+  "cuda": "12.4.1",
+  "torch": "2.6.0+cu124",
+  "wheel_release": "trellis2-py311-cu124-torch260-sm89-v1",
+  "max_containers": 1,
+  "input": {
+    "kind": "synthetic pre-masked RGBA single object",
+    "sha256": "a1d79ae86f849587e2acff26b34acc749a0d2900febb57748c9d87193394fc82",
+    "size": [512, 512]
+  },
+  "weights": {
+    "bytes": 26150307654,
+    "gib": 24.354371031746268,
+    "cached_sync_elapsed_s": 0.9473544269999998
+  },
+  "cold": {
+    "wall_s": 198.1900432612747,
+    "load_s": 87.383698305,
+    "inference_s": 89.866370752,
+    "estimated_wall_cost_usd_at_0.000542_per_s": 0.10741900344761088
+  },
+  "warm_runs": [
+    {"wall_s": 12.297071357257664, "inference_s": 10.451779697000006},
+    {"wall_s": 11.706443535163999, "inference_s": 9.828563273000015},
+    {"wall_s": 11.780987564008683, "inference_s": 9.898078303000005},
+    {"wall_s": 12.186391216237098, "inference_s": 11.170749252000007}
+  ],
+  "warm_median": {
+    "wall_s": 11.98368939012289,
+    "inference_s": 10.174929000000006,
+    "estimated_wall_cost_usd_at_0.000542_per_s": 0.006495159649446606,
+    "estimated_inference_cost_usd_at_0.000542_per_s": 0.005514811518000003
+  },
+  "representative_artifact": {
+    "local_path": "benchmarks/artifacts/first-trellis2.glb",
+    "bytes": 49986864,
+    "vertices": 1458257,
+    "faces": 2707250,
+    "validated_as": "glTF binary v2"
+  },
+  "observed_pytorch_peak": {
+    "allocated_gib": 2.9413819313049316,
+    "reserved_gib": 3.484375,
+    "note": "PyTorch allocator peak during low-VRAM staged inference; not total board-level VRAM telemetry."
+  }
+}
