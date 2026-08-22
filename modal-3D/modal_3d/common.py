@@ -6,3 +6,4 @@ class ModelName(StrEnum):
     FASTSAM3D_PP = "fastsam3d-plus-plus"
     TRELLIS2_PP = "hermit-trellis2-plus-plus"
     TRELLIS_CPP = "trellis.cpp"
+    PIXAL3D = "pixal3d"

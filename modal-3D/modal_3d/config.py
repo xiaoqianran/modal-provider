@@ -13,4 +13,5 @@ MODELS = {
     "fastsam3d-plus-plus": ModelSpec("Archerkattri/fastsam3d-plus-plus"),
     "hermit-trellis2-plus-plus": ModelSpec("Archerkattri/hermit-trellis2-plus-plus"),
     "trellis.cpp": ModelSpec("pwilkin/trellis.cpp"),
+    "pixal3d": ModelSpec("TencentARC/Pixal3D"),
 }

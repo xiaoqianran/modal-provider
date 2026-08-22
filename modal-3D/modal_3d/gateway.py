@@ -14,6 +14,7 @@ WORKERS = {
     ModelName.FASTSAM3D_PP: ("modal-3d-fastsam3d", "generate"),
     ModelName.TRELLIS2_PP: ("modal-3d-hermit-trellis2-plus-plus", "Model.generate"),
     ModelName.TRELLIS_CPP: ("modal-3d-trellis.cpp", "Model.generate"),
+    ModelName.PIXAL3D: ("modal-3d-pixal3d", "Model.generate"),
 }
 
 
