@@ -25,20 +25,15 @@ download_image = modal.Image.debian_slim(python_version="3.11").pip_install(
 # Reproducible CUDA 12.4 / PyTorch 2.6 environment matching TRELLIS.2 upstream.
 gpu_image = (
     modal.Image.from_registry("nvidia/cuda:12.4.1-devel-ubuntu22.04", add_python="3.11")
-    .apt_install("git", "build-essential", "libjpeg-dev", "libgl1", "libglib2.0-0")
+    .apt_install("git", "curl", "unzip", "libjpeg-dev", "libgl1", "libglib2.0-0")
     .run_commands(
-        "python -m pip install --upgrade pip setuptools wheel packaging ninja",
-        "python -m pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124",
-        "python -m pip install imageio imageio-ffmpeg tqdm easydict opencv-python-headless trimesh transformers huggingface_hub safetensors pandas lpips zstandard kornia timm plyfile",
-        "python -m pip install git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8",
-        "MAX_JOBS=4 python -m pip install flash-attn==2.7.3 --no-build-isolation",
-    )
-    .run_commands(
-        "git clone --recursive https://github.com/JeffreyXiang/CuMesh.git /tmp/CuMesh && CC=gcc CXX=g++ TORCH_CUDA_ARCH_LIST=8.9 MAX_JOBS=4 python -m pip install /tmp/CuMesh --no-build-isolation",
-        "git clone --recursive https://github.com/JeffreyXiang/FlexGEMM.git /tmp/FlexGEMM && CC=gcc CXX=g++ TORCH_CUDA_ARCH_LIST=8.9 MAX_JOBS=4 python -m pip install /tmp/FlexGEMM --no-build-isolation",
-        "git clone https://github.com/Archerkattri/hermit-trellis2-plus-plus.git /opt/hermit && cd /opt/hermit && git checkout 2c8402a92ea97c510c09e278fae557771aad774d && git submodule update --init --recursive",
-        "cd /opt/hermit && CC=gcc CXX=g++ TORCH_CUDA_ARCH_LIST=8.9 MAX_JOBS=4 python -m pip install ./o-voxel --no-build-isolation",
-        gpu=GPU,
+        "python -m pip install --upgrade uv",
+        "uv pip install --system torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124",
+        "uv pip install --system imageio imageio-ffmpeg tqdm einops easydict opencv-python-headless trimesh transformers huggingface_hub safetensors pandas lpips zstandard kornia timm plyfile",
+        "uv pip install --system git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8",
+        "curl -fL https://github.com/xiaoqianran/modal-build/releases/download/trellis2-py311-cu124-torch260-sm89-v1/trellis2-py311-cu124-torch260-sm89-v1.wheels.zip -o /tmp/wheels.zip && mkdir -p /tmp/wheels && unzip -q /tmp/wheels.zip -d /tmp/wheels",
+        "uv pip install --system --no-deps /tmp/wheels/*.whl",
+        "git clone https://github.com/Archerkattri/hermit-trellis2-plus-plus.git /opt/hermit && cd /opt/hermit && git checkout 2c8402a92ea97c510c09e278fae557771aad774d",
     )
     .env(
         {
