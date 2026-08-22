@@ -56,6 +56,7 @@ gpu_image = (
     memory=16384,
     timeout=60 * 60,
     max_containers=1,
+    secrets=[modal.Secret.from_name("huggingface")],
 )
 def sync_weights() -> dict:
     """CPU-only: populate every HF asset needed by GPU startup."""
