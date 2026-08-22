@@ -37,7 +37,7 @@ runtime_image = (
     .run_commands(
         "python -m pip install --upgrade uv",
         "uv pip install --system torch==2.6.0 torchvision==0.21.0 triton==3.2.0 --index-url https://download.pytorch.org/whl/cu124",
-        "uv pip install --system pillow==12.0.0 imageio==2.37.2 imageio-ffmpeg==0.6.0 tqdm==4.67.1 easydict==1.13 opencv-python-headless==4.12.0.88 trimesh==4.10.1 transformers==4.57.3 zstandard==0.25.0 kornia==0.8.2 timm==1.0.22 diffusers==0.37.1 accelerate==1.13.0 plyfile==1.1.3 safetensors numpy scipy 'huggingface_hub>=0.34,<1'",
+        "uv pip install --system pillow==12.0.0 imageio==2.37.2 imageio-ffmpeg==0.6.0 tqdm==4.67.1 easydict==1.13 opencv-python-headless==4.12.0.88 trimesh==4.10.1 transformers==4.57.3 zstandard==0.25.0 kornia==0.8.2 timm==1.0.22 diffusers==0.37.1 accelerate==1.13.0 plyfile==1.1.3 safetensors numpy scipy einops 'huggingface_hub>=0.34,<1'",
         "uv pip install --system https://github.com/LDYang694/Storages/releases/download/20260430/utils3d-0.0.2-py3-none-any.whl",
         "git clone https://github.com/microsoft/MoGe.git /opt/MoGe && git -C /opt/MoGe checkout 74fbce054ebed49800de42d0ad0e83495065719a && uv pip install --system /opt/MoGe",
         "git clone https://github.com/valeoai/NAF.git /opt/NAF && git -C /opt/NAF checkout 37f2dfc180f2de53d98bd601109c0da0dd6b0f43",
@@ -45,7 +45,7 @@ runtime_image = (
         "git clone https://github.com/TencentARC/Pixal3D.git /opt/Pixal3D && git -C /opt/Pixal3D checkout cdbb2bbffbf4e6f298b5f2af3d1d76a8d823d2af",
         "python - <<'PY'\np='/opt/Pixal3D/pixal3d/trainers/flow_matching/mixins/image_conditioned_proj.py'\ns=open(p).read().replace('torch.hub.load(\\n                \"valeoai/NAF\", \"naf\", pretrained=True, device=device, trust_repo=True\\n            )','torch.hub.load(\\n                \"/opt/NAF\", \"naf\", pretrained=True, device=device, source=\"local\"\\n            )')\nopen(p,'w').write(s)\nPY",
         "uv pip install --system 'huggingface_hub>=0.34,<1'",
-        "python -c \"import huggingface_hub, transformers; assert huggingface_hub.__version__.startswith('0.'), (huggingface_hub.__version__, transformers.__version__)\"",
+        "python -c \"import einops, huggingface_hub, transformers; assert huggingface_hub.__version__.startswith('0.'), (huggingface_hub.__version__, transformers.__version__)\"",
     )
     .env(
         {
