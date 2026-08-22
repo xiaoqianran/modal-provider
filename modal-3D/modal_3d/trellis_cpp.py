@@ -80,26 +80,20 @@ def sync_weights() -> dict:
     startup_timeout=5 * 60,
 )
 class Model:
-    @modal.enter()
-    def start(self):
+    def _start_server(self):
         import requests
 
         t0 = time.perf_counter()
         self.proc = subprocess.Popen(
             [
                 f"{RUNTIME_DIR}/trellis-server",
-                "--models",
-                MODEL_DIR,
-                "--gpu",
-                "0",
-                "--res",
-                "1024",
+                "--models", MODEL_DIR,
+                "--gpu", "0",
+                "--res", "1024",
                 "--no-texture",
                 "--require-gpu",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(PORT),
+                "--host", "127.0.0.1",
+                "--port", str(PORT),
             ]
         )
         health = f"http://127.0.0.1:{PORT}/health"
@@ -115,21 +109,45 @@ class Model:
             time.sleep(0.1)
         raise RuntimeError("trellis-server health check timed out")
 
+    def _stop_server(self):
+        proc = getattr(self, "proc", None)
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+
+    @modal.enter()
+    def start(self):
+        self._start_server()
+
+    @modal.exit()
+    def stop(self):
+        self._stop_server()
+
     @modal.method()
     def generate(self, image_bytes: bytes, seed: int = 42) -> dict:
         import requests
 
+        if self.proc.poll() is not None:
+            self._start_server()
         t0 = time.perf_counter()
-        response = requests.post(
-            f"http://127.0.0.1:{PORT}/generate",
-            files={
-                "image": ("input.png", image_bytes, "image/png"),
-                "seed": (None, str(seed)),
-                "resolution": (None, "1024"),
-            },
-            timeout=25 * 60,
-        )
-        response.raise_for_status()
+        try:
+            response = requests.post(
+                f"http://127.0.0.1:{PORT}/generate",
+                files={
+                    "image": ("input.png", image_bytes, "image/png"),
+                    "seed": (None, str(seed)),
+                    "resolution": (None, "1024"),
+                },
+                timeout=25 * 60,
+            )
+            response.raise_for_status()
+        except BaseException:
+            self._stop_server()
+            raise
         inference_s = time.perf_counter() - t0
 
         name = f"trellis.cpp/{uuid.uuid4().hex}.glb"
@@ -138,6 +156,9 @@ class Model:
         path.write_bytes(response.content)
         artifacts.commit()
         return {
+            "model": "trellis.cpp",
+            "mode": "geometry",
+            "resolution": 1024,
             "artifact": name,
             "glb_bytes": len(response.content),
             "server_start_s": self.start_s,
