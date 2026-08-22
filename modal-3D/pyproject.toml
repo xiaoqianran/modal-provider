@@ -1,0 +1,8 @@
+[project]
+name = "modal-3d"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["modal>=1.5,<2", "fastapi>=0.115", "pydantic>=2.10"]
+
+[tool.ruff]
+line-length = 100
