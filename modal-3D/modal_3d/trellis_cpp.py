@@ -8,7 +8,7 @@ from pathlib import Path
 import modal
 
 APP_NAME = "modal-3d-trellis.cpp"
-BUNDLE_TAG = "trellis.cpp-pynone-cu129-torchnone-sm89-v1"
+BUNDLE_TAG = "trellis.cpp-pynone-cu129-torchnone-sm89-v2"
 BUNDLE_URL = (
     "https://github.com/xiaoqianran/modal-build/releases/download/"
     f"{BUNDLE_TAG}/{BUNDLE_TAG}.tar.gz"
