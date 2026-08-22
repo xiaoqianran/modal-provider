@@ -85,7 +85,6 @@ def sync_weights() -> dict:
     for repo in (
         "camenduru/dinov3-vitl16-pretrain-lvd1689m",
         "Ruicheng/moge-2-vitl",
-        "ZhengPeng7/BiRefNet",
     ):
         snapshot_download(repo, cache_dir=f"{HF_HOME}/hub")
 
@@ -155,8 +154,21 @@ class Model:
         os.chdir(SRC)
         import torch
         from inference import IMAGE_COND_CONFIGS, build_image_cond_model, load_moge_model
-        from pixal3d.pipelines import Pixal3DImageTo3DPipeline
+        from pixal3d.pipelines import Pixal3DImageTo3DPipeline, rembg
 
+        class _NoopRemBg:
+            def __init__(self, **_):
+                pass
+
+            def to(self, _device):
+                return self
+
+            cuda = cpu = to
+
+            def __call__(self, _image):
+                raise RuntimeError("Pixal3D worker requires a pre-matted RGBA input")
+
+        rembg.BiRefNet = _NoopRemBg
         t0 = time.perf_counter()
         self.pipe = Pixal3DImageTo3DPipeline.from_pretrained(MODEL_DIR)
         self.pipe.image_cond_model_ss = build_image_cond_model(IMAGE_COND_CONFIGS["ss"])
