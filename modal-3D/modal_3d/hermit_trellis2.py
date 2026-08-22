@@ -32,10 +32,13 @@ gpu_image = (
         "python -m pip install imageio imageio-ffmpeg tqdm easydict opencv-python-headless trimesh transformers huggingface_hub safetensors pandas lpips zstandard kornia timm plyfile",
         "python -m pip install git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8",
         "MAX_JOBS=4 python -m pip install flash-attn==2.7.3 --no-build-isolation",
+    )
+    .run_commands(
         "git clone --recursive https://github.com/JeffreyXiang/CuMesh.git /tmp/CuMesh && CC=gcc CXX=g++ TORCH_CUDA_ARCH_LIST=8.9 MAX_JOBS=4 python -m pip install /tmp/CuMesh --no-build-isolation",
         "git clone --recursive https://github.com/JeffreyXiang/FlexGEMM.git /tmp/FlexGEMM && CC=gcc CXX=g++ TORCH_CUDA_ARCH_LIST=8.9 MAX_JOBS=4 python -m pip install /tmp/FlexGEMM --no-build-isolation",
         "git clone https://github.com/Archerkattri/hermit-trellis2-plus-plus.git /opt/hermit && cd /opt/hermit && git checkout 2c8402a92ea97c510c09e278fae557771aad774d && git submodule update --init --recursive",
         "cd /opt/hermit && CC=gcc CXX=g++ TORCH_CUDA_ARCH_LIST=8.9 MAX_JOBS=4 python -m pip install ./o-voxel --no-build-isolation",
+        gpu=GPU,
     )
     .env(
         {
