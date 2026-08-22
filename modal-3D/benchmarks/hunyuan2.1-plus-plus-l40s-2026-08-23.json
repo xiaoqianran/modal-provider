@@ -1,0 +1,151 @@
+{
+  "model": "Archerkattri/hunyuan2.1-plus-plus",
+  "commit": "9efd760fbec8ab490e68b330225ea1fab10de7fd",
+  "base_model": "tencent/Hunyuan3D-2.1",
+  "pipeline": "geometry-only",
+  "acceleration": "HiCache++ DMD/Prony velocity forecast",
+  "gpu": "L40S",
+  "python": "3.10",
+  "cuda": "12.4.1",
+  "torch": "2.5.1+cu124",
+  "max_containers": 1,
+  "input": {
+    "kind": "public pre-matted RGBA chair",
+    "source": "VAST-AI-Research/TripoSR examples/chair.png",
+    "sha256": "2503c12a74419d91a4c6c9f1affc48fee6e2b8b9091956ca6211e91ada57b5bf",
+    "size": [
+      512,
+      512
+    ],
+    "seed": 42,
+    "num_inference_steps": 50
+  },
+  "weights": {
+    "allow_patterns": [
+      "hunyuan3d-dit-v2-1/*"
+    ],
+    "bytes": 7366392073,
+    "gib": 6.860487231053412,
+    "cached_sync_elapsed_s": 0.8258991670000002
+  },
+  "default": {
+    "interval": 3,
+    "history": 6,
+    "reason": "conservative speed/geometry trade-off from the L40S interval sweep"
+  },
+  "cold_default": {
+    "wall_s": 79.32016834802926,
+    "load_s": 29.889962734,
+    "inference_s": 26.438511715999994,
+    "estimated_wall_cost_usd_at_0.000542_per_s": 0.042991531244631856
+  },
+  "warm_runs": [
+    {
+      "wall_s": 29.555687461979687,
+      "inference_s": 26.204649988
+    },
+    {
+      "wall_s": 27.860638836864382,
+      "inference_s": 26.56232554799999
+    },
+    {
+      "wall_s": 29.673412723932415,
+      "inference_s": 26.318822618000013
+    }
+  ],
+  "warm_median": {
+    "wall_s": 29.555687461979687,
+    "inference_s": 26.318822618000013,
+    "estimated_wall_cost_usd_at_0.000542_per_s": 0.01601918260439299,
+    "estimated_inference_cost_usd_at_0.000542_per_s": 0.014264801858956006
+  },
+  "control_interval_1": {
+    "note": "interval=1 executes the full transformer every step; no DMD forecasted step is used",
+    "warm_runs": [
+      {
+        "wall_s": 33.9327118252404,
+        "inference_s": 29.748160454999976
+      },
+      {
+        "wall_s": 32.00674842018634,
+        "inference_s": 30.05859806799998
+      }
+    ],
+    "warm_median": {
+      "wall_s": 32.96973012271337,
+      "inference_s": 29.90337926149998
+    },
+    "default_inference_speedup": 1.1361974544046818,
+    "default_inference_time_reduction": 0.11987128986840001
+  },
+  "interval_sweep": [
+    {
+      "interval": 1,
+      "inference_s": 29.90337926149998,
+      "vertices": 343344,
+      "faces": 686688,
+      "glb_bytes": 12361204,
+      "watertight": true,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0
+    },
+    {
+      "interval": 2,
+      "inference_s": 27.231126546,
+      "vertices": 342762,
+      "faces": 685532,
+      "glb_bytes": 12340344,
+      "watertight": false,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 8,
+      "surface_chamfer_norm_diag_approx": 0.0035
+    },
+    {
+      "interval": 3,
+      "inference_s": 26.318822618000013,
+      "vertices": 337498,
+      "faces": 675000,
+      "glb_bytes": 12150796,
+      "watertight": false,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 4,
+      "surface_chamfer_norm_diag_approx": 0.0047
+    },
+    {
+      "interval": 4,
+      "inference_s": 25.413898808,
+      "vertices": 339905,
+      "faces": 679816,
+      "glb_bytes": 12237472,
+      "watertight": false,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 6,
+      "surface_chamfer_norm_diag_approx": 0.0048
+    },
+    {
+      "interval": 5,
+      "inference_s": 24.337944383500002,
+      "vertices": 406907,
+      "faces": 813820,
+      "glb_bytes": 14649540,
+      "watertight": false,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 6,
+      "surface_chamfer_norm_diag_approx": 0.0379
+    }
+  ],
+  "quality_probe_note": "Chamfer values are a coarse 20k-point symmetric surface nearest-neighbor probe normalized by the control bounding-box diagonal; they are not a perceptual quality metric.",
+  "representative_artifact": {
+    "local_path": "benchmarks/artifacts/first-hunyuan2.1-plus-plus.glb",
+    "sha256": "61a8d45e9756bd211ecaf5879be05bf83ac3e18f1092212085c9af61ce8547ac",
+    "bytes": 12150796,
+    "vertices": 337498,
+    "faces": 675000,
+    "validated_as": "glTF binary v2"
+  },
+  "observed_pytorch_peak": {
+    "allocated_gib": 7.634860515594482,
+    "reserved_gib": 7.857421875,
+    "note": "PyTorch allocator peak, not board-level nvidia-smi telemetry."
+  }
+}
