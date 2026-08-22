@@ -652,3 +652,63 @@ uses Modal's native `uv_pip_install` with an explicit uv version.
 Rule learned:
 
 **Reproducibility requires four identities: source commit, model-data revision, ABI/runtime versions, and build-tool version.**
+
+## 32. Never compare first inference with later warm runs and call the difference an acceleration
+
+FastSAM3D++ initially appeared to show a dramatic result:
+
+```text
+DMD-off first inference ~5.73s
+DMD later inference     ~2.6s
+```
+
+That comparison was wrong. The first inference paid one-time kernel/cache warm-up costs; the DMD calls ran afterward in an already warm resident container.
+
+The fair same-container sweep was:
+
+```text
+interval=1  2.579s
+interval=3  2.600s
+interval=4  2.636s
+interval=6  2.652s
+```
+
+The apparent ~2x DMD win disappeared completely. DMD was slightly slower.
+
+**Permanent rule:** acceleration claims must compare equivalent lifecycle states. A first inference, cold model, warm model, and steady-state request are different benchmark classes.
+
+## 33. An acceleration layer can be correct and still be a net loss
+
+HiCache++ DMD works and produces valid geometry in FastSAM3D++, but Fast-SAM3D has already reduced the slat workload aggressively through its own shortcut/token-carving path. On this L40S workload, the remaining DMD fit/forecast bookkeeping costs at least as much as the transformer work it skips.
+
+The right production decision is therefore not "turn DMD on because this is the plus-plus fork". It is:
+
+```text
+keep Fast-SAM3D acceleration
+keep DMD available as an experiment
+production default = DMD off
+```
+
+**Permanent rule:** compose accelerators empirically. Speedups are not additive, and a valid optimization can become negative when applied after another optimization has already removed most of its target cost.
+
+## 34. Missing runtime assets should be reconstructed from provenance, not copied blindly
+
+The FastSAM3D++ fork references `ss_generator_faster.yaml` and `slat_generator_faster.yaml` but does not contain them. The official Fast-SAM3D repository does, and each differs from Meta's pinned baseline config by exactly one `_target_` line.
+
+Rather than vendor two nearly identical YAML files, `sync_weights()` now derives them deterministically from the pinned Meta configs and verifies the expected source strings exist before replacing them.
+
+**Permanent rule:** when a fork omits generated/config assets, trace their provenance and reproduce the minimal transformation. Do not create another large copied configuration that can silently drift.
+
+## 35. Source-hygiene patches need syntax validation before expensive native or GPU work
+
+Removing research-only visualization imports exposed a subtle failure mode: broad string replacement removed a function-local import and left an indented block syntactically invalid. The mistake only surfaced when a GPU container imported the patched module.
+
+The build now runs `py_compile` on patched files before deployment, and expensive PyTorch3D compilation is placed in an earlier cacheable image layer so later pure-Python patch iterations do not rebuild native code.
+
+**Permanent rule:** source patches are code generation. Validate their syntax immediately, and arrange image layers so cheap/high-churn transformations sit after expensive/stable native builds.
+
+## 36. A package name is not a dependency identity
+
+SAM3D imports `utils3d`. Installing the PyPI package with that name would be wrong: it is a different project and even pulls an obsolete Open3D stack. The actual dependency is EasternJournalist/utils3d, and MoGe itself pins a compatible Git commit.
+
+**Permanent rule:** for research repositories, resolve ambiguous imports to their actual source repository and commit. Never assume a matching PyPI name is the intended package.

@@ -1,0 +1,145 @@
+{
+  "model": "Archerkattri/fastsam3d-plus-plus",
+  "fork_commit": "36191e491ca0bf9d51cda39aa7b6c91205eb82e3",
+  "sam_model": "facebook/sam-3d-objects",
+  "sam_revision": "2e73555018d2741ccd486e56c24fac41155a1dc6",
+  "moge_model": "Ruicheng/moge-vitl",
+  "moge_revision": "ad326bfb61facd6c52b5a825bc1e34d7c97d9672",
+  "moge_source_commit": "a8c37341bc0325ca99b9d57981cc3bb2bd3e255b",
+  "utils3d_commit": "3913c65d81e05e47b9f367250cf8c0f7462a0900",
+  "dinov2_commit": "7764ea0f912e53c92e82eb78a2a1631e92725fc8",
+  "pytorch3d_commit": "75ebeeaea0908c5527e7b1e305fbc7681382db47",
+  "gpu": "L40S",
+  "cuda": "12.1.1",
+  "torch": "2.5.1+cu121",
+  "pipeline": "single-object RGBA -> Fast-SAM3D SS/slat -> vertex-color GLB",
+  "input": {
+    "source": "VAST-AI-Research/TripoSR examples/chair.png",
+    "sha256": "2503c12a74419d91a4c6c9f1affc48fee6e2b8b9091956ca6211e91ada57b5bf",
+    "size": [
+      512,
+      512
+    ],
+    "seed": 42,
+    "hfer_2d": 0.4810853264454745
+  },
+  "weights": {
+    "bytes": 13706604682,
+    "gib": 12.765270361676812,
+    "cached_sync_elapsed_s": 7.268666907
+  },
+  "fastsam3d_acceleration": {
+    "ss": "ShortCut_faster, stride=3, warmup=2, order=1, momentum_beta=0.5",
+    "slat": "FlowMatching_faster, slat_thresh=1.5, warmup=3, token_ratio=0.1",
+    "mesh": "HFER thresholds low=0.5, high=0.7"
+  },
+  "production_default": {
+    "dmd_interval": 1,
+    "dmd_history": 5,
+    "dmd_enabled": false,
+    "reason": "same-container warm sweep showed no latency benefit from DMD"
+  },
+  "model_load_s_observed": 29.566165678,
+  "peak_vram": {
+    "allocated_gib": 17.095160961151123,
+    "reserved_gib": 17.2890625,
+    "scope": "PyTorch allocator peak"
+  },
+  "warm_control": {
+    "wall_s": 6.059752115048468,
+    "inference_s": 2.5793592280000013,
+    "vertices": 98708,
+    "faces": 197324,
+    "glb_bytes": 3948228,
+    "artifact": "fastsam3d-plus-plus/26e04b1c66b946aab37bcd0897c65a16.glb",
+    "sha256": "bf9ef8edbffac6e525aab5e6d1826cf60faae34ed8c2913c64ebce90242b6e7a",
+    "watertight": true,
+    "boundary_edges": 0,
+    "nonmanifold_edges": 0
+  },
+  "warm_control_estimated_inference_cost_usd_at_0.000542_per_s": 0.0013980127015760005,
+  "dmd_sweep": [
+    {
+      "interval": 1,
+      "inference_s": 2.5793592280000013,
+      "wall_s": 6.059752115048468,
+      "vertices": 98708,
+      "faces": 197324,
+      "glb_bytes": 3948228,
+      "watertight": true,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "relative_to_control_inference": 1.0
+    },
+    {
+      "interval": 3,
+      "inference_s": 2.600282401000001,
+      "wall_s": 3.942043441813439,
+      "vertices": 98718,
+      "faces": 197344,
+      "glb_bytes": 3948624,
+      "watertight": true,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "surface_chamfer_norm_diag": 0.0035303502157335923,
+      "relative_to_control_inference": 1.0081117716264063
+    },
+    {
+      "interval": 4,
+      "inference_s": 2.6359848480000068,
+      "wall_s": 4.090295847970992,
+      "vertices": 98676,
+      "faces": 197260,
+      "glb_bytes": 3946948,
+      "watertight": true,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "surface_chamfer_norm_diag": 0.003710105569264889,
+      "relative_to_control_inference": 1.0219533670941647
+    },
+    {
+      "interval": 6,
+      "inference_s": 2.651576203999994,
+      "wall_s": 6.191559027414769,
+      "vertices": 98840,
+      "faces": 197588,
+      "glb_bytes": 3953508,
+      "watertight": true,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "surface_chamfer_norm_diag": 0.0038177253158740185,
+      "relative_to_control_inference": 1.0279980295943458
+    }
+  ],
+  "first_inference_note": "An earlier DMD-off call measured 5.73s inference after cold model startup. It is not used as the warm baseline because first-inference warm-up made it non-comparable with subsequent DMD calls.",
+  "quality_probe_note": "20k deterministic surface samples; symmetric nearest-neighbor mean normalized by control bbox diagonal. This is a coarse geometry-drift signal, not a perceptual metric.",
+  "representative_artifact": {
+    "wall_s": 6.059752115048468,
+    "inference_s": 2.5793592280000013,
+    "vertices": 98708,
+    "faces": 197324,
+    "glb_bytes": 3948228,
+    "artifact": "fastsam3d-plus-plus/26e04b1c66b946aab37bcd0897c65a16.glb",
+    "sha256": "bf9ef8edbffac6e525aab5e6d1826cf60faae34ed8c2913c64ebce90242b6e7a",
+    "watertight": true,
+    "boundary_edges": 0,
+    "nonmanifold_edges": 0
+  },
+  "gateway_default_validation": {
+    "entrypoint": "generate(input_path, options)",
+    "input_path": "inputs/hypp-chair.png",
+    "options": {
+      "seed": 42
+    },
+    "dmd_interval": 1,
+    "dmd_enabled": false,
+    "load_s": 31.649395001000002,
+    "inference_s": 4.949964205000001,
+    "adapter_wall_s": 48.38210647320375,
+    "vertices": 98756,
+    "faces": 197420,
+    "glb_bytes": 3950144,
+    "artifact": "fastsam3d-plus-plus/5b124c86d20445b6a5a3968782f31358.glb",
+    "note": "Cold/default-path integration validation only; not used as the warm performance baseline."
+  }
+}

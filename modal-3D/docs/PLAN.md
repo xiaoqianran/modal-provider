@@ -13,7 +13,7 @@
 
 1. `hermit-trellis2-plus-plus` — first production benchmark target.
 2. `hunyuan2.1-plus-plus`.
-3. `fastsam3d-plus-plus` — fresh upstream clone reviewed; weights come from Fast-SAM3D upstream.
+3. `fastsam3d-plus-plus` — L40S worker implemented and benchmarked; Fast-SAM3D acceleration stays enabled, HiCache++ DMD is opt-in because it did not improve warm latency.
 
 `sam3d-plus-plus` is intentionally excluded.
 
