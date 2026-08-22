@@ -38,7 +38,7 @@ download_image = modal.Image.debian_slim(python_version="3.11").uv_pip_install(
 
 runtime_image = (
     modal.Image.from_registry("nvidia/cuda:12.9.1-runtime-ubuntu22.04", add_python="3.11")
-    .apt_install("curl", "ca-certificates")
+    .apt_install("curl", "ca-certificates", "libgomp1")
     .uv_pip_install("requests")
     .run_commands(
         f"mkdir -p {RUNTIME_DIR} && curl -fL '{BUNDLE_URL}' | tar -xz -C {RUNTIME_DIR}",
