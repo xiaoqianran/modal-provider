@@ -69,6 +69,7 @@ def sync_weights() -> dict:
     for repo in (
         "microsoft/TRELLIS-image-large",
         "facebook/dinov3-vitl16-pretrain-lvd1689m",
+        "ZhengPeng7/BiRefNet",
     ):
         snapshot_download(repo, cache_dir=HF_CACHE)
 
