@@ -7,7 +7,7 @@
   "python": "3.11",
   "cuda": "12.4.1",
   "torch": "2.6.0+cu124",
-  "wheel_release": "trellis2-py311-cu124-torch260-sm89-v1",
+  "wheel_release": "hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v1",
   "max_containers": 1,
   "input": {
     "kind": "synthetic pre-masked RGBA single object",
@@ -38,7 +38,7 @@
     "estimated_inference_cost_usd_at_0.000542_per_s": 0.005514811518000003
   },
   "representative_artifact": {
-    "local_path": "benchmarks/artifacts/first-trellis2.glb",
+    "local_path": "benchmarks/artifacts/first-hermit-trellis2-plus-plus.glb",
     "bytes": 49986864,
     "vertices": 1458257,
     "faces": 2707250,

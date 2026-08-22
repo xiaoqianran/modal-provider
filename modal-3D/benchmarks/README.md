@@ -4,7 +4,7 @@
 
 Environment: Python 3.11, CUDA 12.4.1, PyTorch 2.6.0+cu124, SM89, L40S. Native CUDA
 wheels come from `xiaoqianran/modal-build` release
-`trellis2-py311-cu124-torch260-sm89-v1`.
+`hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v1`.
 
 Production constraints: `max_containers=1`, no input concurrency, `min_containers=0`.
 

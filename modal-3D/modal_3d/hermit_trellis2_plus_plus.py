@@ -7,7 +7,7 @@ from pathlib import Path
 
 import modal
 
-APP_NAME = "modal-3d-trellis2"
+APP_NAME = "modal-3d-hermit-trellis2-plus-plus"
 MODEL_ID = "microsoft/TRELLIS.2-4B"
 MODEL_DIR = "/models/TRELLIS.2-4B"
 HF_CACHE = "/models/hf-cache"
@@ -31,7 +31,7 @@ gpu_image = (
         "uv pip install --system torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124",
         "uv pip install --system imageio imageio-ffmpeg tqdm einops easydict opencv-python-headless trimesh transformers huggingface_hub safetensors pandas lpips zstandard kornia timm plyfile",
         "uv pip install --system git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8",
-        "curl -fL https://github.com/xiaoqianran/modal-build/releases/download/trellis2-py311-cu124-torch260-sm89-v1/trellis2-py311-cu124-torch260-sm89-v1.wheels.zip -o /tmp/wheels.zip && mkdir -p /tmp/wheels && unzip -q /tmp/wheels.zip -d /tmp/wheels",
+        "curl -fL https://github.com/xiaoqianran/modal-build/releases/download/hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v1/hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v1.wheels.zip -o /tmp/wheels.zip && mkdir -p /tmp/wheels && unzip -q /tmp/wheels.zip -d /tmp/wheels",
         "uv pip install --system --no-deps /tmp/wheels/*.whl",
         "git clone https://github.com/Archerkattri/hermit-trellis2-plus-plus.git /opt/hermit && cd /opt/hermit && git checkout 2c8402a92ea97c510c09e278fae557771aad774d",
     )
