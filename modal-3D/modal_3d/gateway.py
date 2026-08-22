@@ -11,9 +11,8 @@ web_image = modal.Image.debian_slim(python_version="3.11").uv_pip_install("fasta
 
 WORKERS = {
     ModelName.HUNYUAN21_PP: ("modal-3d-hunyuan", "generate"),
-    ModelName.SAM3D_PP: ("modal-3d-sam3d", "generate"),
     ModelName.FASTSAM3D_PP: ("modal-3d-fastsam3d", "generate"),
-    ModelName.TRELLIS2_PP: ("modal-3d-trellis2", "generate"),
+    ModelName.TRELLIS2_PP: ("modal-3d-trellis2", "Model.generate"),
 }
 
 

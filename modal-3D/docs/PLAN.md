@@ -1,48 +1,34 @@
-# modal-3D deployment plan
+# modal-3D
 
-## Contract
+## Non-negotiable runtime rules
 
-All model services expose the same logical operation:
+- One independent Modal App/Image/weight Volume per model family.
+- `max_containers=1` on every GPU model. A traffic spike must queue; it must never create a second GPU container.
+- Do not enable container input concurrency. One warm model consumes one job at a time.
+- Model weights are downloaded/synchronized by CPU-only functions and persisted in Modal Volume.
+- GPU containers only mount local weights, load once with `@modal.enter()`, infer, and write results.
+- `min_containers=0` initially. Pay for GPU only when jobs exist.
 
-`generate(input_path: str, options: dict) -> {model, output_path, elapsed_s}`
+## Active model families
 
-The CPU gateway only submits jobs and polls `FunctionCall`; it never imports torch or touches a GPU.
+1. `hermit-trellis2-plus-plus` — first production benchmark target.
+2. `hunyuan2.1-plus-plus`.
+3. `fastsam3d-plus-plus` — fresh upstream clone reviewed; weights come from Fast-SAM3D upstream.
 
-## Storage
+`sam3d-plus-plus` is intentionally excluded.
 
-- One Modal Volume per model family for model weights and compile/runtime assets.
-- A CPU-only sync function downloads Hugging Face / release assets into the Volume.
-- GPU workers run offline against local Volume paths.
-- Inputs/results should ultimately live in object storage or a dedicated jobs Volume; the local APP can upload first and submit only a path/URL.
+## Benchmark contract
 
-## GPU policy
+Record separately for each model:
 
-Start with L40S (48 GB) for all four workers. Benchmark RTX PRO 6000 only after L40S baselines exist.
-Do not keep `min_containers > 0` initially. Keep `scaledown_window` short (60 s) until traffic data says otherwise.
+- image build duration
+- CPU model download duration / bytes
+- cold call wall time
+- `@modal.enter()` model-load duration
+- first inference duration
+- warm inference duration (multiple runs)
+- peak allocated/reserved VRAM
+- artifact bytes
+- estimated L40S compute cost per successful artifact
 
-## Isolation
-
-Use four separate Modal Apps/images:
-
-- `modal-3d-hunyuan`
-- `modal-3d-sam3d`
-- `modal-3d-fastsam3d`
-- `modal-3d-trellis2`
-
-This avoids dependency collisions and lets each model evolve independently while preserving one API contract.
-
-## Benchmark phases
-
-For every service record separately:
-
-1. image build time
-2. CPU weight download bytes/time
-3. cold container startup
-4. weight load / GPU-ready time
-5. first inference after cold start
-6. warm inference p50 over >=5 runs
-7. peak VRAM
-8. output size
-9. estimated $ / successful asset on L40S and RTX PRO 6000
-
-Never mix model-load time into warm inference numbers.
+Never report a sampler-stage microbenchmark as end-to-end latency.
