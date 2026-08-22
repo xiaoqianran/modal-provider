@@ -550,12 +550,14 @@ Rule learned:
 
 - exact upstream/fork URL
 - pinned commit
+- pinned model-data revision when weights/config live outside Git
 - local Git remote verified
 - concurrent unrelated work left untouched
 
 ### Build
 
 - Python/CUDA/Torch/SM explicitly pinned
+- package/build tool versions explicitly pinned
 - native source commits pinned
 - `--no-deps` for native wheel packaging
 - compiled artifacts published to `modal-build`
@@ -623,3 +625,30 @@ checks **earlier**, before GPU allocation, and turn them into build-time asserti
 
 The standard for future integrations should be: fewer assumptions, more explicit contracts, fewer moving
 parts, and benchmark evidence before optimization claims.
+
+## 30. A direct worker smoke does not validate the public integration contract
+
+Hunyuan2.1-plus-plus passed direct calls to `Model.generate`, but the shared gateway still resolved
+`("modal-3d-hunyuan", "generate")`. The deployed app had no top-level `generate`, so the model worker was healthy
+while the repository's declared public route was broken.
+
+The right fix was not to redesign the gateway or force every existing worker into a new abstraction. The gateway
+already had a simple contract: `input_path + options`. Hunyuan now exposes a thin CPU adapter with exactly that
+contract, reads the input from the shared artifacts Volume, and delegates to the resident GPU class.
+
+Rule learned:
+
+**Validate through the same boundary users actually call. A successful class-method smoke proves the engine, not the integration.**
+
+## 31. Pin data and build tools, not only source code
+
+The Hunyuan fork was pinned to a Git commit, but the base Hugging Face model initially used the repository's moving
+HEAD. That meant an identical Git commit could later sync different weights or config files. The exact base-model
+revision is now pinned alongside the fork commit.
+
+The runtime image also used `pip install --upgrade uv`, making the image builder itself a moving dependency. It now
+uses Modal's native `uv_pip_install` with an explicit uv version.
+
+Rule learned:
+
+**Reproducibility requires four identities: source commit, model-data revision, ABI/runtime versions, and build-tool version.**

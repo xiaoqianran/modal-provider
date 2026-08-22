@@ -2,6 +2,7 @@
   "model": "Archerkattri/hunyuan2.1-plus-plus",
   "commit": "9efd760fbec8ab490e68b330225ea1fab10de7fd",
   "base_model": "tencent/Hunyuan3D-2.1",
+  "base_model_revision": "0b94677654c57bb9a6b6845cd7b704ccf551d327",
   "pipeline": "geometry-only",
   "acceleration": "HiCache++ DMD/Prony velocity forecast",
   "gpu": "L40S",

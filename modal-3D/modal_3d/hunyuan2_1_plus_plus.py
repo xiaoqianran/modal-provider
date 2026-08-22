@@ -9,6 +9,7 @@ import modal
 
 APP_NAME = "modal-3d-hunyuan"
 MODEL_ID = "tencent/Hunyuan3D-2.1"
+MODEL_REVISION = "0b94677654c57bb9a6b6845cd7b704ccf551d327"
 MODEL_DIR = "/models/Hunyuan3D-2.1"
 SRC = "/opt/hunyuan2.1-plus-plus"
 FORK = "Archerkattri/hunyuan2.1-plus-plus"
@@ -27,10 +28,37 @@ download_image = modal.Image.debian_slim(python_version="3.10").uv_pip_install(
 runtime_image = (
     modal.Image.from_registry("nvidia/cuda:12.4.1-runtime-ubuntu22.04", add_python="3.10")
     .apt_install("git", "libgl1", "libglib2.0-0", "libgomp1")
+    .uv_pip_install(
+        "torch==2.5.1",
+        "torchvision==0.20.1",
+        index_url="https://download.pytorch.org/whl/cu124",
+        uv_version="0.12.5",
+    )
+    .uv_pip_install(
+        "numpy==1.26.4",
+        "transformers==4.46.0",
+        "diffusers==0.30.0",
+        "accelerate==1.1.1",
+        "pytorch-lightning==1.9.5",
+        "torchmetrics==1.6.0",
+        "huggingface-hub==0.30.2",
+        "safetensors==0.4.4",
+        "scipy==1.14.1",
+        "einops==0.8.0",
+        "opencv-python-headless==4.10.0.84",
+        "imageio==2.36.0",
+        "scikit-image==0.24.0",
+        "trimesh==4.4.7",
+        "pymeshlab==2022.2.post3",
+        "omegaconf==2.3.0",
+        "pyyaml==6.0.2",
+        "Pillow==10.4.0",
+        "tqdm==4.66.5",
+        "timm==1.0.11",
+        "torchdiffeq==0.2.5",
+        uv_version="0.12.5",
+    )
     .run_commands(
-        "python -m pip install --upgrade uv",
-        "uv pip install --system torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu124",
-        "uv pip install --system numpy==1.26.4 transformers==4.46.0 diffusers==0.30.0 accelerate==1.1.1 pytorch-lightning==1.9.5 torchmetrics==1.6.0 huggingface-hub==0.30.2 safetensors==0.4.4 scipy==1.14.1 einops==0.8.0 opencv-python-headless==4.10.0.84 imageio==2.36.0 scikit-image==0.24.0 trimesh==4.4.7 pymeshlab==2022.2.post3 omegaconf==2.3.0 pyyaml==6.0.2 Pillow==10.4.0 tqdm==4.66.5 timm==1.0.11 torchdiffeq==0.2.5",
         f"git clone https://github.com/{FORK}.git {SRC} && git -C {SRC} checkout {FORK_COMMIT}",
         f"PYTHONPATH={SRC}/hy3dshape python -c \"from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline; assert callable(Hunyuan3DDiTFlowMatchingPipeline.enable_dmd)\"",
     )
@@ -60,12 +88,36 @@ def sync_weights() -> dict:
     t0 = time.perf_counter()
     snapshot_download(
         MODEL_ID,
+        revision=MODEL_REVISION,
         local_dir=MODEL_DIR,
         allow_patterns=["hunyuan3d-dit-v2-1/*"],
     )
     weights.commit()
     total = sum(p.stat().st_size for p in Path(MODEL_DIR).rglob("*") if p.is_file())
-    return {"elapsed_s": time.perf_counter() - t0, "bytes": total}
+    return {
+        "elapsed_s": time.perf_counter() - t0,
+        "bytes": total,
+        "revision": MODEL_REVISION,
+    }
+
+
+adapter_image = modal.Image.debian_slim(python_version="3.10")
+
+
+@app.function(
+    image=adapter_image,
+    volumes={"/artifacts": artifacts},
+    timeout=30 * 60,
+    max_containers=1,
+)
+def generate(input_path: str, options: dict | None = None) -> dict:
+    rel = Path(input_path)
+    if rel.is_absolute() or ".." in rel.parts:
+        raise ValueError("input_path must be relative to /artifacts")
+    path = Path("/artifacts") / rel
+    if not path.is_file():
+        raise FileNotFoundError(input_path)
+    return Model().generate.remote(path.read_bytes(), **dict(options or {}))
 
 
 @app.cls(
@@ -140,6 +192,7 @@ class Model:
         return {
             "model": "hunyuan2.1-plus-plus",
             "fork_commit": FORK_COMMIT,
+            "base_model_revision": MODEL_REVISION,
             "gpu": torch.cuda.get_device_name(),
             "seed": seed,
             "interval": interval,
