@@ -33,7 +33,7 @@ download_image = modal.Image.debian_slim(python_version="3.10").uv_pip_install(
 
 runtime_image = (
     modal.Image.from_registry("nvidia/cuda:12.4.1-runtime-ubuntu22.04", add_python="3.10")
-    .apt_install("git", "curl", "unzip", "libgl1", "libglib2.0-0", "ffmpeg", "libgomp1")
+    .apt_install("git", "curl", "unzip", "libgl1", "libglib2.0-0", "ffmpeg", "libgomp1", "gcc")
     .run_commands(
         "python -m pip install --upgrade uv",
         "uv pip install --system torch==2.6.0 torchvision==0.21.0 triton==3.2.0 --index-url https://download.pytorch.org/whl/cu124",
@@ -60,6 +60,7 @@ runtime_image = (
             "NATTEN_CUDA_ARCH": "8.9",
             "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
             "FLEX_GEMM_AUTOTUNER_VERBOSE": "0",
+            "CC": "/usr/bin/gcc",
         }
     )
 )
