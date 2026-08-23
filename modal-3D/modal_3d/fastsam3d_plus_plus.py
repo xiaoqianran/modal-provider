@@ -7,6 +7,8 @@ from pathlib import Path
 
 import modal
 
+from .common import ModelName, generation_result
+
 APP_NAME = "modal-3d-fastsam3d"
 GPU = "L40S"
 
@@ -387,8 +389,8 @@ class Model:
         import cv2
         import numpy as np
         import torch
-        from PIL import Image
         from fft.fft2d import calculate_hfer_robust
+        from PIL import Image
 
         image = np.array(Image.open(io.BytesIO(image_bytes)).convert("RGBA"), dtype=np.uint8)
         alpha = image[..., 3]
@@ -470,4 +472,5 @@ def generate(input_path: str, options: dict | None = None) -> dict:
     path = Path("/artifacts") / rel
     if not path.is_file():
         raise FileNotFoundError(input_path)
-    return Model().generate.remote(path.read_bytes(), **dict(options or {}))
+    value = Model().generate.remote(path.read_bytes(), **dict(options or {}))
+    return generation_result(ModelName.FASTSAM3D_PP, value)

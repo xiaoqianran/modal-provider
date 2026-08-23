@@ -7,6 +7,8 @@ from pathlib import Path
 
 import modal
 
+from .common import ModelName, generation_result
+
 APP_NAME = "modal-3d-hunyuan"
 MODEL_ID = "tencent/Hunyuan3D-2.1"
 MODEL_REVISION = "0b94677654c57bb9a6b6845cd7b704ccf551d327"
@@ -117,7 +119,8 @@ def generate(input_path: str, options: dict | None = None) -> dict:
     path = Path("/artifacts") / rel
     if not path.is_file():
         raise FileNotFoundError(input_path)
-    return Model().generate.remote(path.read_bytes(), **dict(options or {}))
+    value = Model().generate.remote(path.read_bytes(), **dict(options or {}))
+    return generation_result(ModelName.HUNYUAN21_PP, value)
 
 
 @app.cls(

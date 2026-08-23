@@ -13,6 +13,8 @@ from pathlib import Path
 
 import modal
 
+from .common import ModelName, generation_result
+
 APP_NAME = "modal-3d-pixal3d"
 GPU = "L40S"
 MODEL_ID = "TencentARC/Pixal3D"
@@ -282,3 +284,18 @@ class Model:
             "inference_s": inference_s,
             "peak_vram_gb": peak_vram_gb,
         }
+
+
+adapter_image = modal.Image.debian_slim(python_version="3.10")
+
+
+@app.function(image=adapter_image, volumes={"/artifacts": artifacts}, timeout=30 * 60, max_containers=1)
+def generate(input_path: str, options: dict | None = None) -> dict:
+    rel = Path(input_path)
+    if rel.is_absolute() or ".." in rel.parts:
+        raise ValueError("input_path must be relative to /artifacts")
+    path = Path("/artifacts") / rel
+    if not path.is_file():
+        raise FileNotFoundError(input_path)
+    value = Model().generate.remote(path.read_bytes(), **dict(options or {}))
+    return generation_result(ModelName.PIXAL3D, value)

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import modal
 
+from .common import ModelName, generation_result
+
 APP_NAME = "modal-3d-hermit-trellis2-plus-plus"
 MODEL_ID = "microsoft/TRELLIS.2-4B"
 MODEL_DIR = "/models/TRELLIS.2-4B"
@@ -155,3 +157,18 @@ class Model:
             "vertices": len(mesh.vertices),
             "faces": len(mesh.faces),
         }
+
+
+adapter_image = modal.Image.debian_slim(python_version="3.11")
+
+
+@app.function(image=adapter_image, volumes={"/artifacts": artifacts}, timeout=30 * 60, max_containers=1)
+def generate(input_path: str, options: dict | None = None) -> dict:
+    rel = Path(input_path)
+    if rel.is_absolute() or ".." in rel.parts:
+        raise ValueError("input_path must be relative to /artifacts")
+    path = Path("/artifacts") / rel
+    if not path.is_file():
+        raise FileNotFoundError(input_path)
+    value = Model().generate.remote(path.read_bytes(), **dict(options or {}))
+    return generation_result(ModelName.TRELLIS2_PP, value)
