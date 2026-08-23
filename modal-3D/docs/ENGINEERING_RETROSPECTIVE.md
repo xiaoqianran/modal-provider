@@ -712,3 +712,81 @@ The build now runs `py_compile` on patched files before deployment, and expensiv
 SAM3D imports `utils3d`. Installing the PyPI package with that name would be wrong: it is a different project and even pulls an obsolete Open3D stack. The actual dependency is EasternJournalist/utils3d, and MoGe itself pins a compatible Git commit.
 
 **Permanent rule:** for research repositories, resolve ambiguous imports to their actual source repository and commit. Never assume a matching PyPI name is the intended package.
+
+## 37. A newer checkpoint can remove a head that older APIs still construct
+
+The first SAM 3.1 experiment enabled `enable_inst_interactivity=True` because the public builder supports the legacy SAM1-style `predict_inst` interface. The `sam3.1_multiplex.pt` load logs then showed that the checkpoint does not contain the full `inst_interactive_predictor` weights. Those modules were therefore not valid pretrained inference heads, and point/box masks expanded across most of the image.
+
+The SAM 3.0 `sam3.pt` control contains that head and produced coherent point/box masks on the same inputs.
+
+**Permanent rule:** an API existing in source code does not prove that a selected checkpoint contains the weights needed by that API. Inspect missing/unexpected keys and validate each head before exposing it as a product feature.
+
+## 38. Product interaction should follow the model's native prompt semantics
+
+SAM 3.1 worked very well with concept prompts and its native `add_geometric_prompt()` box path. It also returned multiple masks for one concept (`cup` returned two instances on a test scene). This makes a simpler interaction possible:
+
+```text
+concept -> candidate masks -> click an existing mask -> optional text + box refinement
+```
+
+That is better than forcing a point-first UX simply because older SAM generations made point prompting familiar.
+
+**Permanent rule:** do not preserve an old interaction contract when the new model has a stronger native abstraction. Design the UI around the validated model semantics, not around historical API familiarity.
+
+## 39. Self-consistency is not ground-truth mask quality
+
+The SAM 3.1 box-robustness experiment measures IoU between a box-prompt result and the text-prompt mask selected from the same model. This is useful for prompt stability and instance-switching behavior, but it is not human-ground-truth segmentation accuracy.
+
+Likewise, the experiment's `selected_text_prompt` is the highest score among a fixed ten-concept vocabulary, not proof of open-ended scene understanding.
+
+**Permanent rule:** name the reference behind every quality metric. Model-vs-model-self IoU, GT IoU, perceptual quality, and user selection correctness answer different questions and must never be collapsed into one "quality" score.
+
+## 40. Isolate architecture experiments from production worktrees
+
+The SAM 3.1 work was created in a separate Git worktree and branch from the already-stable Plus workers and the in-progress Pages work. That allowed CUDA/Python changes, experimental dependencies, and model-specific debugging without contaminating the production working tree.
+
+**Permanent rule:** when an experiment changes runtime generations or explores an uncertain architecture, use a separate worktree/branch and merge only after the experiment has a reproducible result and an explicit product decision.
+
+## 41. Research-package metadata may not describe the real inference import closure
+
+The minimal SAM 3 image import path failed successively on `einops`, `pycocotools`, and `psutil`. The latter two arrived through top-level imports that cross interactive/training/video modules even in an image-only service.
+
+The fix was to identify and pin the actual small runtime dependencies, not install the repository's full research environment.
+
+**Permanent rule:** build the smallest proven inference closure. Treat upstream dependency metadata as a starting point, then use import probes to discover real runtime requirements without dragging notebooks, training, or unrelated subsystems into production images.
+
+## 42. Do not materialize every candidate before the user chooses one
+
+The first production-shaped SAM 3.1 path eagerly generated mask, overlay, full RGBA and canonical RGBA for every detected instance. On a concept returning 16 objects, artifact encoding and file fan-out dominated the model itself.
+
+The final design stores one bit-packed mask matrix plus metadata, then materializes only the chosen candidate on CPU.
+
+**Permanent rule:** in an interactive selection workflow, make candidate discovery cheap and defer expensive representation work until selection. The user will discard most candidates.
+
+## 43. A checkpoint's effective architecture should match before weights are loaded
+
+The generic SAM 3 image builder creates four FPN neck levels and later discards one with `scalp=1`. The SAM 3.1 multiplex checkpoint/config contains three detector FPN levels, so generic loading produced four missing `convs.3` keys. The missing module did not affect outputs because its feature was discarded, but leaving randomly initialized unused weights in a production model is still poor hygiene and wastes compute.
+
+The production adapter removes the unused fourth level before loading the checkpoint and changes `scalp` from 1 to 0. Candidate score, bbox and mask statistics were identical before/after, and checkpoint loading became clean.
+
+**Permanent rule:** do not normalize away "harmless" missing-key warnings. Reconcile the effective architecture with the pinned checkpoint and prove output equivalence when making a structural cleanup.
+
+## 44. GPU inference and artifact materialization belong on different resources
+
+SAM 3.1 warm prompting is tens of milliseconds. PNG creation, resizing, compression and Volume commits are CPU/storage work and can easily take longer than inference. Keeping those operations on the L40S would waste the expensive resource while doing no GPU work.
+
+The final service leaves detection/refinement on the GPU class and moves selected-object materialization to a CPU Modal function.
+
+**Permanent rule:** split pipeline stages by the resource they actually consume, especially when a fast GPU model feeds comparatively slow serialization or storage work.
+
+## 45. A scene cache must be an optimization, never a correctness dependency
+
+A one-entry GPU scene cache is enough because a warm SAM 3.1 image encode is about 47 ms. The cache-eviction test deliberately replaced scene A with scene B and then refined A. The service reloaded A's original bytes from the shared artifact Volume and completed correctly.
+
+**Permanent rule:** interactive caches may remove latency, but durable identifiers and durable source data must be sufficient to recover after eviction, scale-down or routing to a fresh container.
+
+## 46. Breaking deployed method signatures require a clean-container smoke
+
+During the optimization pass, a newly deployed class was followed by a call whose traceback still matched the previous method signature/body. Stopping the app and redeploying forced a clean container and removed the ambiguity.
+
+**Permanent rule:** after a breaking remote method-signature change, validate on a clean deployment/container before diagnosing argument errors as application logic bugs.
