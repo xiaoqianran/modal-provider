@@ -10,7 +10,6 @@ Current workers:
 - Hunyuan2.1++
 - Hermite-TRELLIS2++
 - Pixal3D
-- trellis.cpp
 
 Shared preprocessing:
 
@@ -23,7 +22,7 @@ Shared preprocessing:
 
 Each GPU model has its own image and weight volume. Weights are downloaded without reserving a GPU and are loaded from mounted Volumes only when a GPU container starts.
 
-SAM 3.1 is deployed as a separate preprocessing service rather than being embedded into the 3D workers. The public 3×5 benchmark uses one validated 1024×1024 canonical RGBA per source scene so all five models receive the same subject input.
+SAM 3.1 is deployed as a separate preprocessing service rather than being embedded into the 3D workers. The live gallery now shows four active workers. Historical 3×5 benchmark evidence, including the retired trellis.cpp run, is preserved under `benchmarks/`.
 
 See `docs/PLAN.md`, `docs/SAM3_1_PREPROCESSOR.md`, and `docs/PAGES_BENCHMARK.md` for architecture and benchmark details.
 

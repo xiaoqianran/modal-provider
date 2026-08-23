@@ -37,7 +37,7 @@ jobs:
           root = Path("site")
           data = json.loads((root / "data/results.json").read_text())
           assert len(data["inputs"]) == 3, "expected exactly three benchmark inputs"
-          expected = {"fastsam3d", "hermit", "hunyuan", "pixal3d", "trellis-cpp"}
+          expected = {"fastsam3d", "hermit", "hunyuan", "pixal3d"}
           for item in data["inputs"]:
               results = data["results"].get(item["id"], [])
               assert {row["id"] for row in results} == expected, f"incomplete results for {item['id']}"

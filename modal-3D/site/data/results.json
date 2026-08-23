@@ -120,26 +120,6 @@
         "preview_bytes": 7199024,
         "artifact": "pixal3d/e1661d5bc86c4e89aa691b12e02c0005.glb",
         "peak_vram_gb": 31.1953125
-      },
-      {
-        "id": "trellis-cpp",
-        "name": "trellis.cpp",
-        "role": "Native C++ · GGML/CUDA",
-        "kind": "geometry",
-        "recommended": false,
-        "source": "https://github.com/xiaoqianran/modal-3D/blob/master/modal_3d/trellis_cpp.py",
-        "preview_codec": "Draco geometry",
-        "gpu": "NVIDIA L40S",
-        "seed": 42,
-        "inference_s": 58.267491082,
-        "client_wall_s": 74.37918406771496,
-        "load_s": null,
-        "vertices": 2033588,
-        "faces": 4051332,
-        "glb_bytes": 73019872,
-        "preview": "./assets/models/sample/trellis-cpp.glb",
-        "preview_bytes": 4343400,
-        "artifact": "trellis.cpp/dc63c295b75e49ec8683ff91db1ee9c8.glb"
       }
     ],
     "pinterest-a1": [
@@ -226,26 +206,6 @@
         "preview_bytes": 7257192,
         "artifact": "pixal3d/15d12519c8814a96b5f3f740b0dc2d68.glb",
         "peak_vram_gb": 31.1796875
-      },
-      {
-        "id": "trellis-cpp",
-        "name": "trellis.cpp",
-        "role": "Native C++ · GGML/CUDA",
-        "kind": "geometry",
-        "recommended": false,
-        "source": "https://github.com/xiaoqianran/modal-3D/blob/master/modal_3d/trellis_cpp.py",
-        "preview_codec": "Draco geometry",
-        "gpu": "NVIDIA L40S",
-        "seed": 42,
-        "inference_s": 18.092158028,
-        "client_wall_s": 26.63302758987993,
-        "load_s": null,
-        "vertices": 929079,
-        "faces": 1816966,
-        "glb_bytes": 32953372,
-        "preview": "./assets/models/pinterest-a1/trellis-cpp.glb",
-        "preview_bytes": 1806556,
-        "artifact": "trellis.cpp/c2d8b31cd23b409393e421357f3a5fea.glb"
       }
     ],
     "pinterest-01": [
@@ -332,26 +292,6 @@
         "preview_bytes": 7263664,
         "artifact": "pixal3d/a7ace572cc924626aa265758bf4e501e.glb",
         "peak_vram_gb": 31.19921875
-      },
-      {
-        "id": "trellis-cpp",
-        "name": "trellis.cpp",
-        "role": "Native C++ · GGML/CUDA",
-        "kind": "geometry",
-        "recommended": false,
-        "source": "https://github.com/xiaoqianran/modal-3D/blob/master/modal_3d/trellis_cpp.py",
-        "preview_codec": "Draco geometry",
-        "gpu": "NVIDIA L40S",
-        "seed": 42,
-        "inference_s": 69.135447337,
-        "client_wall_s": 77.85344670433551,
-        "load_s": null,
-        "vertices": 4051809,
-        "faces": 7992290,
-        "glb_bytes": 144530020,
-        "preview": "./assets/models/pinterest-01/trellis-cpp.glb",
-        "preview_bytes": 10669176,
-        "artifact": "trellis.cpp/2b1ce3bb17da4484b89a414560750127.glb"
       }
     ]
   }
