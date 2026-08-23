@@ -1,7 +1,7 @@
-from enum import StrEnum
+from enum import Enum
 
 
-class ModelName(StrEnum):
+class ModelName(str, Enum):
     HUNYUAN21_PP = "hunyuan2.1-plus-plus"
     FASTSAM3D_PP = "fastsam3d-plus-plus"
     TRELLIS2_PP = "hermit-trellis2-plus-plus"
