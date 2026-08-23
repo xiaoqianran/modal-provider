@@ -712,3 +712,45 @@ The build now runs `py_compile` on patched files before deployment, and expensiv
 SAM3D imports `utils3d`. Installing the PyPI package with that name would be wrong: it is a different project and even pulls an obsolete Open3D stack. The actual dependency is EasternJournalist/utils3d, and MoGe itself pins a compatible Git commit.
 
 **Permanent rule:** for research repositories, resolve ambiguous imports to their actual source repository and commit. Never assume a matching PyPI name is the intended package.
+
+## 37. A newer checkpoint can remove a head that older APIs still construct
+
+The first SAM 3.1 experiment enabled `enable_inst_interactivity=True` because the public builder supports the legacy SAM1-style `predict_inst` interface. The `sam3.1_multiplex.pt` load logs then showed that the checkpoint does not contain the full `inst_interactive_predictor` weights. Those modules were therefore not valid pretrained inference heads, and point/box masks expanded across most of the image.
+
+The SAM 3.0 `sam3.pt` control contains that head and produced coherent point/box masks on the same inputs.
+
+**Permanent rule:** an API existing in source code does not prove that a selected checkpoint contains the weights needed by that API. Inspect missing/unexpected keys and validate each head before exposing it as a product feature.
+
+## 38. Product interaction should follow the model's native prompt semantics
+
+SAM 3.1 worked very well with concept prompts and its native `add_geometric_prompt()` box path. It also returned multiple masks for one concept (`cup` returned two instances on a test scene). This makes a simpler interaction possible:
+
+```text
+concept -> candidate masks -> click an existing mask -> optional text + box refinement
+```
+
+That is better than forcing a point-first UX simply because older SAM generations made point prompting familiar.
+
+**Permanent rule:** do not preserve an old interaction contract when the new model has a stronger native abstraction. Design the UI around the validated model semantics, not around historical API familiarity.
+
+## 39. Self-consistency is not ground-truth mask quality
+
+The SAM 3.1 box-robustness experiment measures IoU between a box-prompt result and the text-prompt mask selected from the same model. This is useful for prompt stability and instance-switching behavior, but it is not human-ground-truth segmentation accuracy.
+
+Likewise, the experiment's `selected_text_prompt` is the highest score among a fixed ten-concept vocabulary, not proof of open-ended scene understanding.
+
+**Permanent rule:** name the reference behind every quality metric. Model-vs-model-self IoU, GT IoU, perceptual quality, and user selection correctness answer different questions and must never be collapsed into one "quality" score.
+
+## 40. Isolate architecture experiments from production worktrees
+
+The SAM 3.1 work was created in a separate Git worktree and branch from the already-stable Plus workers and the in-progress Pages work. That allowed CUDA/Python changes, experimental dependencies, and model-specific debugging without contaminating the production working tree.
+
+**Permanent rule:** when an experiment changes runtime generations or explores an uncertain architecture, use a separate worktree/branch and merge only after the experiment has a reproducible result and an explicit product decision.
+
+## 41. Research-package metadata may not describe the real inference import closure
+
+The minimal SAM 3 image import path failed successively on `einops`, `pycocotools`, and `psutil`. The latter two arrived through top-level imports that cross interactive/training/video modules even in an image-only service.
+
+The fix was to identify and pin the actual small runtime dependencies, not install the repository's full research environment.
+
+**Permanent rule:** build the smallest proven inference closure. Treat upstream dependency metadata as a starting point, then use import probes to discover real runtime requirements without dragging notebooks, training, or unrelated subsystems into production images.
