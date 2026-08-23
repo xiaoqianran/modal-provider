@@ -152,6 +152,9 @@ class Model:
 
         sys.path.insert(0, SRC)
         os.chdir(SRC)
+        shadow = sys.modules.get("pixal3d")
+        if shadow is not None and not hasattr(shadow, "__path__"):
+            del sys.modules["pixal3d"]
         import torch
         from inference import IMAGE_COND_CONFIGS, build_image_cond_model, load_moge_model
         from pixal3d.pipelines import Pixal3DImageTo3DPipeline, rembg
