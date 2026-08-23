@@ -832,3 +832,29 @@ The minimal fix removes a non-package `sys.modules["pixal3d"]` shadow before imp
 A static site can deploy successfully while silently omitting one benchmark result or shipping an unexpectedly huge asset. The Pages workflow validates exactly three inputs, exactly the five expected model IDs per input, the existence of every referenced asset, and a 15 MiB per-preview ceiling before upload.
 
 **Permanent rule:** static artifact deployment should validate semantic completeness and size budgets before publishing, not only syntax or build success.
+
+## 30. Shared Modal Volumes require an explicit refresh across containers
+
+The first real desktop-client integration exposed a boundary that unit-level worker tests did not: SAM 3.1
+successfully materialized and committed a canonical RGBA into `modal-3d-artifacts`, then the Generation
+Gateway immediately passed that new path to a different worker container. The worker's mounted Volume view
+still represented its older snapshot, so `Path.is_file()` returned false even though the producer had already
+committed the file.
+
+The stable adapter pattern is therefore:
+
+```python
+path = Path("/artifacts") / rel
+if not path.is_file():
+    artifacts.reload()
+if not path.is_file():
+    raise FileNotFoundError(input_path)
+```
+
+Do not reload unconditionally when the local view already has the file; refresh on miss, then verify again.
+
+Rule learned:
+
+**A shared Volume path is a data contract, but commit/reload is the synchronization contract.** When one Modal
+container produces an artifact that another container consumes immediately, test that handoff end-to-end.
+Producer success alone does not prove consumer visibility.
