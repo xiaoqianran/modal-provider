@@ -169,6 +169,8 @@ def generate(input_path: str, options: dict | None = None) -> dict:
         raise ValueError("input_path must be relative to /artifacts")
     path = Path("/artifacts") / rel
     if not path.is_file():
+        artifacts.reload()
+    if not path.is_file():
         raise FileNotFoundError(input_path)
     value = Model().generate.remote(path.read_bytes(), **dict(options or {}))
     return generation_result(ModelName.TRELLIS2_PP, value)
