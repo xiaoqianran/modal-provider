@@ -790,3 +790,45 @@ A one-entry GPU scene cache is enough because a warm SAM 3.1 image encode is abo
 During the optimization pass, a newly deployed class was followed by a call whose traceback still matched the previous method signature/body. Stopping the app and redeploying forced a clean container and removed the ambiguity.
 
 **Permanent rule:** after a breaking remote method-signature change, validate on a clean deployment/container before diagnosing argument errors as application logic bugs.
+
+## 47. Preprocessing is part of the benchmark contract
+
+The first Pages attempt treated background removal as a convenience step. A weak automatic mask on a Pinterest image produced nearly empty foreground and caused Hermite-TRELLIS2 to fail later inside sparse geometry code. Other workers could still return technically valid GLBs for the wrong foreground, which is worse because the failure is silent.
+
+The final benchmark explicitly selects one SAM 3.1 instance and materializes one canonical RGBA per scene, then reuses that exact file across all five models.
+
+**Permanent rule:** a multi-model image benchmark must pin and validate the input adapter output, not merely the source image URL. If preprocessing differs, the downstream comparison is not controlled.
+
+## 48. A successful mask API call is not a valid 3D input
+
+The failed U2Net/ISNet attempts had nonzero alpha and therefore passed naive "has transparency" checks, but foreground coverage and alpha distribution showed that the semantic mask was effectively unusable.
+
+**Permanent rule:** input validation must cover semantic plausibility (coverage, bbox, connected region, alpha distribution) rather than only file format or the existence of an alpha channel.
+
+## 49. Full benchmark artifacts and browser previews must be separate evidence
+
+Some full outputs are far too large for a usable static gallery: the coffee-cup trellis.cpp GLB is over 140 MB and the corresponding Hermite mesh is over 4 million faces. Publishing those files directly would make the site look slow even when the model itself is useful.
+
+The gallery therefore records metrics from the complete Modal artifact while serving separately optimized previews. Geometry uses simplification/quantization plus Draco; Pixal3D preserves UV/PBR material while reducing geometry and texture cost.
+
+**Permanent rule:** web-delivery optimization may change the preview, but must never silently replace the artifact used for benchmark metrics.
+
+## 50. Interactive galleries should pay 3D cost only after intent
+
+Loading 15 `<model-viewer>` elements on the landing page would create many WebGL contexts and immediately transfer tens or hundreds of megabytes. The gallery instead creates one viewer only after the user clicks `查看 3D`, clears its `src` on close, and reuses a single dialog.
+
+**Permanent rule:** heavyweight interactive media should be intent-loaded, not merely lazy-tagged. Browser memory, GPU contexts, and network transfer are all part of the product experience.
+
+## 51. Worker module names can shadow upstream Python packages in Modal
+
+The Pixal3D worker is uploaded as `/root/pixal3d.py`, while the upstream project also imports a package named `pixal3d`. Python can therefore resolve the worker module as the package and fail with `'pixal3d' is not a package` even though the upstream source tree is correct.
+
+The minimal fix removes a non-package `sys.modules["pixal3d"]` shadow before importing the upstream pipeline.
+
+**Permanent rule:** when a worker filename matches an upstream package name, treat `sys.modules`/module resolution as part of deployment correctness. Prefer distinct worker module names in new integrations; if renaming is too invasive, explicitly clear only the non-package shadow.
+
+## 52. Static deployment needs a completeness gate, not only a build step
+
+A static site can deploy successfully while silently omitting one benchmark result or shipping an unexpectedly huge asset. The Pages workflow validates exactly three inputs, exactly the five expected model IDs per input, the existence of every referenced asset, and a 15 MiB per-preview ceiling before upload.
+
+**Permanent rule:** static artifact deployment should validate semantic completeness and size budgets before publishing, not only syntax or build success.

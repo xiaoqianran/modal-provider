@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#303446">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="modal-3D L40S image-to-3D benchmark gallery">
+  <title>modal-3D · L40S Gallery</title>
+  <link rel="preconnect" href="https://ajax.googleapis.com" crossorigin>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js"></script>
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="https://github.com/xiaoqianran/modal-3D" aria-label="modal-3D GitHub repository">
+      <span class="brand-mark" aria-hidden="true">◈</span>
+      <span>modal-3D</span>
+    </a>
+    <div class="topbar-meta">
+      <span class="pill"><span class="dot"></span>L40S</span>
+      <span class="pill muted">Frappé</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <p class="eyebrow">REAL OUTPUTS · SAME INPUT · SAME GPU</p>
+      <h1 id="hero-title">Which 3D model should you ship?</h1>
+      <p class="lede">不看宣传数字。三张真实场景先由 SAM 3.1 选定同一主体，再让 5 个模型在 Modal L40S 上比较生成速度、网格规模与浏览器预览。</p>
+      <div class="recommendations" id="recommendations" aria-label="模型推荐"></div>
+    </section>
+
+    <section class="input-section" aria-labelledby="input-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">01 · CHOOSE THE INPUT</p>
+          <h2 id="input-title">先看同一张图，再比模型</h2>
+        </div>
+        <p class="section-note">页面展示原图；SAM 3.1 选择目标实例后统一成 1024×1024 RGBA，5 个模型吃完全相同的主体输入。</p>
+      </div>
+      <div class="input-tabs" id="input-tabs" role="tablist" aria-label="Benchmark inputs"></div>
+    </section>
+
+    <section class="results-section" aria-labelledby="results-title">
+      <div class="section-heading sticky-heading">
+        <div>
+          <p class="eyebrow">02 · COMPARE THE OUTPUTS</p>
+          <h2 id="results-title">5 个模型，真实结果</h2>
+        </div>
+        <div class="sort-control" aria-label="排序方式">
+          <button class="sort-button active" data-sort="speed" type="button">速度</button>
+          <button class="sort-button" data-sort="faces" type="button">细节</button>
+          <button class="sort-button" data-sort="size" type="button">体积</button>
+        </div>
+      </div>
+      <div class="result-summary" id="result-summary" aria-live="polite"></div>
+      <div class="model-grid" id="model-grid"></div>
+    </section>
+
+    <section class="method" aria-labelledby="method-title">
+      <p class="eyebrow">03 · HOW TO READ THIS</p>
+      <h2 id="method-title">网页预览 ≠ 完整产物</h2>
+      <div class="method-grid">
+        <article><strong>统一 SAM 3.1 主体</strong><p>boat / building / cup 都先选定实例，再生成同一份 canonical RGBA，避免背景分割差异污染模型比较。</p></article>
+        <article><strong>指标看 full artifact</strong><p>Inference、faces 与 Full GLB 都来自 Modal 真实完整输出；网页 preview 只是传输优化副本。</p></article>
+        <article><strong>3D 点击才加载</strong><p>几何预览使用 Draco，Pixal 保留 PBR/UV 并压缩纹理；首屏不会一次下载全部 3D。</p></article>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="viewer-dialog" id="viewer-dialog">
+    <div class="viewer-shell">
+      <div class="viewer-head">
+        <div>
+          <p class="eyebrow" id="viewer-input"></p>
+          <h2 id="viewer-title">3D Preview</h2>
+        </div>
+        <button class="icon-button" id="viewer-close" type="button" aria-label="关闭 3D 预览">×</button>
+      </div>
+      <div class="viewer-stage" id="viewer-stage"></div>
+      <div class="viewer-foot">
+        <span>拖动旋转 · 滚轮 / 双指缩放</span>
+        <span id="viewer-size"></span>
+      </div>
+    </div>
+  </dialog>
+
+  <footer>
+    <span>modal-3D · public benchmark</span>
+    <a href="https://github.com/xiaoqianran/modal-3D">Source on GitHub ↗</a>
+  </footer>
+</body>
+</html>

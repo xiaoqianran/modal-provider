@@ -1,0 +1,67 @@
+name: Deploy Pages
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Validate static benchmark
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("site")
+          data = json.loads((root / "data/results.json").read_text())
+          assert len(data["inputs"]) == 3, "expected exactly three benchmark inputs"
+          expected = {"fastsam3d", "hermit", "hunyuan", "pixal3d", "trellis-cpp"}
+          for item in data["inputs"]:
+              results = data["results"].get(item["id"], [])
+              assert {row["id"] for row in results} == expected, f"incomplete results for {item['id']}"
+              assert (root / item["image"]).is_file(), item["image"]
+              for row in results:
+                  path = root / row["preview"]
+                  assert path.is_file(), path
+                  assert path.stat().st_size <= 15 * 1024 * 1024, f"preview too large: {path}"
+          print("site validation passed")
+          PY
+          du -sh site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
