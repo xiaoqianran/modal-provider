@@ -9,6 +9,10 @@
 - GPU containers only mount local weights, load once with `@modal.enter()`, infer, and write results.
 - `min_containers=0` initially. Pay for GPU only when jobs exist.
 
+## Shared preprocessing
+
+- `sam3.1` multi-object selector is implemented and L40S-validated on `feat/sam31-preprocessor`: text concepts return ranked instances, native positive/negative boxes refine selection, masks are bit-packed, and only the chosen object is materialized to canonical RGBA on CPU. Gateway integration is intentionally deferred.
+
 ## Active model families
 
 1. `hermit-trellis2-plus-plus` — first production benchmark target.
