@@ -33,12 +33,24 @@ CAPABILITY = worker_capability(
     "pixal3d",
     "Pixal3D",
     APP_NAME,
-    "完整纹理 GLB；1024 cascade + 4096 texture",
+    "完整 PBR 纹理 GLB；1536 cascade + 4096 texture",
     {
         "seed": {"type": "integer", "default": 42},
         "fov": {"type": "number", "default": None, "nullable": True},
+        "pipeline_type": {
+            "type": "string",
+            "default": "1536_cascade",
+            "enum": ["1024_cascade", "1536_cascade"],
+        },
+        "max_num_tokens": {"type": "integer", "default": 49152, "minimum": 32768, "maximum": 65536},
+        "texture_size": {"type": "integer", "default": 4096, "enum": [2048, 4096]},
     },
-    profile={"fov": None},
+    profile={
+        "fov": None,
+        "pipeline_type": "1536_cascade",
+        "max_num_tokens": 49152,
+        "texture_size": 4096,
+    },
     output="textured",
     deployment={
         "source": MODEL_ID,
@@ -224,12 +236,27 @@ class Model:
         return {"model": CAPABILITY["id"], "load_s": self.load_s}
 
     @modal.method()
-    def generate(self, image_bytes: bytes, seed: int = 42, fov: float | None = None) -> dict:
+    def generate(
+        self,
+        image_bytes: bytes,
+        seed: int = 42,
+        fov: float | None = None,
+        pipeline_type: str = "1536_cascade",
+        max_num_tokens: int = 49152,
+        texture_size: int = 4096,
+    ) -> dict:
         import numpy as np
         import o_voxel
         import torch
         from inference import distance_from_fov, get_camera_params_wild_moge
         from PIL import Image
+
+        if pipeline_type not in {"1024_cascade", "1536_cascade"}:
+            raise ValueError("pipeline_type must be 1024_cascade or 1536_cascade")
+        if not 32768 <= max_num_tokens <= 65536:
+            raise ValueError("max_num_tokens must be between 32768 and 65536")
+        if texture_size not in {2048, 4096}:
+            raise ValueError("texture_size must be 2048 or 4096")
 
         image = Image.open(io.BytesIO(image_bytes))
         image = self.pipe.preprocess_image(image)
@@ -265,7 +292,8 @@ class Model:
                 seed=seed,
                 preprocess_image=False,
                 return_latent=True,
-                pipeline_type="1024_cascade",
+                pipeline_type=pipeline_type,
+                max_num_tokens=max_num_tokens,
             )
             mesh = meshes[0]
             glb = o_voxel.postprocess.to_glb(
@@ -277,7 +305,7 @@ class Model:
                 grid_size=resolution,
                 aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
                 decimation_target=1_000_000,
-                texture_size=4096,
+                texture_size=texture_size,
                 remesh=True,
                 remesh_band=1,
                 remesh_project=0,
@@ -304,7 +332,11 @@ class Model:
         return {
             "model": "pixal3d",
             "gpu": GPU,
-            "resolution": 1024,
+            "resolution": int(resolution),
+            "pipeline_type": pipeline_type,
+            "max_num_tokens": max_num_tokens,
+            "texture_size": texture_size,
+            "fov": fov,
             "seed": seed,
             "artifact": name,
             "glb_bytes": dst.stat().st_size,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import shutil
 import time
 import uuid
 from pathlib import Path
@@ -15,6 +16,8 @@ MODEL_DIR = "/models/TRELLIS.2-4B"
 HF_CACHE = "/models/hf-cache"
 SRC_DIR = "/opt/hermit"
 GPU = "L40S"
+BUILD_TAG = "hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v2"
+WHEELS_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{BUILD_TAG}/{BUILD_TAG}.wheels.zip"
 
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-trellis2-weights", create_if_missing=True)
@@ -24,12 +27,31 @@ CAPABILITY = worker_capability(
     "hermit-trellis2-plus-plus",
     "Hermite-TRELLIS2++",
     APP_NAME,
-    "1024 cascade 几何；Hermite / DMD",
-    {"seed": {"type": "integer", "default": 42}},
+    "PBR 纹理 GLB；官方 remesh/to_glb；质量模式禁用近似采样",
+    {
+        "seed": {"type": "integer", "default": 42},
+        "pipeline_type": {
+            "type": "string",
+            "default": "1536_cascade",
+            "enum": ["1024_cascade", "1536_cascade"],
+        },
+        "acceleration": {
+            "type": "string",
+            "default": "base",
+            "enum": ["base", "dmd"],
+        },
+        "texture_size": {
+            "type": "integer",
+            "default": 4096,
+            "enum": [2048, 4096],
+        },
+    },
+    profile={"pipeline_type": "1536_cascade", "acceleration": "base", "texture_size": 4096},
+    output="textured",
     deployment={
         "source": "Archerkattri/hermit-trellis2-plus-plus",
         "source_revision": "2c8402a92ea97c510c09e278fae557771aad774d",
-        "build_artifact": "hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v1",
+        "build_artifact": BUILD_TAG,
     },
     warm_seconds=11.98,
     priority=20,
@@ -48,7 +70,7 @@ gpu_image = (
         "uv pip install --system torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124",
         "uv pip install --system imageio imageio-ffmpeg tqdm einops easydict opencv-python-headless trimesh transformers huggingface_hub safetensors pandas lpips zstandard kornia timm plyfile",
         "uv pip install --system git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8",
-        "curl -fL https://github.com/xiaoqianran/modal-build/releases/download/hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v1/hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v1.wheels.zip -o /tmp/wheels.zip && mkdir -p /tmp/wheels && unzip -q /tmp/wheels.zip -d /tmp/wheels",
+        f"curl -fL {WHEELS_URL} -o /tmp/wheels.zip && mkdir -p /tmp/wheels && unzip -q /tmp/wheels.zip -d /tmp/wheels",
         "uv pip install --system --no-deps /tmp/wheels/*.whl",
         "git clone https://github.com/Archerkattri/hermit-trellis2-plus-plus.git /opt/hermit && cd /opt/hermit && git checkout 2c8402a92ea97c510c09e278fae557771aad774d",
     )
@@ -111,12 +133,8 @@ class Model:
     def load(self):
         # Keep GPU startup deterministic: cached weights only, no network fallback.
         import sys
-        import types
 
         sys.path.insert(0, SRC_DIR)
-        for name in ("nvdiffrast", "nvdiffrast.torch", "nvdiffrec"):
-            sys.modules.setdefault(name, types.ModuleType(name))
-        sys.modules["nvdiffrast"].torch = sys.modules["nvdiffrast.torch"]
 
         import torch
         from trellis2.pipelines import Trellis2ImageTo3DPipeline
@@ -125,8 +143,9 @@ class Model:
         t0 = time.perf_counter()
         self.pipe = Trellis2ImageTo3DPipeline.from_pretrained(MODEL_DIR)
         self.pipe.to("cuda")
-        self.pipe.enable_faster()
-        self.pipe.sparse_structure_sampler.hicache_backend = "dmd"
+        # Production quality baseline: restore stock TRELLIS.2 samplers. The DMD
+        # accelerated path remains opt-in per request instead of changing topology by default.
+        self.pipe.enable_faster("base")
         torch.cuda.synchronize()
         self.load_s = time.perf_counter() - t0
 
@@ -135,10 +154,32 @@ class Model:
         return {"model": CAPABILITY["id"], "load_s": self.load_s}
 
     @modal.method()
-    def generate(self, image_bytes: bytes, seed: int = 42) -> dict:
+    def generate(
+        self,
+        image_bytes: bytes,
+        seed: int = 42,
+        pipeline_type: str = "1536_cascade",
+        acceleration: str = "base",
+        texture_size: int = 4096,
+    ) -> dict:
+        import o_voxel
         import torch
-        import trimesh
         from PIL import Image
+
+        if pipeline_type not in {"1024_cascade", "1536_cascade"}:
+            raise ValueError("pipeline_type must be 1024_cascade or 1536_cascade")
+        if acceleration not in {"base", "dmd"}:
+            raise ValueError("acceleration must be base or dmd")
+        if texture_size not in {2048, 4096}:
+            raise ValueError("texture_size must be 2048 or 4096")
+
+        # The fork mutates sampler instances in enable_faster(); configure it for every
+        # request so a previous fast request cannot leak into a later quality request.
+        if acceleration == "base":
+            self.pipe.enable_faster("base")
+        else:
+            self.pipe.enable_faster()
+            self.pipe.sparse_structure_sampler.hicache_backend = "dmd"
 
         image = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
         torch.cuda.reset_peak_memory_stats()
@@ -148,34 +189,61 @@ class Model:
             image,
             seed=seed,
             preprocess_image=True,
-            pipeline_type="1024_cascade",
+            pipeline_type=pipeline_type,
         )
         torch.cuda.synchronize()
-        inference_s = time.perf_counter() - t0
+        generation_s = time.perf_counter() - t0
 
         mesh = out[0]
-        glb = trimesh.Trimesh(
-            vertices=mesh.vertices.detach().cpu().numpy(),
-            faces=mesh.faces.detach().cpu().numpy(),
-            process=False,
-        ).export(file_type="glb")
+        post_t0 = time.perf_counter()
+        glb_scene = o_voxel.postprocess.to_glb(
+            vertices=mesh.vertices,
+            faces=mesh.faces,
+            attr_volume=mesh.attrs,
+            coords=mesh.coords,
+            attr_layout=mesh.layout,
+            voxel_size=mesh.voxel_size,
+            aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
+            decimation_target=1_000_000,
+            texture_size=texture_size,
+            remesh=True,
+            remesh_band=1,
+            remesh_project=0,
+            verbose=False,
+        )
+        work = Path("/tmp/hermit-trellis2")
+        work.mkdir(parents=True, exist_ok=True)
+        tmp_glb = work / f"{uuid.uuid4().hex}.glb"
+        glb_scene.export(tmp_glb, extension_webp=True)
+        postprocess_s = time.perf_counter() - post_t0
 
         name = f"trellis2/{uuid.uuid4().hex}.glb"
         path = Path("/artifacts") / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(glb)
+        shutil.copy2(tmp_glb, path)
         artifacts.commit()
 
+        voxel_size = float(mesh.voxel_size)
+        resolution = round(1.0 / voxel_size) if voxel_size > 0 else None
         return {
+            "model": "hermit-trellis2-plus-plus",
             "artifact": name,
-            "glb_bytes": len(glb),
+            "glb_bytes": path.stat().st_size,
             "load_s": self.load_s,
-            "inference_s": inference_s,
+            "inference_s": generation_s + postprocess_s,
+            "generation_s": generation_s,
+            "postprocess_s": postprocess_s,
             "peak_vram_allocated_gb": torch.cuda.max_memory_allocated() / 2**30,
             "peak_vram_reserved_gb": torch.cuda.max_memory_reserved() / 2**30,
             "vertices": len(mesh.vertices),
             "faces": len(mesh.faces),
+            "resolution": resolution,
+            "pipeline_type": pipeline_type,
+            "acceleration": acceleration,
+            "texture_size": texture_size,
+            "pbr_channels": sorted(mesh.layout),
         }
+
 
 
 generate, warmup, register = register_worker_entrypoint(app, artifacts, Model, CAPABILITY)

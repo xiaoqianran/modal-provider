@@ -69,13 +69,22 @@ class CapabilityContractTests(unittest.TestCase):
             {"dmd_interval": 1, "dmd_history": 5},
         )
         self.assertEqual(
-            profile_options("hermit-trellis2-plus-plus", "recommended", self.registry), {}
+            profile_options("hermit-trellis2-plus-plus", "recommended", self.registry),
+            {"pipeline_type": "1536_cascade", "acceleration": "base", "texture_size": 4096},
         )
         self.assertEqual(
             profile_options("hunyuan2.1-plus-plus", "recommended", self.registry),
-            {"interval": 3, "history": 6, "num_inference_steps": 50},
+            {"acceleration": "base", "interval": 1, "history": 6, "num_inference_steps": 50, "paint_remesh": False},
         )
-        self.assertEqual(profile_options("pixal3d", "recommended", self.registry), {"fov": None})
+        self.assertEqual(
+            profile_options("pixal3d", "recommended", self.registry),
+            {
+                "fov": None,
+                "pipeline_type": "1536_cascade",
+                "max_num_tokens": 49152,
+                "texture_size": 4096,
+            },
+        )
 
     def test_worker_lookup_is_part_of_same_contract(self) -> None:
         self.assertEqual(worker_app("fastsam3d-plus-plus", self.registry), "modal-3d-fastsam3d")
@@ -102,7 +111,7 @@ class CapabilityContractTests(unittest.TestCase):
 
     def test_unknown_option_is_rejected_before_worker(self) -> None:
         with self.assertRaisesRegex(ValueError, "unknown options"):
-            validate_options("pixal3d", {"texture_size": 8192}, self.registry)
+            validate_options("pixal3d", {"does_not_exist": 1}, self.registry)
 
     def test_option_types_are_strict(self) -> None:
         with self.assertRaisesRegex(ValueError, "seed must be integer"):
@@ -113,6 +122,10 @@ class CapabilityContractTests(unittest.TestCase):
             validate_options("pixal3d", {"fov": None}, self.registry),
             {"fov": None},
         )
+        with self.assertRaisesRegex(ValueError, "must be one of"):
+            validate_options("pixal3d", {"pipeline_type": "2048_cascade"}, self.registry)
+        with self.assertRaisesRegex(ValueError, "pipeline_type must be string"):
+            validate_options("pixal3d", {"pipeline_type": 1536}, self.registry)
 
     def test_existing_worker_ranges_are_enforced(self) -> None:
         with self.assertRaisesRegex(ValueError, "interval must be >= 1"):

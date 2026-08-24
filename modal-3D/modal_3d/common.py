@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from copy import deepcopy
 from pathlib import Path
 
@@ -70,7 +71,12 @@ def register_worker_entrypoint(
 
     manifest = validate_capability(capability)
     model_id = manifest["id"]
-    adapter_image = modal.Image.debian_slim(python_version=python_version)
+    worker_app = manifest["worker_app"]
+    model_cls_name = model_cls.__name__
+    # serialized=True requires the adapter runtime to match the Python version
+    # that serialized the closure; it is independent from the GPU worker Python.
+    adapter_python = f"{sys.version_info.major}.{sys.version_info.minor}"
+    adapter_image = modal.Image.debian_slim(python_version=adapter_python)
 
     def generate(input_path: str, options: dict | None = None) -> dict:
         rel = Path(input_path)
@@ -81,11 +87,13 @@ def register_worker_entrypoint(
             artifacts_volume.reload()
         if not path.is_file():
             raise FileNotFoundError(input_path)
-        value = model_cls().generate.remote(path.read_bytes(), **dict(options or {}))
+        remote_cls = modal.Cls.from_name(worker_app, model_cls_name)
+        value = remote_cls().generate.remote(path.read_bytes(), **dict(options or {}))
         return generation_result(model_id, value)
 
     def warmup() -> dict:
-        return model_cls().warmup.remote()
+        remote_cls = modal.Cls.from_name(worker_app, model_cls_name)
+        return remote_cls().warmup.remote()
 
     def register() -> dict:
         registry = modal.Dict.from_name(REGISTRY_NAME, create_if_missing=True)

@@ -42,7 +42,10 @@ download_image = (
 )
 
 cpu_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install(
-    "numpy==1.26.4", "Pillow==12.1.0", uv_version="0.12.5"
+    "numpy==1.26.4",
+    "Pillow==12.1.0",
+    "scipy==1.14.1",
+    uv_version="0.12.5",
 )
 
 runtime_image = (
@@ -202,6 +205,105 @@ def _decode_image(image_bytes: bytes):
     return image.convert("RGB")
 
 
+
+def _mask_component_stats(mask) -> dict:
+    import numpy as np
+    from scipy import ndimage
+
+    mask = np.asarray(mask, dtype=bool).squeeze()
+    labels, count = ndimage.label(mask, structure=np.ones((3, 3), dtype=np.uint8))
+    if count == 0:
+        return {"count": 0, "areas": [], "major_count": 0}
+    areas = np.bincount(labels.ravel(), minlength=count + 1)[1:]
+    areas = np.sort(areas)[::-1]
+    total = int(mask.sum())
+    # Detached specks smaller than 0.2% of the selected object are not meaningful
+    # for single-object image-to-3D, but articulated/disconnected major parts are.
+    major_floor = max(64, math.ceil(total * 0.002))
+    return {
+        "count": int(count),
+        "areas": [int(v) for v in areas[:16]],
+        "major_count": int((areas >= major_floor).sum()),
+        "major_floor": int(major_floor),
+    }
+
+
+def _repair_mask_for_3d(mask, max_growth: float = 0.12):
+    import numpy as np
+    from scipy import ndimage
+
+    mask = np.asarray(mask, dtype=bool).squeeze()
+    if mask.ndim != 2 or not mask.any():
+        raise ValueError("mask must be a non-empty 2D array")
+
+    before = _mask_component_stats(mask)
+    ys, xs = np.nonzero(mask)
+    bbox_w = int(xs.max() - xs.min() + 1)
+    bbox_h = int(ys.max() - ys.min() + 1)
+    min_span = max(1, min(bbox_w, bbox_h))
+    raw_pixels = int(mask.sum())
+
+    metadata = {
+        "applied": False,
+        "reason": "already_coherent" if before["major_count"] <= 1 else "no_safe_repair",
+        "before": before,
+        "after": before,
+        "kernel_size": 0,
+        "area_growth_fraction": 0.0,
+    }
+    if before["major_count"] <= 1:
+        return mask, metadata
+
+    # Search the smallest closing footprint that reconnects major SAM fragments.
+    # Cap the radius relative to object size and reject repairs that invent >12% area.
+    max_kernel = min(65, max(9, 2 * math.ceil(min_span * 0.075) + 1))
+    if max_kernel % 2 == 0:
+        max_kernel -= 1
+    candidate_sizes = list(range(9, max_kernel + 1, 8))
+    if candidate_sizes[-1] != max_kernel:
+        candidate_sizes.append(max_kernel)
+
+    best = None
+    for kernel_size in candidate_sizes:
+        radius = kernel_size // 2
+        yy, xx = np.ogrid[-radius : radius + 1, -radius : radius + 1]
+        footprint = (xx * xx + yy * yy) <= radius * radius
+        # Explicit border values avoid eroding valid objects that touch an image edge.
+        dilated = ndimage.binary_dilation(mask, structure=footprint, border_value=0)
+        closed = ndimage.binary_erosion(dilated, structure=footprint, border_value=1)
+
+        # Drop only tiny detached islands after closing. Major disconnected parts are kept.
+        labels, count = ndimage.label(closed, structure=np.ones((3, 3), dtype=np.uint8))
+        if count:
+            areas = np.bincount(labels.ravel(), minlength=count + 1)[1:]
+            keep_floor = max(16, math.ceil(raw_pixels * 0.002))
+            keep_ids = np.flatnonzero(areas >= keep_floor) + 1
+            if len(keep_ids):
+                closed = np.isin(labels, keep_ids)
+
+        new_pixels = int(closed.sum())
+        growth = (new_pixels - raw_pixels) / raw_pixels
+        after = _mask_component_stats(closed)
+        if growth <= max_growth and after["major_count"] < before["major_count"]:
+            best = (closed, kernel_size, growth, after)
+            if after["major_count"] <= 1:
+                break
+
+    if best is None:
+        return mask, metadata
+
+    repaired, kernel_size, growth, after = best
+    metadata.update(
+        {
+            "applied": True,
+            "reason": "connected_major_fragments",
+            "after": after,
+            "kernel_size": int(kernel_size),
+            "area_growth_fraction": float(growth),
+        }
+    )
+    return repaired, metadata
+
 def _canonical_rgba(image, mask, output_size: int, padding_ratio: float = 0.08):
     import numpy as np
     from PIL import Image
@@ -216,9 +318,9 @@ def _canonical_rgba(image, mask, output_size: int, padding_ratio: float = 0.08):
     x0, x1 = int(xs.min()), int(xs.max()) + 1
     y0, y1 = int(ys.min()), int(ys.max()) + 1
     object_side = max(x1 - x0, y1 - y0)
-    side = max(2, int(math.ceil(object_side * (1 + 2 * padding_ratio))))
+    side = max(2, math.ceil(object_side * (1 + 2 * padding_ratio)))
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    left, top = int(math.floor(cx - side / 2)), int(math.floor(cy - side / 2))
+    left, top = math.floor(cx - side / 2), math.floor(cy - side / 2)
     right, bottom = left + side, top + side
 
     src_left, src_top = max(0, left), max(0, top)
@@ -255,6 +357,7 @@ def materialize(
     candidate_id: str,
     output_size: int = DEFAULT_OUTPUT_SIZE,
     include_full_rgba: bool = False,
+    repair_for_3d: bool = True,
 ) -> dict:
     import numpy as np
     from PIL import Image
@@ -297,9 +400,15 @@ def materialize(
     candidate_root = root / candidate_id
     candidate_root.mkdir(parents=True, exist_ok=True)
     mask_path = candidate_root / "mask.png"
+    mask_3d_path = candidate_root / "mask_3d.png"
     canonical_path = candidate_root / "canonical.png"
     Image.fromarray(mask.astype(np.uint8) * 255, "L").save(mask_path, compress_level=1)
-    canonical, metadata = _canonical_rgba(image, mask, output_size)
+    effective_mask, repair_metadata = (
+        _repair_mask_for_3d(mask) if repair_for_3d else (mask, {"applied": False, "reason": "disabled"})
+    )
+    Image.fromarray(effective_mask.astype(np.uint8) * 255, "L").save(mask_3d_path, compress_level=1)
+    canonical, metadata = _canonical_rgba(image, effective_mask, output_size)
+    metadata["mask_repair"] = repair_metadata
     canonical.save(canonical_path, compress_level=1)
 
     response = {
@@ -307,13 +416,15 @@ def materialize(
         "selection_id": selection_id,
         "candidate_id": candidate_id,
         "mask_path": str(mask_path.relative_to("/artifacts")),
+        "mask_3d_path": str(mask_3d_path.relative_to("/artifacts")),
         "canonical_path": str(canonical_path.relative_to("/artifacts")),
         "mask_bytes": mask_path.stat().st_size,
+        "mask_3d_bytes": mask_3d_path.stat().st_size,
         "canonical_bytes": canonical_path.stat().st_size,
         "canonical": metadata,
     }
     if include_full_rgba:
-        alpha = mask.astype(np.uint8) * 255
+        alpha = effective_mask.astype(np.uint8) * 255
         rgba_path = candidate_root / "rgba.png"
         Image.fromarray(np.dstack([np.asarray(image, dtype=np.uint8), alpha]), "RGBA").save(
             rgba_path, compress_level=1
@@ -339,8 +450,8 @@ def materialize(
 class Model:
     @modal.enter()
     def load(self) -> None:
-        import torch
         import sam3.model_builder as sam3_builder
+        import torch
         from sam3.model.sam3_image_processor import Sam3Processor
 
         if not CHECKPOINT.is_file():

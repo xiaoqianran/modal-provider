@@ -130,10 +130,18 @@ def _validate_value(name: str, value, schema: dict) -> None:
         valid = isinstance(value, int) and not isinstance(value, bool)
     elif expected == "number":
         valid = isinstance(value, (int, float)) and not isinstance(value, bool)
+    elif expected == "string":
+        valid = isinstance(value, str)
+    elif expected == "boolean":
+        valid = isinstance(value, bool)
     else:
         raise RuntimeError(f"unsupported option schema type: {expected}")
     if not valid:
         raise ValueError(f"option {name} must be {expected}")
+
+    allowed = schema.get("enum")
+    if allowed is not None and value not in allowed:
+        raise ValueError(f"option {name} must be one of: {allowed}")
 
     minimum = schema.get("minimum")
     if minimum is not None and value < minimum:
