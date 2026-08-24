@@ -7,7 +7,7 @@ from pathlib import Path
 
 import modal
 
-from .common import ModelName, generation_result
+from .common import register_worker_entrypoint, worker_capability
 
 APP_NAME = "modal-3d-hermit-trellis2-plus-plus"
 MODEL_ID = "microsoft/TRELLIS.2-4B"
@@ -19,6 +19,21 @@ GPU = "L40S"
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-trellis2-weights", create_if_missing=True)
 artifacts = modal.Volume.from_name("modal-3d-artifacts", create_if_missing=True)
+
+CAPABILITY = worker_capability(
+    "hermit-trellis2-plus-plus",
+    "Hermite-TRELLIS2++",
+    APP_NAME,
+    "1024 cascade 几何；Hermite / DMD",
+    {"seed": {"type": "integer", "default": 42}},
+    deployment={
+        "source": "Archerkattri/hermit-trellis2-plus-plus",
+        "source_revision": "2c8402a92ea97c510c09e278fae557771aad774d",
+        "build_artifact": "hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v1",
+    },
+    warm_seconds=11.98,
+    priority=20,
+)
 
 download_image = modal.Image.debian_slim(python_version="3.11").pip_install(
     "huggingface_hub>=0.34,<1",
@@ -116,6 +131,10 @@ class Model:
         self.load_s = time.perf_counter() - t0
 
     @modal.method()
+    def warmup(self) -> dict:
+        return {"model": CAPABILITY["id"], "load_s": self.load_s}
+
+    @modal.method()
     def generate(self, image_bytes: bytes, seed: int = 42) -> dict:
         import torch
         import trimesh
@@ -159,18 +178,4 @@ class Model:
         }
 
 
-adapter_image = modal.Image.debian_slim(python_version="3.11")
-
-
-@app.function(image=adapter_image, volumes={"/artifacts": artifacts}, timeout=30 * 60, max_containers=1)
-def generate(input_path: str, options: dict | None = None) -> dict:
-    rel = Path(input_path)
-    if rel.is_absolute() or ".." in rel.parts:
-        raise ValueError("input_path must be relative to /artifacts")
-    path = Path("/artifacts") / rel
-    if not path.is_file():
-        artifacts.reload()
-    if not path.is_file():
-        raise FileNotFoundError(input_path)
-    value = Model().generate.remote(path.read_bytes(), **dict(options or {}))
-    return generation_result(ModelName.TRELLIS2_PP, value)
+generate, warmup, register = register_worker_entrypoint(app, artifacts, Model, CAPABILITY)

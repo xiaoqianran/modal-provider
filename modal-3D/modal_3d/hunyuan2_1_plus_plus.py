@@ -7,7 +7,7 @@ from pathlib import Path
 
 import modal
 
-from .common import ModelName, generation_result
+from .common import register_worker_entrypoint, worker_capability
 
 APP_NAME = "modal-3d-hunyuan"
 MODEL_ID = "tencent/Hunyuan3D-2.1"
@@ -21,6 +21,28 @@ GPU = "L40S"
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-hunyuan21-weights", create_if_missing=True)
 artifacts = modal.Volume.from_name("modal-3d-artifacts", create_if_missing=True)
+
+CAPABILITY = worker_capability(
+    "hunyuan2.1-plus-plus",
+    "Hunyuan2.1++",
+    APP_NAME,
+    "平衡几何；HiCache++ DMD",
+    {
+        "seed": {"type": "integer", "default": 42},
+        "interval": {"type": "integer", "default": 3, "minimum": 1},
+        "history": {"type": "integer", "default": 6, "minimum": 4},
+        "num_inference_steps": {"type": "integer", "default": 50},
+    },
+    profile={"interval": 3, "history": 6, "num_inference_steps": 50},
+    deployment={
+        "source": FORK,
+        "source_revision": FORK_COMMIT,
+        "base_model": MODEL_ID,
+        "base_model_revision": MODEL_REVISION,
+    },
+    warm_seconds=29.56,
+    priority=30,
+)
 
 download_image = modal.Image.debian_slim(python_version="3.10").uv_pip_install(
     "huggingface_hub==0.30.2",
@@ -62,7 +84,7 @@ runtime_image = (
     )
     .run_commands(
         f"git clone https://github.com/{FORK}.git {SRC} && git -C {SRC} checkout {FORK_COMMIT}",
-        f"PYTHONPATH={SRC}/hy3dshape python -c \"from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline; assert callable(Hunyuan3DDiTFlowMatchingPipeline.enable_dmd)\"",
+        f'PYTHONPATH={SRC}/hy3dshape python -c "from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline; assert callable(Hunyuan3DDiTFlowMatchingPipeline.enable_dmd)"',
     )
     .env(
         {
@@ -103,28 +125,6 @@ def sync_weights() -> dict:
     }
 
 
-adapter_image = modal.Image.debian_slim(python_version="3.10")
-
-
-@app.function(
-    image=adapter_image,
-    volumes={"/artifacts": artifacts},
-    timeout=30 * 60,
-    max_containers=1,
-)
-def generate(input_path: str, options: dict | None = None) -> dict:
-    rel = Path(input_path)
-    if rel.is_absolute() or ".." in rel.parts:
-        raise ValueError("input_path must be relative to /artifacts")
-    path = Path("/artifacts") / rel
-    if not path.is_file():
-        artifacts.reload()
-    if not path.is_file():
-        raise FileNotFoundError(input_path)
-    value = Model().generate.remote(path.read_bytes(), **dict(options or {}))
-    return generation_result(ModelName.HUNYUAN21_PP, value)
-
-
 @app.cls(
     image=runtime_image,
     gpu=GPU,
@@ -153,6 +153,10 @@ class Model:
         self.pipe.to("cuda")
         torch.cuda.synchronize()
         self.load_s = time.perf_counter() - t0
+
+    @modal.method()
+    def warmup(self) -> dict:
+        return {"model": CAPABILITY["id"], "load_s": self.load_s}
 
     @modal.method()
     def generate(
@@ -213,3 +217,8 @@ class Model:
             "vertices": len(mesh.vertices),
             "faces": len(mesh.faces),
         }
+
+
+generate, warmup, register = register_worker_entrypoint(
+    app, artifacts, Model, CAPABILITY, python_version="3.10"
+)

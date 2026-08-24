@@ -13,7 +13,7 @@ from pathlib import Path
 
 import modal
 
-from .common import ModelName, generation_result
+from .common import register_worker_entrypoint, worker_capability
 
 APP_NAME = "modal-3d-pixal3d"
 GPU = "L40S"
@@ -28,6 +28,26 @@ WHEELS_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{TAG
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-pixal3d-weights", create_if_missing=True)
 artifacts = modal.Volume.from_name("modal-3d-artifacts", create_if_missing=True)
+
+CAPABILITY = worker_capability(
+    "pixal3d",
+    "Pixal3D",
+    APP_NAME,
+    "完整纹理 GLB；1024 cascade + 4096 texture",
+    {
+        "seed": {"type": "integer", "default": 42},
+        "fov": {"type": "number", "default": None, "nullable": True},
+    },
+    profile={"fov": None},
+    output="textured",
+    deployment={
+        "source": MODEL_ID,
+        "source_revision": "cdbb2bbffbf4e6f298b5f2af3d1d76a8d823d2af",
+        "build_artifact": TAG,
+    },
+    warm_seconds=108.92,
+    priority=40,
+)
 
 download_image = modal.Image.debian_slim(python_version="3.10").uv_pip_install(
     "huggingface_hub>=0.34,<1"
@@ -177,8 +197,12 @@ class Model:
         t0 = time.perf_counter()
         self.pipe = Pixal3DImageTo3DPipeline.from_pretrained(MODEL_DIR)
         self.pipe.image_cond_model_ss = build_image_cond_model(IMAGE_COND_CONFIGS["ss"])
-        self.pipe.image_cond_model_shape_512 = build_image_cond_model(IMAGE_COND_CONFIGS["shape_512"])
-        self.pipe.image_cond_model_shape_1024 = build_image_cond_model(IMAGE_COND_CONFIGS["shape_1024"])
+        self.pipe.image_cond_model_shape_512 = build_image_cond_model(
+            IMAGE_COND_CONFIGS["shape_512"]
+        )
+        self.pipe.image_cond_model_shape_1024 = build_image_cond_model(
+            IMAGE_COND_CONFIGS["shape_1024"]
+        )
         self.pipe.image_cond_model_tex_1024 = build_image_cond_model(IMAGE_COND_CONFIGS["tex_1024"])
         self.pipe.low_vram = False
         self.pipe.cuda()
@@ -194,6 +218,10 @@ class Model:
         self.moge = load_moge_model(device="cpu")
         torch.cuda.synchronize()
         self.load_s = time.perf_counter() - t0
+
+    @modal.method()
+    def warmup(self) -> dict:
+        return {"model": CAPABILITY["id"], "load_s": self.load_s}
 
     @modal.method()
     def generate(self, image_bytes: bytes, seed: int = 42, fov: float | None = None) -> dict:
@@ -286,18 +314,6 @@ class Model:
         }
 
 
-adapter_image = modal.Image.debian_slim(python_version="3.10")
-
-
-@app.function(image=adapter_image, volumes={"/artifacts": artifacts}, timeout=30 * 60, max_containers=1)
-def generate(input_path: str, options: dict | None = None) -> dict:
-    rel = Path(input_path)
-    if rel.is_absolute() or ".." in rel.parts:
-        raise ValueError("input_path must be relative to /artifacts")
-    path = Path("/artifacts") / rel
-    if not path.is_file():
-        artifacts.reload()
-    if not path.is_file():
-        raise FileNotFoundError(input_path)
-    value = Model().generate.remote(path.read_bytes(), **dict(options or {}))
-    return generation_result(ModelName.PIXAL3D, value)
+generate, warmup, register = register_worker_entrypoint(
+    app, artifacts, Model, CAPABILITY, python_version="3.10"
+)

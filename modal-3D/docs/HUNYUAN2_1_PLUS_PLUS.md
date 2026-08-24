@@ -16,5 +16,5 @@ The worker defaults to `interval=3, history=6`. On the L40S chair smoke, this ga
 
 ```bash
 modal run modal_3d/hunyuan2_1_plus_plus.py::sync_weights
-modal deploy modal_3d/hunyuan2_1_plus_plus.py
+./scripts/deploy-worker.ps1 modal_3d/hunyuan2_1_plus_plus.py
 ```

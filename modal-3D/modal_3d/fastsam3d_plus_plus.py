@@ -7,7 +7,7 @@ from pathlib import Path
 
 import modal
 
-from .common import ModelName, generation_result
+from .common import register_worker_entrypoint, worker_capability
 
 APP_NAME = "modal-3d-fastsam3d"
 GPU = "L40S"
@@ -31,153 +31,24 @@ app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-fastsam3d-weights", create_if_missing=True)
 artifacts = modal.Volume.from_name("modal-3d-artifacts", create_if_missing=True)
 
-
-def _patch_sources() -> None:
-    from pathlib import Path
-
-    root = Path("/opt/fastsam3d-plus-plus")
-
-    # The SAM checkpoints strictly reload the full condition embedder, so avoid a redundant
-    # network fetch of DINO weights during model construction.
-    p = root / "sam3d_objects/model/backbone/dit/embedder/dino.py"
-    s = p.read_text()
-    old = "                verbose=False,\n                **backbone_kwargs,"
-    new = "                verbose=False,\n                pretrained=False,\n                **backbone_kwargs,"
-    if old not in s:
-        raise RuntimeError("DINO patch target changed")
-    p.write_text(s.replace(old, new, 1))
-
-    # Production uses ordinary checkpoint files; avoid Lightning, which is only needed
-    # for sharded training checkpoints and LightningModule-specific hooks.
-    p = root / "sam3d_objects/model/io.py"
-    s = p.read_text()
-    s = s.replace("import lightning.pytorch as pl\n", "", 1)
-    lightning_start = "from lightning.pytorch.utilities.consolidate_checkpoint import (\n"
-    lightning_end = ")\nfrom glob import glob\n"
-    if lightning_start not in s or lightning_end not in s:
-        raise RuntimeError("Lightning checkpoint patch target changed")
-    before, rest = s.split(lightning_start, 1)
-    _, after = rest.split(lightning_end, 1)
-    s = before + "from glob import glob\n" + after
-    s = s.replace("model: Union[pl.LightningModule, torch.nn.Module]", "model: torch.nn.Module", 1)
-    s = s.replace(
-        "    if isinstance(model, pl.LightningModule):\n        model.on_load_checkpoint(checkpoint)\n\n",
-        "    if hasattr(model, 'on_load_checkpoint'):\n        model.on_load_checkpoint(checkpoint)\n\n",
-        1,
-    )
-    start = s.index("def load_sharded_checkpoint(")
-    end = s.index("\ndef load_model_from_checkpoint(", start)
-    replacement = (
-        "def load_sharded_checkpoint(path: str, device):\n"
-        "    raise RuntimeError(\"sharded Lightning checkpoints are not supported in inference\")\n\n"
-    )
-    s = s[:start] + replacement + s[end + 1:]
-    p.write_text(s)
-
-    # Kaolin is otherwise used here only for a shape assertion helper.
-    p = root / "sam3d_objects/model/backbone/tdfy_dit/representations/mesh/flexicubes/flexicubes.py"
-    s = p.read_text()
-    old = "from kaolin.utils.testing import check_tensor\n"
-    new = '''def check_tensor(x, shape, throw=True):\n    ok = x.ndim == len(shape) and all(expected is None or x.shape[i] == expected for i, expected in enumerate(shape))\n    if throw and not ok:\n        raise ValueError(f"unexpected tensor shape {tuple(x.shape)}; expected {shape}")\n    return ok\n'''
-    if old not in s:
-        raise RuntimeError("Kaolin patch target changed")
-    p.write_text(s.replace(old, new, 1))
-
-    # Fast-SAM3D only needs the numeric 3D HFER on the production path, not HTML plots.
-    p = root / "sam3d_objects/pipeline/inference_pipeline.py"
-    s = p.read_text()
-    old = 'process_and_visualize(coords_value, output_dir="./visualization", filter_radius=8 , draw_spatial = True, draw_freq = False)'
-    new = 'process_and_visualize(coords_value, output_dir="./visualization", filter_radius=8, draw_spatial=False, draw_freq=False)'
-    if old not in s:
-        raise RuntimeError("HFER patch target changed")
-    p.write_text(s.replace(old, new, 1))
-
-    p = root / "fft/fft3d.py"
-    s = p.read_text()
-    if "import plotly.graph_objects as go\n" not in s:
-        raise RuntimeError("Plotly patch target changed")
-    p.write_text(s.replace("import plotly.graph_objects as go\n", "", 1))
-
-    # Plane estimation is not part of single-object generation; keep it lazy instead of
-    # making Open3D a mandatory import for the entire pipeline.
-    p = root / "sam3d_objects/pipeline/inference_utils.py"
-    s = p.read_text()
-    if "import open3d as o3d\n" not in s:
-        raise RuntimeError("Open3D patch target changed")
-    s = s.replace("import open3d as o3d\n", "", 1)
-    layout_start = "from sam3d_objects.pipeline.layout_post_optimization_utils import (\n"
-    layout_end = ")\n\n\nSLAT_STD"
-    if layout_start not in s or layout_end not in s:
-        raise RuntimeError("layout import patch target changed")
-    before, rest = s.split(layout_start, 1)
-    _, after = rest.split(layout_end, 1)
-    s = before + "SLAT_STD" + after
-    marker = "    set_seed(100)\n"
-    lazy = (
-        "    from sam3d_objects.pipeline.layout_post_optimization_utils import (\n"
-        "        run_ICP, compute_iou, set_seed, apply_transform, get_mesh,\n"
-        "        get_mask_renderer, run_alignment, run_render_compare, check_occlusion,\n"
-        "    )\n\n"
-        "    set_seed(100)\n"
-    )
-    if marker not in s:
-        raise RuntimeError("layout function patch target changed")
-    s = s.replace(marker, lazy, 1)
-    s = s.replace("def o3d_plane_estimation(points):\n", "def o3d_plane_estimation(points):\n    import open3d as o3d\n", 1)
-    p.write_text(s)
-
-    # Fast-SAM3D ships plotting helpers in the generator module; inference never calls them.
-    p = root / "sam3d_objects/model/backbone/generator/shortcut/model.py"
-    s = p.read_text()
-    header = (
-        "import seaborn as sns\n"
-        "import plotly.graph_objects as go\n"
-        "import matplotlib.pyplot as plt\n\n\n"
-        "from sklearn.decomposition import PCA\n"
-        "import matplotlib.pyplot as plt\n"
-        "import matplotlib.ticker as ticker\n"
-    )
-    if header not in s:
-        raise RuntimeError("shortcut visualization header changed")
-    s = s.replace(header, "from sklearn.decomposition import PCA\n", 1)
-    p.write_text(s)
-
-    # Avoid importing Matplotlib just to read an image in a helper not used by our ndarray path.
-    p = root / "sam3d_objects/data/dataset/tdfy/img_and_mask_transforms.py"
-    s = p.read_text()
-    if "import matplotlib.pyplot as plt\n" not in s:
-        raise RuntimeError("Matplotlib image loader patch target changed")
-    s = s.replace("import matplotlib.pyplot as plt\n", "from PIL import Image\n", 1)
-    s = s.replace("image = plt.imread(fpath)  # Why use matplotlib?", "image = np.asarray(Image.open(fpath))")
-    p.write_text(s)
-
-    # Vertex-color GLB generation does not execute mesh repair, texture baking or Gaussian
-    # rendering. Avoid importing those optional stacks on the hot path.
-    p = root / "sam3d_objects/model/backbone/tdfy_dit/utils/postprocessing_utils.py"
-    s = p.read_text()
-    for line in (
-        "import xatlas\n",
-        "import pyvista as pv\n",
-        "from pymeshfix import _meshfix\n",
-        "import igraph\n",
-        "from .render_utils import render_multiview\n",
-        "from ..renderers import GaussianRenderer\n",
-    ):
-        if line not in s:
-            raise RuntimeError(f"postprocess patch target changed: {line.strip()}")
-        s = s.replace(line, "", 1)
-    p.write_text(s)
-
-    # Importing the pipeline during image build must not assume a GPU exists.
-    p = root / "sam3d_objects/pipeline/inference_pipeline.py"
-    s = p.read_text()
-    old = "def set_attention_backend():\n    if torch.cuda.is_available():"
-    new = 'def set_attention_backend():\n    gpu_name = ""\n    if torch.cuda.is_available():'
-    if old not in s:
-        raise RuntimeError("GPU import patch target changed")
-    p.write_text(s.replace(old, new, 1))
+CAPABILITY = worker_capability(
+    "fastsam3d-plus-plus",
+    "FastSAM3D++",
+    APP_NAME,
+    "最快的几何生成；vertex-color GLB",
+    {
+        "seed": {"type": "integer", "default": 42},
+        "dmd_interval": {"type": "integer", "default": 1},
+        "dmd_history": {"type": "integer", "default": 5},
+    },
+    profile={"dmd_interval": 1, "dmd_history": 5},
+    deployment={"source": FORK, "source_revision": FORK_COMMIT, "sam_revision": SAM_REVISION},
+    warm_seconds=6.06,
+    priority=10,
+)
 
 
+PATCH = Path(__file__).parent / "patches/fastsam3d.patch"
 download_image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("git")
@@ -186,7 +57,9 @@ download_image = (
 
 runtime_image = (
     modal.Image.from_registry("nvidia/cuda:12.1.1-devel-ubuntu22.04", add_python="3.11")
-    .apt_install("git", "build-essential", "ninja-build", "cmake", "libgl1", "libglib2.0-0", "libgomp1")
+    .apt_install(
+        "git", "build-essential", "ninja-build", "cmake", "libgl1", "libglib2.0-0", "libgomp1"
+    )
     .uv_pip_install(
         "torch==2.5.1",
         "torchvision==0.20.1",
@@ -227,10 +100,13 @@ runtime_image = (
         f"git clone https://github.com/facebookresearch/dinov2.git /root/.cache/torch/hub/facebookresearch_dinov2_main && git -C /root/.cache/torch/hub/facebookresearch_dinov2_main checkout {DINO_COMMIT}",
         f"git clone https://github.com/facebookresearch/pytorch3d.git /opt/pytorch3d && git -C /opt/pytorch3d checkout {PYTORCH3D_COMMIT}",
     )
+    .add_local_file(PATCH, "/tmp/fastsam3d.patch", copy=True)
+    .run_commands(
+        f"git -C {SRC} apply --check /tmp/fastsam3d.patch && git -C {SRC} apply /tmp/fastsam3d.patch"
+    )
     .run_commands(
         "cd /opt/pytorch3d && CC=gcc CXX=g++ TORCH_CUDA_ARCH_LIST=8.9 CUDA_HOME=/usr/local/cuda FORCE_CUDA=1 MAX_JOBS=4 python -m pip install --no-build-isolation --no-deps .",
     )
-    .run_function(_patch_sources)
     .run_commands(
         f"python {SRC}/patching/hydra",
         f"python -m py_compile {SRC}/sam3d_objects/model/backbone/generator/shortcut/model.py {SRC}/fft/fft3d.py {SRC}/sam3d_objects/pipeline/inference_utils.py {SRC}/sam3d_objects/model/io.py",
@@ -285,7 +161,9 @@ def sync_weights() -> dict:
             "checkpoints/slat_decoder_gs_4.ckpt",
         ],
     )
-    snapshot_download(MOGE_REPO, revision=MOGE_REVISION, local_dir="/models/moge", allow_patterns=["model.pt"])
+    snapshot_download(
+        MOGE_REPO, revision=MOGE_REVISION, local_dir="/models/moge", allow_patterns=["model.pt"]
+    )
 
     ckpt = MODEL_DIR / "checkpoints"
     ss = (ckpt / "ss_generator.yaml").read_text()
@@ -379,6 +257,10 @@ class Model:
         self.load_s = time.perf_counter() - t0
 
     @modal.method()
+    def warmup(self) -> dict:
+        return {"model": CAPABILITY["id"], "load_s": self.load_s}
+
+    @modal.method()
     def generate(
         self,
         image_bytes: bytes,
@@ -461,18 +343,4 @@ class Model:
         }
 
 
-adapter_image = modal.Image.debian_slim(python_version="3.11")
-
-
-@app.function(image=adapter_image, volumes={"/artifacts": artifacts}, timeout=30 * 60, max_containers=1)
-def generate(input_path: str, options: dict | None = None) -> dict:
-    rel = Path(input_path)
-    if rel.is_absolute() or ".." in rel.parts:
-        raise ValueError("input_path must be relative to /artifacts")
-    path = Path("/artifacts") / rel
-    if not path.is_file():
-        artifacts.reload()
-    if not path.is_file():
-        raise FileNotFoundError(input_path)
-    value = Model().generate.remote(path.read_bytes(), **dict(options or {}))
-    return generation_result(ModelName.FASTSAM3D_PP, value)
+generate, warmup, register = register_worker_entrypoint(app, artifacts, Model, CAPABILITY)

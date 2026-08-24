@@ -34,5 +34,5 @@ All tested outputs were watertight with zero boundary and non-manifold edges. DM
 
 ```bash
 modal run modal_3d/fastsam3d_plus_plus.py::sync_weights
-modal deploy modal_3d/fastsam3d_plus_plus.py
+./scripts/deploy-worker.ps1 modal_3d/fastsam3d_plus_plus.py
 ```
