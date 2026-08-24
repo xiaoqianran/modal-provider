@@ -22,6 +22,10 @@ MOGE_COMMIT = "a8c37341bc0325ca99b9d57981cc3bb2bd3e255b"
 UTILS3D_COMMIT = "3913c65d81e05e47b9f367250cf8c0f7462a0900"
 DINO_COMMIT = "7764ea0f912e53c92e82eb78a2a1631e92725fc8"
 PYTORCH3D_COMMIT = "75ebeeaea0908c5527e7b1e305fbc7681382db47"
+BUILD_TAG = "fastsam3d-pytorch3d-py311-cu121-torch251-sm89-v1"
+PYTORCH3D_WHEELS_URL = (
+    f"https://github.com/xiaoqianran/modal-build/releases/download/{BUILD_TAG}/{BUILD_TAG}.wheels.zip"
+)
 
 SRC = Path("/opt/fastsam3d-plus-plus")
 MODEL_DIR = Path("/models/sam3d")
@@ -35,14 +39,21 @@ CAPABILITY = worker_capability(
     "fastsam3d-plus-plus",
     "FastSAM3D++",
     APP_NAME,
-    "最快的几何生成；vertex-color GLB",
+    "最快的彩色资产生成；vertex-color GLB",
     {
         "seed": {"type": "integer", "default": 42},
         "dmd_interval": {"type": "integer", "default": 1},
         "dmd_history": {"type": "integer", "default": 5},
     },
     profile={"dmd_interval": 1, "dmd_history": 5},
-    deployment={"source": FORK, "source_revision": FORK_COMMIT, "sam_revision": SAM_REVISION},
+    output="textured",
+    deployment={
+        "source": FORK,
+        "source_revision": FORK_COMMIT,
+        "sam_revision": SAM_REVISION,
+        "pytorch3d_revision": PYTORCH3D_COMMIT,
+        "build_artifact": BUILD_TAG,
+    },
     warm_seconds=6.06,
     priority=10,
 )
@@ -58,7 +69,7 @@ download_image = (
 runtime_image = (
     modal.Image.from_registry("nvidia/cuda:12.1.1-devel-ubuntu22.04", add_python="3.11")
     .apt_install(
-        "git", "build-essential", "ninja-build", "cmake", "libgl1", "libglib2.0-0", "libgomp1"
+        "git", "curl", "unzip", "libgl1", "libglib2.0-0", "libgomp1"
     )
     .uv_pip_install(
         "torch==2.5.1",
@@ -98,14 +109,17 @@ runtime_image = (
         f"git clone https://github.com/microsoft/MoGe.git /opt/MoGe && git -C /opt/MoGe checkout {MOGE_COMMIT}",
         f"git clone https://github.com/EasternJournalist/utils3d.git /opt/utils3d && git -C /opt/utils3d checkout {UTILS3D_COMMIT}",
         f"git clone https://github.com/facebookresearch/dinov2.git /root/.cache/torch/hub/facebookresearch_dinov2_main && git -C /root/.cache/torch/hub/facebookresearch_dinov2_main checkout {DINO_COMMIT}",
-        f"git clone https://github.com/facebookresearch/pytorch3d.git /opt/pytorch3d && git -C /opt/pytorch3d checkout {PYTORCH3D_COMMIT}",
     )
     .add_local_file(PATCH, "/tmp/fastsam3d.patch", copy=True)
     .run_commands(
         f"git -C {SRC} apply --check /tmp/fastsam3d.patch && git -C {SRC} apply /tmp/fastsam3d.patch"
     )
     .run_commands(
-        "cd /opt/pytorch3d && CC=gcc CXX=g++ TORCH_CUDA_ARCH_LIST=8.9 CUDA_HOME=/usr/local/cuda FORCE_CUDA=1 MAX_JOBS=4 python -m pip install --no-build-isolation --no-deps .",
+        f"curl -fL '{PYTORCH3D_WHEELS_URL}' -o /tmp/pytorch3d-wheels.zip && "
+        "mkdir -p /tmp/pytorch3d-wheels && unzip -q /tmp/pytorch3d-wheels.zip -d /tmp/pytorch3d-wheels && "
+        "uv pip install --system --no-deps /tmp/pytorch3d-wheels/*.whl",
+        'python -c "import torch, pytorch3d; from pytorch3d.renderer import MeshRasterizer; '
+        "assert torch.__version__.startswith('2.5.1'); print(pytorch3d.__file__, MeshRasterizer)\"",
     )
     .run_commands(
         f"python {SRC}/patching/hydra",
