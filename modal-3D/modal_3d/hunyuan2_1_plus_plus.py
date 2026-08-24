@@ -63,7 +63,7 @@ CAPABILITY = worker_capability(
         "source_revision": FORK_COMMIT,
         "base_model": MODEL_ID,
         "base_model_revision": MODEL_REVISION,
-        "paint_build_artifact": PAINT_TAG,
+        "build_artifact": PAINT_TAG,
     },
     warm_seconds=29.56,
     priority=30,
