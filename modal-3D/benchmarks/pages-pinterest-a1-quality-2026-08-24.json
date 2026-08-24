@@ -1,0 +1,162 @@
+{
+  "date": "2026-08-24",
+  "gpu": "NVIDIA L40S",
+  "input": {
+    "id": "pinterest-a1",
+    "source": "site/assets/inputs/pinterest-a1.jpg",
+    "source_sha256": "55490257755b37abf65b3036baf5243b6fa2200f77f18e3397286e264899b993",
+    "canonical": "sam31/selections/55490257755b37abf65b3036baf5243b6fa2200f77f18e3397286e264899b993/626bafd73a2f4cd5b1892743a0c384b1/c00/canonical.png",
+    "canonical_sha256": "2c1ed5046144f0b20dd9f37e0d844954689c2f2c1d17932aa6d8759864eb2d14",
+    "scene_id": "55490257755b37abf65b3036baf5243b6fa2200f77f18e3397286e264899b993",
+    "selection_id": "626bafd73a2f4cd5b1892743a0c384b1",
+    "candidate_id": "c00",
+    "mask_repair": {
+      "after": {
+        "areas": [
+          203199
+        ],
+        "count": 1,
+        "major_count": 1,
+        "major_floor": 407
+      },
+      "applied": true,
+      "area_growth_fraction": 0.11686462896497139,
+      "before": {
+        "areas": [
+          110667,
+          35508,
+          35191,
+          315,
+          106,
+          70,
+          33,
+          8,
+          5,
+          5,
+          5,
+          4,
+          3,
+          3,
+          3,
+          2
+        ],
+        "count": 23,
+        "major_count": 3,
+        "major_floor": 364
+      },
+      "kernel_size": 57,
+      "reason": "connected_major_fragments"
+    }
+  },
+  "models": {
+    "fastsam3d": {
+      "result": {
+        "artifact": "fastsam3d-plus-plus/5327a5f067334aa1ae6035d9a428fb26.glb",
+        "dmd_enabled": false,
+        "dmd_history": 5,
+        "dmd_interval": 1,
+        "faces": 411760,
+        "fork_commit": "36191e491ca0bf9d51cda39aa7b6c91205eb82e3",
+        "glb_bytes": 8235512,
+        "gpu": "NVIDIA L40S",
+        "hfer_2d": 0.6548776998962473,
+        "inference_s": 10.978000343000005,
+        "load_s": 33.640732572,
+        "model": "fastsam3d-plus-plus",
+        "moge_revision": "ad326bfb61facd6c52b5a825bc1e34d7c97d9672",
+        "peak_vram_allocated_gb": 17.664638996124268,
+        "peak_vram_reserved_gb": 17.853515625,
+        "sam_revision": "2e73555018d2741ccd486e56c24fac41155a1dc6",
+        "seed": 42,
+        "vertices": 205836
+      },
+      "preview": "site/assets/models/pinterest-a1/fastsam3d.glb",
+      "preview_bytes": 960516,
+      "preview_sha256": "ac15610bfb64b89a558f198ec14b150ee1dce80af67256853c62027bdb8a8fd2"
+    },
+    "hunyuan": {
+      "result": {
+        "acceleration": "base",
+        "artifact": "hunyuan21pp/8a313f7e13e245389d0d8ade5f231668.glb",
+        "base_model_revision": "0b94677654c57bb9a6b6845cd7b704ccf551d327",
+        "faces": 274080,
+        "fork_commit": "9efd760fbec8ab490e68b330225ea1fab10de7fd",
+        "glb_bytes": 14812968,
+        "gpu": "NVIDIA L40S",
+        "history": 6,
+        "inference_s": 557.256416639,
+        "interval": 1,
+        "load_s": 53.835792728,
+        "model": "hunyuan2.1-plus-plus",
+        "num_inference_steps": 50,
+        "paint_remesh": false,
+        "paint_resolution": 512,
+        "paint_s": 527.435555349,
+        "paint_views": 6,
+        "peak_vram_allocated_gb": 20.239261627197266,
+        "peak_vram_reserved_gb": 22.77734375,
+        "seed": 42,
+        "shape_s": 29.820861289999996,
+        "texture_size": 2048,
+        "vertices": 137040
+      },
+      "preview": "site/assets/models/pinterest-a1/hunyuan.glb",
+      "preview_bytes": 1205188,
+      "preview_sha256": "d386b62dad10f8acfe84c913c5b7a663cae9d49eb5663bd3c43bb4006150a557"
+    },
+    "hermit": {
+      "result": {
+        "acceleration": "base",
+        "artifact": "trellis2/1284ae53ee954e9d8f1179f8d8345b31.glb",
+        "faces": 7097204,
+        "generation_s": 124.74432055700001,
+        "glb_bytes": 42130128,
+        "inference_s": 297.25439274200005,
+        "load_s": 87.618957507,
+        "model": "hermit-trellis2-plus-plus",
+        "pbr_channels": [
+          "alpha",
+          "base_color",
+          "metallic",
+          "roughness"
+        ],
+        "peak_vram_allocated_gb": 5.17880916595459,
+        "peak_vram_reserved_gb": 6.767578125,
+        "pipeline_type": "1536_cascade",
+        "postprocess_s": 172.510072185,
+        "resolution": 1536,
+        "texture_size": 4096,
+        "vertices": 3576930
+      },
+      "preview": "site/assets/models/pinterest-a1/hermit.glb",
+      "preview_bytes": 4794056,
+      "preview_sha256": "b9eec60fb0c336c55fe1440d93ac7c5424c295a6460b6d7e97acec673e5e3e06"
+    },
+    "pixal3d": {
+      "result": {
+        "artifact": "pixal3d/a0920c40cc6a439fba2bca5ae43d45c9.glb",
+        "fov": null,
+        "glb_bytes": 41482032,
+        "gpu": "L40S",
+        "inference_s": 197.184520577,
+        "load_s": 87.33990430899999,
+        "max_num_tokens": 49152,
+        "model": "pixal3d",
+        "peak_vram_gb": 40.2919921875,
+        "pipeline_type": "1536_cascade",
+        "resolution": 1536,
+        "seed": 42,
+        "texture_size": 4096
+      },
+      "preview": "site/assets/models/pinterest-a1/pixal3d.glb",
+      "preview_bytes": 4646796,
+      "preview_sha256": "9f78d7e01c0996cd379ec1120b55f906e66c7d7cbf5fa070eba13bf4a41fda8f"
+    }
+  },
+  "notes": [
+    "All four models consumed the same repaired 1024x1024 canonical RGBA.",
+    "Full artifact metrics are from Modal outputs; Pages previews are separate Draco/WebP derivatives.",
+    "Hunyuan uses base sampling plus Hunyuan3D Paint with paint_remesh=false.",
+    "Hermite and Pixal use 1536 cascade and 4096 texture generation."
+  ]
+}

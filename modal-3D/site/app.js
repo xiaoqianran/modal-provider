@@ -15,8 +15,8 @@ function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 
 function renderRecommendations(){
   const picks = [
-    ['speed','最快几何','FastSAM3D++'],['alt','均衡几何','Hunyuan2.1++'],
-    ['texture','PBR 纹理','Pixal3D'],['detail','高密细节','Hermite-TRELLIS2++']
+    ['speed','最快彩色','FastSAM3D++'],['alt','完整 PBR','Hunyuan2.1++'],
+    ['texture','1536 PBR','Pixal3D'],['detail','高密 PBR','Hermite-TRELLIS2++']
   ];
   $('#recommendations').innerHTML = picks.map(([tone,label,name]) =>
     `<div class="rec-card" data-tone="${tone}"><small>${label}</small><strong>${name}</strong></div>`).join('');
