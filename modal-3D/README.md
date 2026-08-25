@@ -30,7 +30,7 @@ Workers own their capability manifests and register them in `modal-3d-model-regi
 ./scripts/deploy-worker.ps1 modal_3d/fastsam3d_plus_plus.py
 ```
 
-Run the script once for every existing worker before the first registry-backed Gateway deployment. Then deploy the HTTP gateway with `modal deploy modal_3d/gateway.py`. It exposes `/capabilities`, `/tasks`, `/tasks/{task_id}`, and `/artifacts/{path}`. `/tasks` accepts only a Volume-relative path to a canonical 1024×1024 RGBA PNG.
+Run the script once for every existing worker before the first registry-backed Gateway deployment. Then deploy the Gateway. The public HTTP surface is intentionally read-only and exposes only `/capabilities`; generation, task status, and artifact access use authenticated Modal Function calls from `modal-3D-client`.
 
 The live gallery shows four active workers. The retired SAM 3.1 preprocessing implementation and its experiment notes are preserved under `archive/sam3_1/`; they are not part of the live generation path. Historical benchmark evidence is preserved under `benchmarks/`.
 

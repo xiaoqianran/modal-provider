@@ -340,6 +340,8 @@ class Model:
             "seed": seed,
             "artifact": name,
             "glb_bytes": dst.stat().st_size,
+            "source_vertices": len(mesh.vertices),
+            "source_faces": len(mesh.faces),
             "load_s": self.load_s,
             "inference_s": inference_s,
             "peak_vram_gb": peak_vram_gb,

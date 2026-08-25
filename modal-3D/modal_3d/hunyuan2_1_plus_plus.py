@@ -349,8 +349,8 @@ class Model:
             "paint_s": paint_s,
             "peak_vram_allocated_gb": torch.cuda.max_memory_allocated() / 2**30,
             "peak_vram_reserved_gb": torch.cuda.max_memory_reserved() / 2**30,
-            "vertices": len(mesh.vertices),
-            "faces": len(mesh.faces),
+            "source_vertices": len(mesh.vertices),
+            "source_faces": len(mesh.faces),
             "paint_views": 6,
             "paint_resolution": 512,
             # Upstream saves its 4096 bake downsampled by 2 in save_mesh().

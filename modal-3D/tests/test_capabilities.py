@@ -42,7 +42,7 @@ class CapabilityContractTests(unittest.TestCase):
         generation = document["generation"]
         self.assertNotIn("sam", document)
         self.assertNotIn("pipeline_function", generation)
-        self.assertEqual(generation["http"], {"submit": "/tasks", "status": "/tasks/{task_id}"})
+        self.assertNotIn("http", generation)
         self.assertEqual(
             generation["input_contract"],
             {

@@ -1,21 +1,43 @@
 from __future__ import annotations
 
+import binascii
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
 
-from modal_3d.common import PNG_SIGNATURE, validate_canonical_png
+from modal_3d.common import validate_canonical_png
 
 
-def png_header(width: int, height: int, bit_depth: int = 8, color_type: int = 6) -> bytes:
-    return (
-        PNG_SIGNATURE
-        + (13).to_bytes(4, "big")
-        + b"IHDR"
-        + width.to_bytes(4, "big")
+def chunk(kind: bytes, body: bytes) -> bytes:
+    crc = binascii.crc32(kind)
+    crc = binascii.crc32(body, crc) & 0xFFFFFFFF
+    return len(body).to_bytes(4, "big") + kind + body + crc.to_bytes(4, "big")
+
+
+def rgba_png(
+    width: int = 1024,
+    height: int = 1024,
+    *,
+    foreground_alpha: int = 255,
+    background_alpha: int = 0,
+) -> bytes:
+    ihdr = (
+        width.to_bytes(4, "big")
         + height.to_bytes(4, "big")
-        + bytes([bit_depth, color_type, 0, 0, 0])
-        + b"\x00\x00\x00\x00"
+        + bytes([8, 6, 0, 0, 0])
+    )
+    foreground = bytes([120, 140, 160, foreground_alpha])
+    background = bytes([0, 0, 0, background_alpha])
+    rows = []
+    split = width // 2
+    for _ in range(height):
+        rows.append(b"\x00" + background * split + foreground * (width - split))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(b"".join(rows), level=1))
+        + chunk(b"IEND", b"")
     )
 
 
@@ -27,16 +49,35 @@ class CanonicalContractTests(unittest.TestCase):
         self.addCleanup(Path(temp.name).unlink, missing_ok=True)
         return Path(temp.name)
 
-    def test_accepts_1024_rgba_png_header(self) -> None:
-        validate_canonical_png(self._write(png_header(1024, 1024)))
+    def test_accepts_visible_foreground_with_transparent_background(self) -> None:
+        result = validate_canonical_png(self._write(rgba_png()))
+        self.assertEqual(result["width"], 1024)
+        self.assertEqual(result["height"], 1024)
+        self.assertEqual(result["mode"], "RGBA")
+        self.assertEqual(result["alpha_min"], 0)
+        self.assertEqual(result["alpha_max"], 255)
 
     def test_rejects_wrong_dimensions(self) -> None:
         with self.assertRaisesRegex(ValueError, "1024x1024"):
-            validate_canonical_png(self._write(png_header(1024, 768)))
+            validate_canonical_png(self._write(rgba_png(1024, 768)))
 
-    def test_rejects_rgb_without_alpha_channel(self) -> None:
-        with self.assertRaisesRegex(ValueError, "8-bit RGBA"):
-            validate_canonical_png(self._write(png_header(1024, 1024, color_type=2)))
+    def test_rejects_opaque_background(self) -> None:
+        with self.assertRaisesRegex(ValueError, "transparent background"):
+            validate_canonical_png(
+                self._write(rgba_png(background_alpha=255, foreground_alpha=255))
+            )
+
+    def test_rejects_empty_foreground(self) -> None:
+        with self.assertRaisesRegex(ValueError, "no visible foreground"):
+            validate_canonical_png(
+                self._write(rgba_png(background_alpha=0, foreground_alpha=0))
+            )
+
+    def test_rejects_invalid_crc(self) -> None:
+        data = bytearray(rgba_png())
+        data[-1] ^= 0xFF
+        with self.assertRaisesRegex(ValueError, "CRC"):
+            validate_canonical_png(self._write(bytes(data)))
 
     def test_rejects_non_png(self) -> None:
         with self.assertRaisesRegex(ValueError, "valid PNG"):

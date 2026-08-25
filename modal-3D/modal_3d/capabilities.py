@@ -79,7 +79,6 @@ def capabilities_document(registry: Registry | None = None) -> dict:
             "app": "modal-3d-gateway",
             "submit_function": "submit",
             "job_transport": "modal.FunctionCall",
-            "http": {"submit": "/tasks", "status": "/tasks/{task_id}"},
             "input_contract": deepcopy(CANONICAL_INPUT),
         },
         "models": _registered_models(registry),
