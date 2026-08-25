@@ -1,0 +1,34 @@
+name: Dependency Audit
+
+on:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/dependency-audit.yml"
+  schedule:
+    - cron: "20 1 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Audit locked Python dependencies
+        run: |
+          uv export --all-groups --format requirements-txt --no-hashes -o /tmp/requirements-audit.txt
+          uvx --from pip-audit pip-audit -r /tmp/requirements-audit.txt
