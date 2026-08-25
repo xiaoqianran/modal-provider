@@ -27,11 +27,11 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-      - name: Use official PyPI
-        shell: bash
-        run: echo "UV_INDEX_URL=https://pypi.org/simple" >> "$GITHUB_ENV"
       - run: uv lock --check
-      - run: uv sync --dev --frozen
+      - name: Sync dependencies from official PyPI
+        env:
+          UV_INDEX_URL: https://pypi.org/simple
+        run: uv sync --dev --frozen
       - run: uv run ruff format . --check
       - run: uv run ruff check .
       - run: uv run python -m compileall -q modal_gen tests
