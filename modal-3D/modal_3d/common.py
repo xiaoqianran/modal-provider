@@ -76,7 +76,9 @@ def register_worker_entrypoint(
     # serialized=True requires the adapter runtime to match the Python version
     # that serialized the closure; it is independent from the GPU worker Python.
     adapter_python = f"{sys.version_info.major}.{sys.version_info.minor}"
-    adapter_image = modal.Image.debian_slim(python_version=adapter_python)
+    adapter_image = modal.Image.debian_slim(python_version=adapter_python).add_local_python_source(
+        "modal_3d", copy=True
+    )
 
     def generate(input_path: str, options: dict | None = None) -> dict:
         rel = Path(input_path)
