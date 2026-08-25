@@ -34,14 +34,14 @@ primary-image PNG
 - `sana-sprint-0.6b` → `Efficient-Large-Model/Sana_Sprint_0.6B_1024px_diffusers`
 - `sana-sprint-1.6b` → `Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers`
 
-默认：1.6B、2 steps、guidance 4.5、seed 42。steps 仅允许 1–4。
+默认：1.6B、固定 2 steps、guidance 4.5、seed 42。SANA-Sprint 的 SCM 路径不暴露可变 steps。
 
 ## 开发
 
 ```bash
 uv sync --dev
 uv run pytest -q
-uv run modal deploy modal_2d/app.py
+uv run modal deploy -m modal_2d.app
 ```
 
 `modal-sana` 仅作为已验证的 SANA-Sprint / diffusers / L40S 运行参考；本仓没有继承它的 Web、ledger、batch、SQLModel 等应用层复杂度。

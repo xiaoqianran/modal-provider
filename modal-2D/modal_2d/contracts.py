@@ -23,10 +23,8 @@ class ModelSpec:
     name: str
     hf_id: str
     parameters: str
-    default_steps: int = 2
-    default_guidance: float = 4.5
-    min_steps: int = 1
-    max_steps: int = 4
+    steps: int = 2
+    guidance: float = 4.5
     gpu: str = "L40S"
     width: int = IMAGE_SIZE
     height: int = IMAGE_SIZE
@@ -60,7 +58,7 @@ def model_spec(model_id: str) -> ModelSpec:
 def normalize_request(value: Any) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError("generation request must be an object")
-    allowed = {"prompt", "model", "seed", "steps", "guidance"}
+    allowed = {"prompt", "model", "seed", "guidance"}
     unknown = sorted(set(value) - allowed)
     if unknown:
         raise ValueError(f"unknown generation fields: {', '.join(unknown)}")
@@ -73,20 +71,39 @@ def normalize_request(value: Any) -> dict[str, object]:
 
     model = model_spec(str(value.get("model") or DEFAULT_MODEL))
     seed = _integer(value.get("seed", 42), "seed", 0, MAX_SEED)
-    steps = _integer(
-        value.get("steps", model.default_steps), "steps", model.min_steps, model.max_steps
-    )
-    guidance = _number(value.get("guidance", model.default_guidance), "guidance", 0.0, 20.0)
+    guidance = _number(value.get("guidance", model.guidance), "guidance", 0.0, 20.0)
     return {
         "prompt": prompt,
         "model": model.id,
         "seed": seed,
-        "steps": steps,
+        "steps": model.steps,
         "guidance": guidance,
         "width": model.width,
         "height": model.height,
         "output": ARTIFACT_FORMAT,
     }
+
+
+def validate_normalized_request(value: Any) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError("normalized generation request must be an object")
+    expected_keys = {
+        "prompt",
+        "model",
+        "seed",
+        "steps",
+        "guidance",
+        "width",
+        "height",
+        "output",
+    }
+    if set(value) != expected_keys:
+        raise ValueError("normalized generation request fields are invalid")
+    public = {key: value[key] for key in ("prompt", "model", "seed", "guidance")}
+    normalized = normalize_request(public)
+    if normalized != value:
+        raise ValueError("normalized generation request values are invalid")
+    return normalized
 
 
 def capabilities_document() -> dict[str, object]:
@@ -114,13 +131,7 @@ def capabilities_document() -> dict[str, object]:
             {
                 **asdict(model),
                 "profiles": [
-                    {"id": "fast", "steps": 1, "guidance": model.default_guidance},
-                    {
-                        "id": "recommended",
-                        "steps": model.default_steps,
-                        "guidance": model.default_guidance,
-                    },
-                    {"id": "quality", "steps": 4, "guidance": model.default_guidance},
+                    {"id": "recommended", "steps": model.steps, "guidance": model.guidance},
                 ],
             }
             for model in MODELS

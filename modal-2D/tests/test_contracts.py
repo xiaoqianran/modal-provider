@@ -9,12 +9,14 @@ from modal_2d.contracts import (
     model_spec,
     normalize_request,
     validate_artifact_id,
+    validate_normalized_request,
 )
 
 
 def test_registry_contains_only_sana_sprint_models():
     assert [model.id for model in MODELS] == ["sana-sprint-0.6b", "sana-sprint-1.6b"]
     assert all(model.hf_id.startswith("Efficient-Large-Model/Sana_Sprint_") for model in MODELS)
+    assert all(model.steps == 2 for model in MODELS)
     assert model_spec(DEFAULT_MODEL).parameters == "1.6B"
 
 
@@ -59,9 +61,22 @@ def test_capability_is_stable_and_lossless():
         "lossless": True,
     }
     assert [item["id"] for item in doc["models"]] == ["sana-sprint-0.6b", "sana-sprint-1.6b"]
+    assert all(
+        item["profiles"] == [{"id": "recommended", "steps": 2, "guidance": 4.5}]
+        for item in doc["models"]
+    )
 
 
 def test_artifact_id_is_url_safe():
     assert validate_artifact_id("art_abc-123") == "art_abc-123"
     with pytest.raises(ValueError):
         validate_artifact_id("../secret")
+
+
+def test_internal_normalized_request_is_separate_from_public_schema():
+    normalized = normalize_request({"prompt": "mossy house"})
+    assert validate_normalized_request(normalized) == normalized
+    with pytest.raises(ValueError, match="fields are invalid"):
+        validate_normalized_request({**normalized, "internal": True})
+    with pytest.raises(ValueError, match="values are invalid"):
+        validate_normalized_request({**normalized, "width": 512})

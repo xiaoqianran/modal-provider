@@ -3,7 +3,13 @@ from pathlib import Path
 import modal
 
 from .artifacts import artifact_path, write_png
-from .contracts import APP_NAME, capabilities_document, model_spec, normalize_request
+from .contracts import (
+    APP_NAME,
+    capabilities_document,
+    model_spec,
+    normalize_request,
+    validate_normalized_request,
+)
 from .runtime import generate_png, load_pipeline, model_snapshot_ready
 
 MODEL_ROOT = Path("/models")
@@ -76,7 +82,7 @@ class SanaSprintWorker:
 
     @modal.method()
     def generate(self, payload: dict[str, object]) -> dict[str, object]:
-        request = normalize_request(payload)
+        request = validate_normalized_request(payload)
         if request["model"] != self.model_id:
             raise ValueError("worker model does not match request model")
         data = generate_png(self.pipe, request)
