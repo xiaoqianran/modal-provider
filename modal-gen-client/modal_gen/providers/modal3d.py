@@ -14,6 +14,7 @@ from ..constants import (
 )
 from ..errors import ProviderError
 from .base import ProviderArtifact, ProviderContext, ProviderJob
+from .modal3d_discovery import AgentConnection, AgentDiscovery, WindowsCredentialDiscovery
 
 _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _CONTROL_TIMEOUT = httpx.Timeout(connect=2.0, read=20.0, write=20.0, pool=2.0)
@@ -40,16 +41,21 @@ class Modal3DAdapter:
         *,
         token: str | None = None,
         client: httpx.Client | None = None,
+        discovery: AgentDiscovery | None = None,
     ) -> None:
         configured = endpoint if endpoint is not None else os.environ.get("MODAL_3D_AGENT_ENDPOINT")
-        self.endpoint = _normalize_loopback_endpoint(configured) if configured else None
-        self.token = token if token is not None else os.environ.get("MODAL_3D_AGENT_TOKEN")
+        self._configured_endpoint = _normalize_loopback_endpoint(configured) if configured else None
+        self._configured_token = (
+            token if token is not None else os.environ.get("MODAL_3D_AGENT_TOKEN")
+        )
         self.client = client or httpx.Client(timeout=_CONTROL_TIMEOUT, follow_redirects=False)
+        self.discovery = discovery or WindowsCredentialDiscovery()
 
     def descriptor(self) -> dict[str, object]:
-        capability = self._json("GET", "/v1/capabilities")
+        connection = self._connection()
+        capability = self._json("GET", "/v1/capabilities", connection=connection)
         _preprocess_capability(capability.get("preprocessing"))
-        models = self._json_list("GET", "/v1/models")
+        models = self._json_list("GET", "/v1/models", connection=connection)
         enabled: list[dict[str, object]] = []
         profile_sets: list[set[str]] = []
         for index, model in enumerate(models):
@@ -104,6 +110,7 @@ class Modal3DAdapter:
         if artifact.bytes > _MAX_SOURCE_BYTES:
             raise ProviderError("PROVIDER_SOURCE_TOO_LARGE", "modal-3D source 超过 20 MiB", 422)
 
+        connection = self._connection()
         project_id: str | None = None
         remote_submitted = False
         try:
@@ -112,12 +119,14 @@ class Modal3DAdapter:
                     "POST",
                     "/v1/projects",
                     files={"file": ("source.png", stream, artifact.mime)},
+                    connection=connection,
                 )
             project_id = _safe_opaque_id(project.get("id"), "PROVIDER_PROJECT_INVALID")
             preprocessed = self._json(
                 "POST",
                 f"/v1/projects/{project_id}/preprocess",
                 timeout=_PREPROCESS_TIMEOUT,
+                connection=connection,
             )
             _canonical(preprocessed.get("canonical"))
             generation = self._json(
@@ -125,6 +134,7 @@ class Modal3DAdapter:
                 f"/v1/projects/{project_id}/generation",
                 json={"model": model, "profile": effective_profile, "seed": seed},
                 timeout=_PREPROCESS_TIMEOUT,
+                connection=connection,
             )
             job_payload = generation.get("job")
             if not isinstance(job_payload, dict):
@@ -134,7 +144,7 @@ class Modal3DAdapter:
             return job
         except Exception:
             if project_id and not remote_submitted:
-                self._delete_project_best_effort(project_id)
+                self._delete_project_best_effort(project_id, connection=connection)
             raise
 
     def get(
@@ -143,9 +153,12 @@ class Modal3DAdapter:
         *,
         state: dict[str, object] | None = None,
     ) -> ProviderJob:
+        connection = self._connection()
         return self._job(
             self._json(
-                "GET", f"/v1/jobs/{_safe_opaque_id(provider_job_id, 'PROVIDER_JOB_ID_INVALID')}"
+                "GET",
+                f"/v1/jobs/{_safe_opaque_id(provider_job_id, 'PROVIDER_JOB_ID_INVALID')}",
+                connection=connection,
             ),
             state=state,
         )
@@ -156,10 +169,12 @@ class Modal3DAdapter:
         *,
         state: dict[str, object] | None = None,
     ) -> ProviderJob:
+        connection = self._connection()
         return self._job(
             self._json(
                 "DELETE",
                 f"/v1/jobs/{_safe_opaque_id(provider_job_id, 'PROVIDER_JOB_ID_INVALID')}",
+                connection=connection,
             ),
             state=state,
         )
@@ -173,8 +188,9 @@ class Modal3DAdapter:
     ):
         if artifact.role != MODAL_3D_OUTPUT_ROLE or artifact.mime != "model/gltf-binary":
             raise ProviderError("PROVIDER_ARTIFACT_INVALID", "modal-3D Artifact contract 无效", 502)
-        headers = self._headers({"Accept": artifact.mime})
-        endpoint = self._endpoint()
+        connection = self._connection()
+        headers = self._headers(connection, {"Accept": artifact.mime})
+        endpoint = connection.endpoint
         try:
             with self.client.stream(
                 "GET",
@@ -334,12 +350,12 @@ class Modal3DAdapter:
         return payload
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
-        headers = self._headers(kwargs.pop("headers", {}))
-        endpoint = self._endpoint()
+        connection = kwargs.pop("connection", None) or self._connection()
+        headers = self._headers(connection, kwargs.pop("headers", {}))
         try:
             response = self.client.request(
                 method,
-                f"{endpoint}{path}",
+                f"{connection.endpoint}{path}",
                 headers=headers,
                 timeout=kwargs.pop("timeout", _CONTROL_TIMEOUT),
                 **kwargs,
@@ -351,20 +367,39 @@ class Modal3DAdapter:
         self._ensure_success(response)
         return response
 
-    def _headers(self, headers: dict[str, str] | None = None) -> dict[str, str]:
+    @staticmethod
+    def _headers(
+        connection: AgentConnection, headers: dict[str, str] | None = None
+    ) -> dict[str, str]:
         result = dict(headers or {})
-        if self.token:
-            result["X-Modal-3D-Session"] = self.token
+        if connection.token:
+            result["X-Modal-3D-Session"] = connection.token
         return result
 
-    def _endpoint(self) -> str:
-        if not self.endpoint:
-            raise ProviderError(
-                "PROVIDER_CONNECTION_REQUIRED",
-                "modal-3D Agent endpoint 尚未配置",
-                503,
+    def _connection(self) -> AgentConnection:
+        if self._configured_endpoint:
+            return AgentConnection(
+                endpoint=self._configured_endpoint,
+                token=self._configured_token or "",
+                agent_pid=0,
+                desktop_pid=0,
             )
-        return self.endpoint
+        try:
+            discovered = self.discovery.discover()
+        except (OSError, ValueError) as exc:
+            raise ProviderError(
+                "PROVIDER_CONNECTION_REQUIRED", "modal-3D Agent 自动发现失败", 503
+            ) from exc
+        if discovered is None:
+            raise ProviderError(
+                "PROVIDER_CONNECTION_REQUIRED", "modal-3D Agent 未运行或无法自动发现", 503
+            )
+        return AgentConnection(
+            endpoint=_normalize_loopback_endpoint(discovered.endpoint),
+            token=discovered.token,
+            agent_pid=discovered.agent_pid,
+            desktop_pid=discovered.desktop_pid,
+        )
 
     @staticmethod
     def _ensure_success(response: httpx.Response) -> None:
@@ -378,9 +413,9 @@ class Modal3DAdapter:
             raise ProviderError("PROVIDER_OUTPUT_EXPIRED", "modal-3D 产物已过期", 410)
         raise ProviderError("PROVIDER_REQUEST_FAILED", f"modal-3D HTTP {response.status_code}", 502)
 
-    def _delete_project_best_effort(self, project_id: str) -> None:
+    def _delete_project_best_effort(self, project_id: str, *, connection: AgentConnection) -> None:
         try:
-            self._request("DELETE", f"/v1/projects/{project_id}")
+            self._request("DELETE", f"/v1/projects/{project_id}", connection=connection)
         except ProviderError:
             pass
 

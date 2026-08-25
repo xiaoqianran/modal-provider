@@ -10,6 +10,7 @@ import pytest
 from modal_gen.errors import ProviderError
 from modal_gen.providers.base import ConnectorArtifactInput, ProviderContext
 from modal_gen.providers.modal3d import Modal3DAdapter
+from modal_gen.providers.modal3d_discovery import AgentConnection
 
 PNG = b"\x89PNG\r\n\x1a\nsource"
 GLB = b"glTF" + (2).to_bytes(4, "little") + (16).to_bytes(4, "little") + b"data"
@@ -70,6 +71,20 @@ def source_ref():
         "mime": "image/png",
         "hash": f"sha256:{hashlib.sha256(PNG).hexdigest()}",
     }
+
+
+class SequenceDiscovery:
+    def __init__(self, *connections: AgentConnection) -> None:
+        self.connections = list(connections)
+        self.calls = 0
+
+    def discover(self):
+        self.calls += 1
+        if not self.connections:
+            return None
+        if len(self.connections) == 1:
+            return self.connections[0]
+        return self.connections.pop(0)
 
 
 def test_modal3d_adapter_maps_connector_artifact_to_project_pipeline(tmp_path: Path):
@@ -283,3 +298,27 @@ def test_modal3d_adapter_requires_verified_preprocess_model():
         adapter.descriptor()
     assert exc.value.code == "PROVIDER_PREREQUISITE_REQUIRED"
     assert exc.value.status == 503
+
+
+def test_modal3d_adapter_refreshes_discovery_after_restart():
+    first = AgentConnection("http://127.0.0.1:41001", "a" * 64, 101, 201)
+    second = AgentConnection("http://127.0.0.1:41002", "b" * 64, 102, 202)
+    discovery = SequenceDiscovery(first, second)
+    seen = []
+
+    def handler(request):
+        seen.append((str(request.url), request.headers.get("X-Modal-3D-Session")))
+        return httpx.Response(
+            200, json={"id": "job1", "model": "fastsam3d-plus-plus", "status": "running"}
+        )
+
+    adapter = Modal3DAdapter(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), discovery=discovery
+    )
+    assert adapter.get("job1").status == "running"
+    assert adapter.get("job1").status == "running"
+    assert seen == [
+        ("http://127.0.0.1:41001/v1/jobs/job1", "a" * 64),
+        ("http://127.0.0.1:41002/v1/jobs/job1", "b" * 64),
+    ]
+    assert discovery.calls == 2
