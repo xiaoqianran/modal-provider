@@ -5,9 +5,9 @@ from typing import Protocol
 
 import modal
 
-from .common import REGISTRY_NAME
+from .common import CANONICAL_INPUT, REGISTRY_NAME
 
-CONTRACT = "modal-3d.capabilities.v1"
+CONTRACT = "modal-3d.capabilities.v2"
 PROFILE_RECOMMENDED = "recommended"
 
 
@@ -48,6 +48,8 @@ def validate_capability(capability: dict) -> dict:
         raise ValueError("worker_app must be a non-empty string")
     if capability.get("output") not in {"geometry", "textured"}:
         raise ValueError("output must be geometry or textured")
+    if capability["input"] != CANONICAL_INPUT:
+        raise ValueError("worker input contract must be canonical 1024x1024 RGBA PNG")
     profiles, options = capability["profiles"], capability["options"]
     if not isinstance(profiles, list) or not profiles or not isinstance(options, dict):
         raise TypeError("profiles must be non-empty and options must be an object")
@@ -76,26 +78,11 @@ def capabilities_document(registry: Registry | None = None) -> dict:
         "generation": {
             "app": "modal-3d-gateway",
             "submit_function": "submit",
-            "pipeline_function": "generate_from_raw",
             "job_transport": "modal.FunctionCall",
-            "http": {"submit": "/tasks", "pipeline": "/pipelines", "status": "/tasks/{task_id}"},
+            "http": {"submit": "/tasks", "status": "/tasks/{task_id}"},
+            "input_contract": deepcopy(CANONICAL_INPUT),
         },
         "models": _registered_models(registry),
-        "sam": {
-            "cloud": {
-                "app": "modal-3d-sam31",
-                "provider": "cloud",
-                "operations": ["segment", "refine", "materialize"],
-                "sam3_code_revision": "8f0b7f4d4e7eda2ed606ebde6702c93359ad01da",
-                "sam31_revision": "daa63191845a41281374e725f4c9e51c7a824460",
-                "canonical": {
-                    "mime": "image/png",
-                    "mode": "RGBA",
-                    "square": True,
-                    "default_size": 1024,
-                },
-            }
-        },
     }
 
 

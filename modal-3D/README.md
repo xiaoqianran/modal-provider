@@ -1,6 +1,6 @@
 # modal-3D
 
-Minimal, decoupled Modal deployment layer for image-to-3D inference, plus a SAM 3.1 multi-object preprocessing service.
+Minimal, decoupled Modal deployment layer for image-to-3D inference. All 2D preprocessing lives in `modal-3D-client`; this repository only consumes canonical 1024×1024 RGBA PNG inputs from the shared Modal Volume.
 
 **Live benchmark:** https://xiaoqianran.github.io/modal-3D/
 
@@ -11,10 +11,12 @@ Current workers:
 - Hermite-TRELLIS2++
 - Pixal3D
 
-Shared preprocessing:
+Input contract:
 
-- SAM 3.1 concept segmentation and native positive/negative box refinement
-- selected instance materialization to canonical RGBA
+- PNG, 1024×1024, 8-bit RGBA
+- object aspect ratio is preserved by the client
+- transparent letterbox padding is produced locally by `modal-3D-client`
+- cloud workers do not perform background removal, segmentation, cropping, or subject selection
 
 ## Design
 
@@ -28,12 +30,12 @@ Workers own their capability manifests and register them in `modal-3d-model-regi
 ./scripts/deploy-worker.ps1 modal_3d/fastsam3d_plus_plus.py
 ```
 
-Run the script once for every existing worker before the first registry-backed Gateway deployment. Then deploy the HTTP gateway with `modal deploy modal_3d/gateway.py`. It exposes `/capabilities`, `/tasks`, `/pipelines`, `/tasks/{task_id}`, and `/artifacts/{path}`. The raw-image pipeline overlaps explicit model warmup with SAM 3.1 segmentation; direct canonical-RGBA jobs do not enqueue a redundant warmup call.
+Run the script once for every existing worker before the first registry-backed Gateway deployment. Then deploy the HTTP gateway with `modal deploy modal_3d/gateway.py`. It exposes `/capabilities`, `/tasks`, `/tasks/{task_id}`, and `/artifacts/{path}`. `/tasks` accepts only a Volume-relative path to a canonical 1024×1024 RGBA PNG.
 
-SAM 3.1 is deployed as a separate preprocessing service rather than being embedded into the 3D workers. The live gallery now shows four active workers. Historical 3×5 benchmark evidence, including the retired trellis.cpp run, is preserved under `benchmarks/`.
+The live gallery shows four active workers. The retired SAM 3.1 preprocessing implementation and its experiment notes are preserved under `archive/sam3_1/`; they are not part of the live generation path. Historical benchmark evidence is preserved under `benchmarks/`.
 
-See `docs/PLAN.md`, `docs/SAM3_1_PREPROCESSOR.md`, and `docs/PAGES_BENCHMARK.md` for architecture and benchmark details.
+See `docs/PLAN.md` and `docs/PAGES_BENCHMARK.md` for architecture and benchmark details.
 
 ## Status
 
-Four L40S image-to-3D workers and the SAM 3.1 preprocessor are deployed and benchmarked. GitHub Pages is published through `.github/workflows/pages.yml`; full-output metrics and separately optimized browser previews are kept distinct.
+Four L40S image-to-3D workers are deployed and benchmarked. GitHub Pages is published through `.github/workflows/pages.yml`; full-output metrics and separately optimized browser previews are kept distinct.

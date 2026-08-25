@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import base64
-import binascii
 import time
 from pathlib import Path
 
@@ -17,9 +15,7 @@ from .capabilities import (
 )
 
 APP_NAME = "modal-3d-gateway"
-SAM_APP = "modal-3d-sam31"
 ARTIFACT_ROOT = Path("/artifacts")
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 RETENTION_SECONDS = 7 * 86400
 
 app = modal.App(APP_NAME)
@@ -52,19 +48,6 @@ def _submit(model: str, input_path: str, options: dict | None = None) -> dict:
     fn = modal.Function.from_name(capability["worker_app"], "generate")
     call = fn.spawn(input_path, validated)
     return _task_record(call, model, "generation", capability)
-
-
-def _submit_pipeline(
-    image_bytes: bytes,
-    concept: str,
-    model: str,
-    options: dict | None = None,
-) -> dict:
-    capability = model_capability(model, registry)
-    validated = validate_options(model, options, registry)
-    fn = modal.Function.from_name(APP_NAME, "generate_from_raw")
-    call = fn.spawn(image_bytes, concept, model, validated)
-    return _task_record(call, model, "pipeline", capability)
 
 
 def _status(task_id: str) -> dict:
@@ -107,47 +90,6 @@ def capabilities() -> dict:
 def submit(model: str, input_path: str, options: dict | None = None) -> dict:
     return _submit(model, input_path, options)
 
-
-@app.function(image=image, timeout=45 * 60)
-def generate_from_raw(
-    image_bytes: bytes,
-    concept: str,
-    model: str,
-    options: dict | None = None,
-) -> dict:
-    """Segment Top-1, materialize canonical RGBA, then run the selected 3D worker."""
-    capability = model_capability(model, registry)
-    validated = validate_options(model, options, registry)
-
-    # GPU loading overlaps SAM segmentation; this is a real no-input lifecycle call,
-    # not a fake inference request that can pollute worker queues or artifacts.
-    modal.Function.from_name(capability["worker_app"], "warmup").spawn()
-
-    sam = modal.Cls.from_name(SAM_APP, "Model")()
-    selection = sam.segment.remote(image_bytes, concept, max_candidates=1)
-    candidates = selection.get("candidates", [])
-    if not candidates:
-        raise ValueError(f"SAM 3.1 found no object matching: {concept}")
-
-    candidate = candidates[0]
-    materialize = modal.Function.from_name(SAM_APP, "materialize")
-    canonical = materialize.remote(
-        selection["scene_id"],
-        selection["selection_id"],
-        candidate["candidate_id"],
-    )
-    worker = modal.Function.from_name(capability["worker_app"], "generate")
-    generation = worker.remote(canonical["canonical_path"], validated)
-    return {
-        "model": model,
-        "selection": {
-            "scene_id": selection["scene_id"],
-            "selection_id": selection["selection_id"],
-            "candidate": candidate,
-        },
-        "canonical": canonical,
-        "generation": generation,
-    }
 
 
 @app.function(
@@ -208,25 +150,6 @@ def web():
             return _submit(
                 payload_string(payload, "model"),
                 payload_string(payload, "input_path"),
-                payload.get("options"),
-            )
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(422, str(exc)) from exc
-
-    @api.post("/pipelines", status_code=202)
-    def post_pipeline(payload: dict):
-        encoded = payload_string(payload, "image_base64")
-        try:
-            image_bytes = base64.b64decode(encoded, validate=True)
-        except (binascii.Error, ValueError) as exc:
-            raise HTTPException(422, "image_base64 is invalid") from exc
-        if not image_bytes or len(image_bytes) > MAX_UPLOAD_BYTES:
-            raise HTTPException(413, f"image must be between 1 and {MAX_UPLOAD_BYTES} bytes")
-        try:
-            return _submit_pipeline(
-                image_bytes,
-                payload_string(payload, "concept"),
-                payload_string(payload, "model"),
                 payload.get("options"),
             )
         except (TypeError, ValueError) as exc:

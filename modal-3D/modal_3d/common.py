@@ -8,6 +8,32 @@ import modal
 
 ARTIFACT_ROOT = Path("/artifacts")
 REGISTRY_NAME = "modal-3d-model-registry"
+CANONICAL_INPUT = {
+    "role": "canonical_rgba",
+    "mime": "image/png",
+    "mode": "RGBA",
+    "width": 1024,
+    "height": 1024,
+    "bit_depth": 8,
+    "layout": "letterbox",
+    "alpha": "channel_required",
+}
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def validate_canonical_png(path: Path) -> None:
+    """Reject non-contract inputs before a GPU worker is started."""
+    header = path.read_bytes()[:33]
+    if len(header) < 33 or header[:8] != PNG_SIGNATURE or header[12:16] != b"IHDR":
+        raise ValueError("input must be a valid PNG with an IHDR header")
+    width = int.from_bytes(header[16:20], "big")
+    height = int.from_bytes(header[20:24], "big")
+    bit_depth = header[24]
+    color_type = header[25]
+    if (width, height) != (1024, 1024):
+        raise ValueError(f"canonical input must be 1024x1024, got {width}x{height}")
+    if bit_depth != 8 or color_type != 6:
+        raise ValueError("canonical input must be 8-bit RGBA PNG")
 
 
 def worker_capability(
@@ -31,7 +57,7 @@ def worker_capability(
         "worker_app": worker_app,
         "output": output,
         "artifact": {"mime": "model/gltf-binary", "extension": ".glb"},
-        "input": {"role": "canonical_rgba", "mime": "image/png", "alpha": "required"},
+        "input": deepcopy(CANONICAL_INPUT),
         "profiles": [{"id": "recommended", "name": "推荐 · 已验证", "options": profile or {}}],
         "options": options,
         "priority": priority,
@@ -89,6 +115,7 @@ def register_worker_entrypoint(
             artifacts_volume.reload()
         if not path.is_file():
             raise FileNotFoundError(input_path)
+        validate_canonical_png(path)
         remote_cls = modal.Cls.from_name(worker_app, model_cls_name)
         value = remote_cls().generate.remote(path.read_bytes(), **dict(options or {}))
         return generation_result(model_id, value)

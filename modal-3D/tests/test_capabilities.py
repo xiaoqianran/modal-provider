@@ -37,6 +37,27 @@ class CapabilityContractTests(unittest.TestCase):
         encoded = json.dumps(capabilities_document(self.registry), sort_keys=True)
         self.assertIn(CONTRACT, encoded)
 
+    def test_generation_contract_is_canonical_only(self) -> None:
+        document = capabilities_document(self.registry)
+        generation = document["generation"]
+        self.assertNotIn("sam", document)
+        self.assertNotIn("pipeline_function", generation)
+        self.assertEqual(generation["http"], {"submit": "/tasks", "status": "/tasks/{task_id}"})
+        self.assertEqual(
+            generation["input_contract"],
+            {
+                "role": "canonical_rgba",
+                "mime": "image/png",
+                "mode": "RGBA",
+                "width": 1024,
+                "height": 1024,
+                "bit_depth": 8,
+                "layout": "letterbox",
+                "alpha": "channel_required",
+            },
+        )
+        self.assertTrue(all(model["input"] == generation["input_contract"] for model in document["models"]))
+
     def test_contract_has_exact_current_models(self) -> None:
         document = capabilities_document(self.registry)
         self.assertEqual(document["contract"], CONTRACT)
