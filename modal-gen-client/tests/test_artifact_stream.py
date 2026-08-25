@@ -11,7 +11,7 @@ from tests.test_connector_e2e import ORIGIN, PNG, SCOPES, Fake2DAdapter, make_re
 
 
 class TamperedStreamAdapter(Fake2DAdapter):
-    def iter_artifact(self, provider_job_id, artifact):
+    def iter_artifact(self, provider_job_id, artifact, *, state=None):
         assert provider_job_id == "provider_job_01"
         assert artifact == self.artifact
         yield PNG

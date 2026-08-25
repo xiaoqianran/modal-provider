@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .paths import database_path
 
-_DB_VERSION = 1
+_DB_VERSION = 2
 
 
 class Store:
@@ -81,6 +81,7 @@ class Store:
                     capability_hash TEXT NOT NULL,
                     capability_revision TEXT NOT NULL,
                     provider_job_id TEXT NOT NULL,
+                    provider_state_json TEXT,
                     status TEXT NOT NULL,
                     stage TEXT,
                     attempt INTEGER NOT NULL,
@@ -114,6 +115,9 @@ class Store:
                 CREATE INDEX IF NOT EXISTS artifacts_job_idx ON artifacts(job_id);
                 """
             )
+            job_columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+            if "provider_state_json" not in job_columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN provider_state_json TEXT")
             db.execute(f"PRAGMA user_version = {_DB_VERSION}")
 
     def instance_id(self) -> str:
@@ -232,10 +236,11 @@ class Store:
                 """
                 INSERT INTO jobs(
                     id,owner_client,owner_origin,provider,operation,request_hash,idempotency_key,
-                    contract_version,capability_hash,capability_revision,provider_job_id,status,stage,
-                    attempt,relations_json,effective_options_json,model_json,created_at,submitted_at,
-                    started_at,updated_at,completed_at,error_json,result_json,event_sequence
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    contract_version,capability_hash,capability_revision,provider_job_id,
+                    provider_state_json,status,stage,attempt,relations_json,effective_options_json,
+                    model_json,created_at,submitted_at,started_at,updated_at,completed_at,error_json,
+                    result_json,event_sequence
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 _job_values(row),
             )
@@ -373,6 +378,9 @@ def _job(row: sqlite3.Row) -> dict[str, object]:
         "capability_hash": row["capability_hash"],
         "capability_revision": row["capability_revision"],
         "provider_job_id": row["provider_job_id"],
+        "provider_state": (
+            json.loads(row["provider_state_json"]) if row["provider_state_json"] else None
+        ),
         "status": row["status"],
         "stage": row["stage"],
         "attempt": row["attempt"],
@@ -403,6 +411,7 @@ def _job_values(row: dict[str, object]) -> tuple[object, ...]:
         row["capability_hash"],
         row["capability_revision"],
         row["provider_job_id"],
+        _dump(row["provider_state"]) if row.get("provider_state") else None,
         row["status"],
         row.get("stage"),
         row["attempt"],

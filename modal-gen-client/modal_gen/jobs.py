@@ -9,7 +9,7 @@ from .artifacts import ArtifactService
 from .capabilities import CapabilityRegistry, iso
 from .errors import ConnectorError, ProviderError
 from .identity import safe_json, verify_request_identity
-from .providers.base import ProviderJob
+from .providers.base import ProviderContext, ProviderJob
 from .storage import Store
 
 _TERMINAL = {"succeeded", "failed", "cancelled", "expired"}
@@ -87,6 +87,11 @@ class JobService:
             inputs=dict(inputs),
             profile=profile,
             options=dict(options),
+            context=ProviderContext(
+                owner_client=owner_client,
+                owner_origin=owner_origin,
+                artifacts=self.artifacts,
+            ),
         )
         timestamp = iso(datetime.now(UTC))
         effective_options = dict(options)
@@ -105,6 +110,7 @@ class JobService:
             "capability_hash": payload["capabilityHash"],
             "capability_revision": payload["capabilityRevision"],
             "provider_job_id": provider_job.id,
+            "provider_state": provider_job.state,
             "status": "accepted",
             "stage": "submitted",
             "attempt": 1,
@@ -139,7 +145,10 @@ class JobService:
             return self.projection(row)
         adapter = self.capabilities.adapter(str(row["provider"]))
         try:
-            provider_job = adapter.cancel(str(row["provider_job_id"]))
+            provider_job = adapter.cancel(
+                str(row["provider_job_id"]),
+                state=row.get("provider_state"),
+            )
         except ProviderError as exc:
             if exc.code == "PROVIDER_CONNECTION_REQUIRED":
                 row = self._update_status(
@@ -184,7 +193,10 @@ class JobService:
     def _refresh(self, row: dict[str, object]) -> dict[str, object]:
         adapter = self.capabilities.adapter(str(row["provider"]))
         try:
-            provider_job = adapter.get(str(row["provider_job_id"]))
+            provider_job = adapter.get(
+                str(row["provider_job_id"]),
+                state=row.get("provider_state"),
+            )
         except ProviderError as exc:
             if exc.code == "PROVIDER_CONNECTION_REQUIRED":
                 return self._update_status(

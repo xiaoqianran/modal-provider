@@ -75,12 +75,12 @@ class Fake2DAdapter:
         value["capabilities"][0]["status"] = "disabled"
         return value
 
-    def submit(self, *, operation, inputs, profile, options):
+    def submit(self, *, operation, inputs, profile, options, context):
         self.submit_count += 1
         self.submitted = (operation, inputs, profile, options)
         return ProviderJob(id="provider_job_01", status="running", model=inputs.get("model"))
 
-    def get(self, provider_job_id):
+    def get(self, provider_job_id, *, state=None):
         assert provider_job_id == "provider_job_01"
         self.polls += 1
         if self.polls == 1:
@@ -92,10 +92,10 @@ class Fake2DAdapter:
             artifact=self.artifact,
         )
 
-    def cancel(self, provider_job_id):
+    def cancel(self, provider_job_id, *, state=None):
         return ProviderJob(id=provider_job_id, status="cancel_requested")
 
-    def iter_artifact(self, provider_job_id, artifact):
+    def iter_artifact(self, provider_job_id, artifact, *, state=None):
         assert provider_job_id == "provider_job_01"
         assert artifact == self.artifact
         yield PNG[:5]

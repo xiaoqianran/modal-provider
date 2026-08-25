@@ -7,7 +7,7 @@ import httpx
 
 from ..constants import MODAL_2D_OPERATION, MODAL_2D_OUTPUT_ROLE, MODAL_2D_PROVIDER
 from ..errors import ProviderError
-from .base import ProviderArtifact, ProviderJob
+from .base import ProviderArtifact, ProviderContext, ProviderJob
 
 _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _PROVIDER_TIMEOUT = httpx.Timeout(connect=2.0, read=20.0, write=20.0, pool=2.0)
@@ -82,6 +82,7 @@ class Modal2DAdapter:
         inputs: dict[str, object],
         profile: str | None,
         options: dict[str, object],
+        context: ProviderContext,
     ) -> ProviderJob:
         if operation != MODAL_2D_OPERATION:
             raise ProviderError(
@@ -95,13 +96,21 @@ class Modal2DAdapter:
             raise ProviderError("PROVIDER_OPTIONS_UNSUPPORTED", "modal-2D 当前不接受 options", 422)
         return self._job(self._json("POST", "/v1/jobs", json=inputs))
 
-    def get(self, provider_job_id: str) -> ProviderJob:
+    def get(self, provider_job_id: str, *, state: dict[str, object] | None = None) -> ProviderJob:
         return self._job(self._json("GET", f"/v1/jobs/{_safe_id(provider_job_id)}"))
 
-    def cancel(self, provider_job_id: str) -> ProviderJob:
+    def cancel(
+        self, provider_job_id: str, *, state: dict[str, object] | None = None
+    ) -> ProviderJob:
         return self._job(self._json("DELETE", f"/v1/jobs/{_safe_id(provider_job_id)}"))
 
-    def iter_artifact(self, provider_job_id: str, artifact: ProviderArtifact):
+    def iter_artifact(
+        self,
+        provider_job_id: str,
+        artifact: ProviderArtifact,
+        *,
+        state: dict[str, object] | None = None,
+    ):
         headers = self._headers({"Accept": artifact.mime})
         try:
             with self.client.stream(

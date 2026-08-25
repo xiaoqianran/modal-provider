@@ -9,13 +9,14 @@ from pathlib import Path
 from .capabilities import CapabilityRegistry
 from .errors import ConnectorError
 from .paths import artifact_cache_dir
-from .providers.base import ProviderArtifact
+from .providers.base import ConnectorArtifactInput, ProviderArtifact
 from .storage import Store
 
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
 MAX_ARTIFACT_CHUNKS = 65_536
 _PREFIX_BYTES = 64
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_GLB_MAGIC = b"glTF"
 
 
 class ArtifactService:
@@ -55,6 +56,27 @@ class ArtifactService:
         self.store.create_artifact(row)
         return row
 
+    def resolve_input(
+        self,
+        artifact_id: str,
+        *,
+        owner_client: str,
+        owner_origin: str,
+    ) -> ConnectorArtifactInput:
+        artifact, path = self.open(
+            artifact_id,
+            owner_client=owner_client,
+            owner_origin=owner_origin,
+        )
+        return ConnectorArtifactInput(
+            id=str(artifact["id"]),
+            role=str(artifact["role"]),
+            mime=str(artifact["mime"]),
+            bytes=int(artifact["bytes"]),
+            hash=str(artifact["hash"]),
+            path=path,
+        )
+
     def open(
         self,
         artifact_id: str,
@@ -92,7 +114,11 @@ class ArtifactService:
         try:
             with os.fdopen(fd, "wb") as stream:
                 self._copy_verified(
-                    adapter.iter_artifact(str(artifact["provider_job_id"]), provider_artifact),
+                    adapter.iter_artifact(
+                        str(artifact["provider_job_id"]),
+                        provider_artifact,
+                        state=job.get("provider_state"),
+                    ),
                     stream,
                     artifact,
                 )
@@ -173,3 +199,10 @@ class ArtifactService:
             raise ConnectorError("ARTIFACT_INTEGRITY_FAILED", "Artifact SHA-256 不匹配", 502)
         if artifact["mime"] == "image/png" and prefix[:8] != _PNG_SIGNATURE:
             raise ConnectorError("ARTIFACT_INTEGRITY_FAILED", "Artifact PNG signature 不匹配", 502)
+        if artifact["mime"] == "model/gltf-binary":
+            if len(prefix) < 12 or prefix[:4] != _GLB_MAGIC:
+                raise ConnectorError("ARTIFACT_INTEGRITY_FAILED", "Artifact GLB magic 不匹配", 502)
+            version = int.from_bytes(prefix[4:8], "little")
+            declared = int.from_bytes(prefix[8:12], "little")
+            if version != 2 or declared != total:
+                raise ConnectorError("ARTIFACT_INTEGRITY_FAILED", "Artifact GLB header 不匹配", 502)

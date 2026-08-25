@@ -14,6 +14,7 @@ from .constants import SESSION_PATH
 from .errors import ConnectorError
 from .jobs import JobService
 from .providers.modal2d import Modal2DAdapter
+from .providers.modal3d import Modal3DAdapter
 from .sessions import SessionService, normalize_origin
 from .storage import Store
 
@@ -29,7 +30,10 @@ class Runtime:
 
 def build_runtime(store: Store | None = None, *, adapters=None) -> Runtime:
     state = store or Store()
-    registry = CapabilityRegistry(state, adapters or [Modal2DAdapter()])
+    registry = CapabilityRegistry(
+        state,
+        adapters if adapters is not None else [Modal2DAdapter(), Modal3DAdapter()],
+    )
     artifacts = ArtifactService(state, registry)
     return Runtime(
         store=state,

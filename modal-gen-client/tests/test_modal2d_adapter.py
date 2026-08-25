@@ -5,10 +5,23 @@ import json
 
 import httpx
 
+from modal_gen.providers.base import ProviderContext
 from modal_gen.providers.modal2d import _ARTIFACT_TIMEOUT, _PROVIDER_TIMEOUT, Modal2DAdapter
 
 PNG = b"\x89PNG\r\n\x1a\nbody"
 DIGEST = hashlib.sha256(PNG).hexdigest()
+
+
+class NullArtifacts:
+    def resolve_input(self, artifact_id, *, owner_client, owner_origin):
+        raise AssertionError("modal-2D adapter must not resolve Connector artifacts")
+
+
+CONTEXT = ProviderContext(
+    owner_client="agentscape",
+    owner_origin="https://xiaoqianran.github.io",
+    artifacts=NullArtifacts(),
+)
 
 
 def capability():
@@ -112,6 +125,7 @@ def test_modal2d_adapter_matches_provider_agent_contract():
         },
         profile="recommended",
         options={},
+        context=CONTEXT,
     )
     assert submitted.status == "running"
 

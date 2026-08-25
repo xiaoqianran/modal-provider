@@ -14,7 +14,7 @@ modal-gen-client
 ├── Unified Artifact Registry
 └── Provider Adapters
     ├── modal-2D  ✅
-    ├── modal-3D  后续迁入
+    ├── modal-3D  ✅
     ├── modal-world
     └── modal-music
          │
@@ -27,7 +27,7 @@ modal-gen-client
 - Connector 拥有全局 Job identity、idempotency、session/scope、capability snapshot 与统一 Artifact identity。
 - Provider Agent 拥有 Provider 私有 Job、私有 Artifact 与模型运行事实；Connector 不复制模型业务。
 - Provider Artifact ID 不暴露为统一 Artifact ID；SHA-256 只做完整性与内容缓存，不做业务 identity。
-- Connector 不依赖 Modal SDK。当前 `modal-2D` adapter 只通过 `modal-2D-client` 的 loopback HTTP API 工作。
+- Connector 不依赖 Modal SDK。`modal-2D` / `modal-3D` adapter 都只通过各自 Provider Agent 的 loopback HTTP API 工作。
 - Artifact 从 Provider 到 Connector 采用流式复制、增量 SHA-256、大小/chunk 上限、内容前缀校验、fsync 与原子发布。
 
 ## Connector API
@@ -86,6 +86,33 @@ runtime:    1024×1024 / 固定 2 steps
 output:     primary-image / image/png
 ```
 
+## modal-3D Provider
+
+`modal-3D-client` 桌面 Agent 使用随机 loopback 端口与本地 session token，因此 Connector 不猜端口、不绕过 session。当前通过下列变量显式桥接：
+
+```bash
+export MODAL_3D_AGENT_ENDPOINT='http://127.0.0.1:<当前 Agent 端口>'
+export MODAL_3D_AGENT_TOKEN='当前本地 Agent session'
+```
+
+未配置 endpoint 时，`modal-3d` 会保留在 provider registry 中但 capability 标记为 unavailable；不会伪装可用。
+本地 BiRefNet preprocess 模型也必须处于 `ready + verified`；未准备完成时同样 fail closed 为 unavailable。
+
+当前稳定 operation：
+
+```text
+provider:   modal-3d
+operation:  modal-3d.asset.image_to_3d.v1
+models:     GET /v1/models 动态发现，不在 Connector 硬编码
+profile:    recommended
+input:      sourceArtifact{id,role,mime,hash} / model / seed
+source:     primary-image / image/png
+flow:       project → preprocess → canonical RGBA → generation
+output:     primary-glb / model/gltf-binary
+```
+
+`sourceArtifact.id` 是 Connector 全局 Artifact ID。Adapter 只通过当前 session 的 ArtifactResolver 取得本地已校验内容，再上传给 3D Agent；2D provider 私有 Artifact ID 与路径不会跨 Provider 泄漏。Provider-private `projectId` 只持久化在 Connector DB，用于重启恢复，不进入 AgentScape Job projection。
+
 ## Pairing
 
 AgentScape 第一次调用 `/connector/v1/session` 会得到 `approval_required + pairingId`。用户必须通过受本地 token 保护的控制面批准该 pairing，随后 AgentScape 再次提交同一个 pairingId 才能获得 scoped session。
@@ -102,4 +129,4 @@ uv run pytest -q
 uv build
 ```
 
-第一版没有 UI，也没有迁移 `modal-3D-client`。先把中性 Connector core 与真实 2D provider bridge 稳定下来，再把 3D 作为另一个 Provider Adapter 迁入，而不是复制第二套 Connector。
+第一版没有 UI，也不复制 `modal-3D-client` 的模型业务。2D/3D 都已作为独立 Provider Adapter 接入统一 Connector；后续优先解决桌面 Agent endpoint/session 的安全自动发现，再逐步把通用 client 能力收敛进单一 `modal-gen-client` 产品。

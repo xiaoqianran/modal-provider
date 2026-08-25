@@ -10,13 +10,14 @@ from tests.test_connector_e2e import ORIGIN, SCOPES, Fake2DAdapter, make_request
 
 
 class SlowAdapter(Fake2DAdapter):
-    def submit(self, *, operation, inputs, profile, options):
+    def submit(self, *, operation, inputs, profile, options, context):
         time.sleep(0.05)
         return super().submit(
             operation=operation,
             inputs=inputs,
             profile=profile,
             options=options,
+            context=context,
         )
 
 
