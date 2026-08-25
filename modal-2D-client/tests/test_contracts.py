@@ -21,6 +21,8 @@ def test_capabilities_accept_stable_provider_contract(capability_doc):
         (("generation", "submit_function"), "other"),
         (("artifact", "lossless"), False),
         (("models", 0, "width"), 512),
+        (("models", 0, "steps"), 1),
+        (("models", 0, "profiles"), [{"id": "fast", "steps": 1, "guidance": 4.5}]),
     ],
 )
 def test_capabilities_fail_closed_on_contract_drift(capability_doc, path, value):
@@ -49,3 +51,8 @@ def test_artifact_descriptor_is_strict(png_artifact):
     broken = dict(descriptor, sha256="bad")
     with pytest.raises(ContractError, match="sha256"):
         validate_artifact(broken)
+
+
+def test_request_rejects_steps_override():
+    with pytest.raises(ContractError, match="unknown generation fields"):
+        normalize_request({"prompt": "x", "steps": 2})

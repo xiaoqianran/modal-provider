@@ -215,7 +215,7 @@ class JobService:
                 return self._set(job, "cancelled", retryable=False)
             return self._set(job, "failed", error_code="remote.execution_failed", retryable=False)
         except Exception:
-            return self._set(job, "failed", error_code="remote.invalid_response", retryable=False)
+            return self._set(job, "failed", error_code="remote.execution_failed", retryable=False)
 
         if not isinstance(value, dict) or value.get("model") != job.model:
             return self._set(job, "failed", error_code="remote.invalid_response", retryable=False)

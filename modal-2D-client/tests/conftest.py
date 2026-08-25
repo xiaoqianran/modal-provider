@@ -28,6 +28,8 @@ def capability_doc():
                 "name": "SANA-Sprint 1.6B",
                 "hf_id": "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers",
                 "parameters": "1.6B",
+                "steps": 2,
+                "guidance": 4.5,
                 "width": 1024,
                 "height": 1024,
                 "profiles": [{"id": "recommended", "steps": 2, "guidance": 4.5}],

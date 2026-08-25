@@ -43,6 +43,7 @@
 - 成功 Job 先返回远端 Artifact descriptor；PNG 只有被读取时才下载。
 - Artifact 缓存按 SHA-256 内容寻址，下载后校验 PNG magic / bytes / SHA-256，再原子落盘。
 - Client 独立校验云端 capability，不信任 Provider 返回。
+- SANA-Sprint 固定使用 2 steps；本地 API 不暴露无效的 steps 调节参数。
 - 没有 Project、Web Studio、ledger、batch scheduler 等 2D Provider 不需要的概念。
 
 ## 本地运行

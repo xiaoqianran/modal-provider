@@ -28,6 +28,11 @@ class PollCall:
         self.cancelled = True
 
 
+class FailingPollCall:
+    def get(self, timeout=0):
+        raise ValueError("provider rejected runtime input")
+
+
 def test_job_submit_poll_and_persistence(tmp_path: Path, monkeypatch, png_artifact):
     _, descriptor = png_artifact
     submit = SubmitFunction()
@@ -92,3 +97,21 @@ def test_artifact_download_is_lazy(tmp_path: Path, monkeypatch, png_artifact):
     assert returned_descriptor["id"] == "art_abc"
     assert path == expected
     assert calls == ["art_abc"]
+
+
+def test_remote_model_exception_is_execution_failed(tmp_path: Path, monkeypatch):
+    submit = SubmitFunction()
+    monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
+    monkeypatch.setattr(jobs, "client", lambda: object())
+    monkeypatch.setattr(jobs.modal.Function, "from_name", lambda *args, **kwargs: submit)
+    monkeypatch.setattr(
+        jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: FailingPollCall()
+    )
+
+    service = jobs.JobService(jobs.JobStore(tmp_path / "jobs.sqlite3"))
+    created = service.submit({"prompt": "x"})
+    failed = service.poll(created["id"])
+
+    assert failed["status"] == "failed"
+    assert failed["error_code"] == "remote.execution_failed"
+    assert failed["retryable"] is False

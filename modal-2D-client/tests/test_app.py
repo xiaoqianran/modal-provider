@@ -87,3 +87,12 @@ def test_capabilities_and_models_routes(monkeypatch, capability_doc):
             assert models == {"models": [{"id": "sana-sprint-1.6b"}]}
 
     run(scenario())
+
+
+def test_api_rejects_steps_override():
+    async def scenario():
+        async with await client_for(create_app(Service())) as client:
+            response = await client.post("/v1/jobs", json={"prompt": "x", "steps": 2})
+            assert response.status_code == 422
+
+    run(scenario())

@@ -29,7 +29,6 @@ class GenerateBody(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
     model: str = "sana-sprint-1.6b"
     seed: int = Field(default=42, ge=0, le=2**32 - 1)
-    steps: int | None = Field(default=None, ge=1, le=4)
     guidance: float | None = Field(default=None, ge=0, le=20)
 
 

@@ -61,15 +61,21 @@ def validate_capabilities(value: Any) -> dict[str, object]:
         _text(item.get("hf_id"), f"models[{index}].hf_id")
         if item.get("width") != 1024 or item.get("height") != 1024:
             raise ContractError(f"model {model_id} must produce 1024x1024")
-        if not isinstance(item.get("profiles"), list) or not item["profiles"]:
-            raise ContractError(f"model {model_id} requires profiles")
+        if item.get("steps") != 2:
+            raise ContractError(f"model {model_id} must use exactly 2 steps")
+        profiles = item.get("profiles")
+        if not isinstance(profiles, list) or len(profiles) != 1:
+            raise ContractError(f"model {model_id} requires one recommended profile")
+        profile = _mapping(profiles[0], f"models[{index}].profiles[0]")
+        if profile.get("id") != "recommended" or profile.get("steps") != 2:
+            raise ContractError(f"model {model_id} profile is incompatible")
     return doc
 
 
 def normalize_request(value: Any) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ContractError("generation request must be an object")
-    allowed = {"prompt", "model", "seed", "steps", "guidance"}
+    allowed = {"prompt", "model", "seed", "guidance"}
     unknown = sorted(set(value) - allowed)
     if unknown:
         raise ContractError(f"unknown generation fields: {', '.join(unknown)}")
@@ -81,8 +87,6 @@ def normalize_request(value: Any) -> dict[str, object]:
         raise ContractError("model is required")
     seed = _integer(value.get("seed", 42), "seed", 0, MAX_SEED)
     result: dict[str, object] = {"prompt": prompt, "model": model, "seed": seed}
-    if value.get("steps") is not None:
-        result["steps"] = _integer(value["steps"], "steps", 1, 4)
     if value.get("guidance") is not None:
         guidance = value["guidance"]
         if (
