@@ -1,0 +1,23 @@
+[project]
+name = "modal-2d"
+version = "0.1.0"
+description = "Minimal Modal provider for Sana Sprint text-to-image generation."
+requires-python = ">=3.12"
+dependencies = ["modal[api-proxy-support]>=1.5,<2"]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.12,<1"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
