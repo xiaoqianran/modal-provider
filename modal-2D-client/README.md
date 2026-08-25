@@ -23,7 +23,9 @@
        Sana Sprint GPU Worker
 ```
 
-## API
+## Provider Agent API
+
+这里的 `/v1/*` 是 **modal-2D 本地 Provider Agent API**，不是 Unified Connector 的 `/connector/v1/*`。Connector 应通过薄 adapter 消费这些本地事实，再由 Connector 自己拥有全局 Job identity、event sequence、session/scope 与统一 Artifact identity。
 
 - `GET /health`
 - `GET /modal/status`
@@ -54,7 +56,7 @@ uv run pytest -q
 uv run modal-2d-agent
 ```
 
-默认仅监听 `127.0.0.1:3212`。
+默认仅监听 `127.0.0.1:3212`，外部 bind 会直接拒绝。设置 `MODAL_2D_AGENT_TOKEN` 后，所有非 `OPTIONS` 请求必须携带 `X-Modal-2D-Session`；token 只从环境进入进程，不写 Job/SQLite/响应。Artifact 响应携带 `ETag`、`X-Artifact-ID`、`X-Artifact-SHA256`，便于上层 adapter 做不可变内容校验。
 
 ## 未来合并到 modal-gen-client
 

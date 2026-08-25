@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+import hmac
+import os
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from . import capabilities, modal_session
@@ -33,7 +36,21 @@ class GenerateBody(BaseModel):
 
 
 def create_app(service: JobService | None = None) -> FastAPI:
-    app = FastAPI(title="modal-2D Client Agent", version="0.1.0")
+    app = FastAPI(
+        title="modal-2D Client Agent",
+        version="0.1.0",
+        docs_url=None,
+        redoc_url=None,
+    )
+
+    @app.middleware("http")
+    async def require_session(request: Request, call_next):
+        expected = os.environ.get("MODAL_2D_AGENT_TOKEN")
+        if expected and request.method != "OPTIONS":
+            provided = request.headers.get("X-Modal-2D-Session", "")
+            if not hmac.compare_digest(provided, expected):
+                return JSONResponse(status_code=401, content={"detail": "本地会话无效"})
+        return await call_next(request)
 
     def job_service() -> JobService:
         return service or _jobs()
@@ -118,6 +135,7 @@ def create_app(service: JobService | None = None) -> FastAPI:
             path,
             media_type="image/png",
             headers={
+                "ETag": f'"{descriptor["sha256"]}"',
                 "X-Artifact-ID": str(descriptor["id"]),
                 "X-Artifact-SHA256": str(descriptor["sha256"]),
             },

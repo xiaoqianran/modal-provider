@@ -96,3 +96,58 @@ def test_api_rejects_steps_override():
             assert response.status_code == 422
 
     run(scenario())
+
+
+def test_optional_agent_session_protects_loopback_api(monkeypatch):
+    monkeypatch.setenv("MODAL_2D_AGENT_TOKEN", "session-secret")
+
+    async def scenario():
+        async with await client_for(create_app(Service())) as client:
+            unauthorized = await client.get("/health")
+            assert unauthorized.status_code == 401
+            assert "session-secret" not in unauthorized.text
+
+            authorized = await client.get(
+                "/health",
+                headers={"X-Modal-2D-Session": "session-secret"},
+            )
+            assert authorized.status_code == 200
+
+    run(scenario())
+
+
+def test_openapi_docs_are_disabled():
+    async def scenario():
+        async with await client_for(create_app(Service())) as client:
+            assert (await client.get("/docs")).status_code == 404
+            assert (await client.get("/redoc")).status_code == 404
+
+    run(scenario())
+
+
+def test_artifact_route_exposes_immutable_identity_headers(tmp_path):
+    data = b"\x89PNG\r\n\x1a\nbody"
+    path = tmp_path / "image.png"
+    path.write_bytes(data)
+
+    class ArtifactService(Service):
+        def artifact(self, job_id):
+            return (
+                {
+                    "id": "art_abc",
+                    "sha256": "a" * 64,
+                },
+                path,
+            )
+
+    async def scenario():
+        async with await client_for(create_app(ArtifactService())) as client:
+            response = await client.get("/v1/jobs/job_01/artifact")
+            assert response.status_code == 200
+            assert response.content == data
+            assert response.headers["etag"] == f'"{"a" * 64}"'
+            assert response.headers["x-artifact-id"] == "art_abc"
+            assert response.headers["x-artifact-sha256"] == "a" * 64
+            assert response.headers["content-type"].startswith("image/png")
+
+    run(scenario())
