@@ -1,0 +1,136 @@
+from __future__ import annotations
+
+import math
+import re
+from typing import Any
+
+from .constants import (
+    APP_NAME,
+    ARTIFACT_FUNCTION,
+    ARTIFACT_MIME,
+    ARTIFACT_ROLE,
+    CONTRACT,
+    DEFAULT_MODEL,
+    JOB_TRANSPORT,
+    MAX_PROMPT_CHARS,
+    MAX_SEED,
+    OPERATION,
+    SUBMIT_FUNCTION,
+)
+
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,160}$")
+
+
+class ContractError(RuntimeError):
+    pass
+
+
+def validate_capabilities(value: Any) -> dict[str, object]:
+    doc = _mapping(value, "capabilities")
+    expected = {"contract": CONTRACT, "provider": "modal-2d", "operation": OPERATION}
+    if any(doc.get(key) != item for key, item in expected.items()):
+        raise ContractError("incompatible modal-2D capability identity")
+    generation = _mapping(doc.get("generation"), "generation")
+    required_generation = {
+        "app": APP_NAME,
+        "submit_function": SUBMIT_FUNCTION,
+        "artifact_function": ARTIFACT_FUNCTION,
+        "job_transport": JOB_TRANSPORT,
+    }
+    if any(generation.get(key) != item for key, item in required_generation.items()):
+        raise ContractError("incompatible modal-2D generation endpoint")
+    artifact = _mapping(doc.get("artifact"), "artifact")
+    if (
+        artifact.get("role") != ARTIFACT_ROLE
+        or artifact.get("mime") != ARTIFACT_MIME
+        or artifact.get("lossless") is not True
+    ):
+        raise ContractError("modal-2D artifact contract must be lossless primary-image PNG")
+    models = doc.get("models")
+    if not isinstance(models, list) or not models:
+        raise ContractError("capabilities.models must be a non-empty array")
+    seen: set[str] = set()
+    for index, model in enumerate(models):
+        item = _mapping(model, f"models[{index}]")
+        model_id = _text(item.get("id"), f"models[{index}].id")
+        if model_id in seen:
+            raise ContractError(f"duplicate model id: {model_id}")
+        seen.add(model_id)
+        _text(item.get("name"), f"models[{index}].name")
+        _text(item.get("hf_id"), f"models[{index}].hf_id")
+        if item.get("width") != 1024 or item.get("height") != 1024:
+            raise ContractError(f"model {model_id} must produce 1024x1024")
+        if not isinstance(item.get("profiles"), list) or not item["profiles"]:
+            raise ContractError(f"model {model_id} requires profiles")
+    return doc
+
+
+def normalize_request(value: Any) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ContractError("generation request must be an object")
+    allowed = {"prompt", "model", "seed", "steps", "guidance"}
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise ContractError(f"unknown generation fields: {', '.join(unknown)}")
+    prompt = str(value.get("prompt") or "").strip()
+    if not prompt or len(prompt) > MAX_PROMPT_CHARS:
+        raise ContractError("prompt is empty or too long")
+    model = str(value.get("model") or DEFAULT_MODEL).strip()
+    if not model:
+        raise ContractError("model is required")
+    seed = _integer(value.get("seed", 42), "seed", 0, MAX_SEED)
+    result: dict[str, object] = {"prompt": prompt, "model": model, "seed": seed}
+    if value.get("steps") is not None:
+        result["steps"] = _integer(value["steps"], "steps", 1, 4)
+    if value.get("guidance") is not None:
+        guidance = value["guidance"]
+        if (
+            not isinstance(guidance, (int, float))
+            or isinstance(guidance, bool)
+            or not math.isfinite(float(guidance))
+            or not 0 <= float(guidance) <= 20
+        ):
+            raise ContractError("guidance must be a finite number in [0, 20]")
+        result["guidance"] = float(guidance)
+    return result
+
+
+def validate_artifact(value: Any) -> dict[str, object]:
+    artifact = _mapping(value, "artifact")
+    artifact_id = _text(artifact.get("id"), "artifact.id")
+    if not _SAFE_ID.fullmatch(artifact_id):
+        raise ContractError("artifact.id must be URL-safe")
+    if (
+        artifact.get("role") != ARTIFACT_ROLE
+        or artifact.get("mime") != ARTIFACT_MIME
+        or artifact.get("format") != "png"
+    ):
+        raise ContractError("artifact role/mime/format is incompatible")
+    size = artifact.get("bytes")
+    if not isinstance(size, int) or isinstance(size, bool) or size <= 0 or size > 2**53 - 1:
+        raise ContractError("artifact.bytes is invalid")
+    digest = artifact.get("sha256")
+    if not isinstance(digest, str) or not _SHA256.fullmatch(digest):
+        raise ContractError("artifact.sha256 is invalid")
+    if artifact.get("width") != 1024 or artifact.get("height") != 1024:
+        raise ContractError("artifact dimensions are incompatible")
+    return artifact
+
+
+def _mapping(value: Any, name: str) -> dict:
+    if not isinstance(value, dict):
+        raise ContractError(f"{name} must be an object")
+    return value
+
+
+def _text(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ContractError(f"{name} must be a non-empty string")
+    return value.strip()
+
+
+def _integer(value: Any, name: str, minimum: int, maximum: int) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum:
+        raise ContractError(f"{name} must be an integer in [{minimum}, {maximum}]")
+    return value

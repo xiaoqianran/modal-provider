@@ -1,0 +1,31 @@
+[project]
+name = "modal-2d-client-agent"
+version = "0.1.0"
+description = "Thin local agent for modal-2D."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116,<1",
+    "modal[api-proxy-support]>=1.5,<2",
+    "pydantic>=2.11,<3",
+    "uvicorn>=0.35,<1",
+]
+
+[project.scripts]
+modal-2d-agent = "modal_2d_client.server:main"
+
+[dependency-groups]
+dev = ["httpx>=0.28,<1", "pytest>=8,<10", "ruff>=0.12,<1"]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

@@ -1,0 +1,12 @@
+APP_NAME = "modal-2d"
+CONTRACT = "modal-2d.generation.v1"
+OPERATION = "modal-2d.image.text_to_image.v1"
+SUBMIT_FUNCTION = "submit"
+CAPABILITIES_FUNCTION = "capabilities"
+ARTIFACT_FUNCTION = "read_artifact"
+JOB_TRANSPORT = "modal-function-call"
+ARTIFACT_ROLE = "primary-image"
+ARTIFACT_MIME = "image/png"
+DEFAULT_MODEL = "sana-sprint-1.6b"
+MAX_PROMPT_CHARS = 4000
+MAX_SEED = 2**32 - 1
