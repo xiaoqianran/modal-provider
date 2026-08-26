@@ -33,6 +33,7 @@ class GenerateBody(BaseModel):
     model: str = "sana-sprint-1.6b"
     seed: int = Field(default=42, ge=0, le=2**32 - 1)
     guidance: float | None = Field(default=None, ge=0, le=20)
+    job_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,160}$")
 
 
 def create_app(service: JobService | None = None) -> FastAPI:
@@ -101,7 +102,10 @@ def create_app(service: JobService | None = None) -> FastAPI:
     @app.post("/v1/jobs")
     def submit_job(body: GenerateBody):
         try:
-            return job_service().submit(body.model_dump(exclude_none=True))
+            return job_service().submit(
+                body.model_dump(exclude={"job_id"}, exclude_none=True),
+                job_id=body.job_id,
+            )
         except modal_session.NotConnectedError as exc:
             raise HTTPException(status_code=409, detail="Modal connection required") from exc
         except ContractError as exc:

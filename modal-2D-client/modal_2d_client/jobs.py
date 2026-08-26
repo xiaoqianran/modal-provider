@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import threading
 import uuid
@@ -29,7 +30,8 @@ from .contracts import ContractError, normalize_request, validate_artifact
 from .modal_session import NotConnectedError, client
 from .storage import data_dir
 
-_DB_VERSION = 1
+_DB_VERSION = 2
+_JOB_ID = re.compile(r"^[A-Za-z0-9_-]{1,160}$")
 TERMINAL = {"succeeded", "failed", "cancelled", "expired"}
 _RECOVERABLE = (
     NotConnectedError,
@@ -55,7 +57,7 @@ def _now() -> str:
 class Job:
     id: str
     model: str
-    remote_call_id: str
+    remote_call_id: str | None
     status: str
     created_at: str
     updated_at: str
@@ -96,18 +98,57 @@ class JobStore:
 
     def _init_db(self) -> None:
         with self._connect() as db:
-            version = db.execute("PRAGMA user_version").fetchone()[0]
+            version = int(db.execute("PRAGMA user_version").fetchone()[0])
             if version > _DB_VERSION:
                 raise RuntimeError(f"Job DB version is newer than supported: {version}")
-            db.execute(
-                """
-                CREATE TABLE IF NOT EXISTS jobs (
-                    id TEXT PRIMARY KEY, model TEXT NOT NULL, remote_call_id TEXT NOT NULL,
-                    status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                    result_json TEXT, error_code TEXT, retryable INTEGER
+
+            exists = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'jobs'"
+            ).fetchone()
+            if exists:
+                columns = db.execute("PRAGMA table_info(jobs)").fetchall()
+                required = {
+                    "id", "model", "remote_call_id", "status", "created_at", "updated_at",
+                    "result_json", "error_code", "retryable",
+                }
+                present = {row[1] for row in columns}
+                missing = required - present
+                if missing:
+                    raise RuntimeError(
+                        f"Job DB schema is incompatible: missing {sorted(missing)}"
+                    )
+                remote = next(row for row in columns if row[1] == "remote_call_id")
+                if remote[3]:
+                    db.execute(
+                        """
+                        CREATE TABLE jobs_v2 (
+                            id TEXT PRIMARY KEY, model TEXT NOT NULL, remote_call_id TEXT,
+                            status TEXT NOT NULL, created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL,
+                            result_json TEXT, error_code TEXT, retryable INTEGER
+                        )
+                        """
+                    )
+                    db.execute(
+                        """
+                        INSERT INTO jobs_v2
+                        SELECT id, model, remote_call_id, status, created_at, updated_at,
+                               result_json, error_code, retryable
+                        FROM jobs
+                        """
+                    )
+                    db.execute("DROP TABLE jobs")
+                    db.execute("ALTER TABLE jobs_v2 RENAME TO jobs")
+            else:
+                db.execute(
+                    """
+                    CREATE TABLE jobs (
+                        id TEXT PRIMARY KEY, model TEXT NOT NULL, remote_call_id TEXT,
+                        status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                        result_json TEXT, error_code TEXT, retryable INTEGER
+                    )
+                    """
                 )
-                """
-            )
             db.execute(f"PRAGMA user_version = {_DB_VERSION}")
 
     def _load(self) -> None:
@@ -175,27 +216,69 @@ class JobService:
     def __init__(self, store: JobStore | None = None) -> None:
         self.store = store or JobStore()
 
-    def submit(self, payload: dict[str, object]) -> dict[str, object]:
+    def submit(
+        self,
+        payload: dict[str, object],
+        *,
+        job_id: str | None = None,
+    ) -> dict[str, object]:
         request = normalize_request(payload)
         capabilities.ensure_model(str(request["model"]))
+        local_job_id = job_id or f"job_{uuid.uuid4().hex}"
+        if not _JOB_ID.fullmatch(local_job_id):
+            raise ContractError("job_id must be a URL-safe identifier")
+        try:
+            self.store.get(local_job_id)
+        except KeyError:
+            pass
+        else:
+            raise ContractError("job_id already exists")
+
+        # 先完成本地/认证 preflight，再持久化 intent，最后触发远端调用。
         fn = modal.Function.from_name(APP_NAME, SUBMIT_FUNCTION, client=client())
-        call = fn.spawn(request)
         timestamp = _now()
-        job = Job(
-            id=f"job_{uuid.uuid4().hex}",
+        intent = Job(
+            id=local_job_id,
             model=str(request["model"]),
-            remote_call_id=call.object_id,
-            status="running",
+            remote_call_id=None,
+            status="submitting",
             created_at=timestamp,
             updated_at=timestamp,
+            retryable=False,
+        )
+        self.store.save(intent)
+        try:
+            call = fn.spawn(request)
+        except Exception:
+            return self._set(
+                intent,
+                "connection_required",
+                error_code="remote.submission_unknown",
+                retryable=False,
+            )
+
+        running = replace(
+            intent,
+            remote_call_id=call.object_id,
+            status="running",
+            updated_at=_now(),
             retryable=True,
         )
-        self.store.save(job)
-        return job.public()
+        self.store.save(running)
+        return running.public()
 
     def poll(self, job_id: str) -> dict[str, object]:
         job = self.store.get(job_id)
         if job.status in TERMINAL:
+            return job.public()
+        if not job.remote_call_id:
+            if job.status == "submitting":
+                return self._set(
+                    job,
+                    "connection_required",
+                    error_code="remote.submission_unknown",
+                    retryable=False,
+                )
             return job.public()
         try:
             call = modal.FunctionCall.from_id(job.remote_call_id, client=client())
@@ -231,6 +314,13 @@ class JobService:
         job = self.store.get(job_id)
         if job.status in TERMINAL:
             return job.public()
+        if not job.remote_call_id:
+            return self._set(
+                job,
+                "connection_required",
+                error_code="remote.submission_unknown",
+                retryable=False,
+            )
         try:
             modal.FunctionCall.from_id(job.remote_call_id, client=client()).cancel()
         except _RECOVERABLE:

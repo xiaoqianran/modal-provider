@@ -14,8 +14,8 @@ class Store:
 class Service:
     store = Store()
 
-    def submit(self, payload):
-        return {"id": "job_01", "status": "running", "model": payload["model"]}
+    def submit(self, payload, *, job_id=None):
+        return {"id": job_id or "job_01", "status": "running", "model": payload["model"]}
 
     def poll(self, job_id):
         if job_id == "missing":
@@ -85,6 +85,25 @@ def test_capabilities_and_models_routes(monkeypatch, capability_doc):
             models = (await client.get("/v1/models")).json()
             assert capability["operation"] == "modal-2d.image.text_to_image.v1"
             assert models == {"models": [{"id": "sana-sprint-1.6b"}]}
+
+    run(scenario())
+
+
+def test_api_accepts_safe_connector_job_id_and_rejects_unsafe_id():
+    async def scenario():
+        async with await client_for(create_app(Service())) as client:
+            response = await client.post(
+                "/v1/jobs",
+                json={"prompt": "x", "job_id": "job_connector_2d"},
+            )
+            assert response.status_code == 200
+            assert response.json()["id"] == "job_connector_2d"
+
+            invalid = await client.post(
+                "/v1/jobs",
+                json={"prompt": "x", "job_id": "../escape"},
+            )
+            assert invalid.status_code == 422
 
     run(scenario())
 
