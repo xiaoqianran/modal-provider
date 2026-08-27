@@ -297,7 +297,7 @@ class JobService:
             call = modal.FunctionCall.from_id(job.remote_call_id, client=client())
             value = call.get(timeout=0)
         except (ModalTimeoutError, TimeoutError):
-            if job.status != "running":
+            if job.status not in {"running", "cancel_requested"}:
                 job = self._save(job, status="running", error_code=None, retryable=True)
             return job.public()
         except (OutputExpiredError, NotFoundError):
@@ -312,9 +312,12 @@ class JobService:
                 retryable=True,
             ).public()
         except RemoteError:
-            status = "cancelled" if job.status == "cancel_requested" else "failed"
+            if job.status == "cancel_requested":
+                return self._save(
+                    job, status="cancelled", error_code="remote.cancelled", retryable=False
+                ).public()
             return self._save(
-                job, status=status, error_code="remote.execution_failed", retryable=False
+                job, status="failed", error_code="remote.execution_failed", retryable=False
             ).public()
         if not isinstance(value, dict) or value.get("model") != job.model:
             return self._save(
