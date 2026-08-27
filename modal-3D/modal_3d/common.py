@@ -10,7 +10,10 @@ from pathlib import Path
 
 import modal
 
-ARTIFACT_ROOT = Path("/artifacts")
+# Keep values captured by serialized Modal adapter functions platform-neutral.
+# A concrete Path created while deploying from Windows becomes WindowsPath in
+# cloudpickle and cannot be unpickled inside Modal's Linux containers.
+ARTIFACT_ROOT = "/artifacts"
 REGISTRY_NAME = "modal-3d-model-registry"
 CANONICAL_INPUT = {
     "role": "canonical_rgba",
@@ -249,7 +252,7 @@ def register_worker_entrypoint(
         rel = Path(input_path)
         if rel.is_absolute() or ".." in rel.parts:
             raise ValueError("input_path must be relative to /artifacts")
-        path = ARTIFACT_ROOT / rel
+        path = Path(ARTIFACT_ROOT) / rel
         if not path.is_file():
             artifacts_volume.reload()
         if not path.is_file():
@@ -264,7 +267,7 @@ def register_worker_entrypoint(
         if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size <= 0:
             raise ValueError("worker result must contain a positive glb_bytes integer")
         artifacts_volume.reload()
-        artifact_path = ARTIFACT_ROOT / artifact_rel
+        artifact_path = Path(ARTIFACT_ROOT) / artifact_rel
         metadata = validate_glb(artifact_path, expected_size)
         metadata["path"] = artifact_rel.as_posix()
         return generation_result(model_id, value, metadata)

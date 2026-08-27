@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modal_3d.common import generation_result, validate_glb
+from modal_3d.common import ARTIFACT_ROOT, generation_result, validate_glb
 
 
 def glb_bytes(*, version: int = 2, declared_delta: int = 0, payload: bytes = b"payload") -> bytes:
@@ -14,6 +14,10 @@ def glb_bytes(*, version: int = 2, declared_delta: int = 0, payload: bytes = b"p
 
 
 class ArtifactContractTests(unittest.TestCase):
+    def test_serialized_adapter_root_is_platform_neutral(self) -> None:
+        self.assertIsInstance(ARTIFACT_ROOT, str)
+        self.assertEqual(ARTIFACT_ROOT, "/artifacts")
+
     def _write(self, data: bytes) -> Path:
         temp = tempfile.NamedTemporaryFile(suffix=".glb", delete=False)
         temp.write(data)
