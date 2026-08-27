@@ -28,7 +28,7 @@
     <section class="hero" aria-labelledby="hero-title">
       <p class="eyebrow">REAL OUTPUTS · SAME INPUT · SAME GPU</p>
       <h1 id="hero-title">Which 3D model should you ship?</h1>
-      <p class="lede">不看宣传数字。三张真实场景先由 SAM 3.1 选定同一主体，再让 4 个活跃模型在 Modal L40S 上比较生成速度、网格规模与浏览器预览。</p>
+      <p class="lede">不看宣传数字。4 个真实场景先生成可复现的 canonical RGBA，再让 4 个活跃模型在 Modal L40S 上比较生成速度、网格规模与浏览器预览。</p>
       <div class="recommendations" id="recommendations" aria-label="模型推荐"></div>
     </section>
 
@@ -38,7 +38,7 @@
           <p class="eyebrow">01 · CHOOSE THE INPUT</p>
           <h2 id="input-title">先看同一张图，再比模型</h2>
         </div>
-        <p class="section-note">页面展示原图；SAM 3.1 选择目标实例后统一成 1024×1024 RGBA，4 个活跃模型吃完全相同的主体输入。</p>
+        <p class="section-note">页面展示原图；每个场景记录真实预处理方法，并统一成 1024×1024 RGBA，4 个活跃模型吃完全相同的主体输入。</p>
       </div>
       <div class="input-tabs" id="input-tabs" role="tablist" aria-label="Benchmark inputs"></div>
     </section>
@@ -63,7 +63,7 @@
       <p class="eyebrow">03 · HOW TO READ THIS</p>
       <h2 id="method-title">网页预览 ≠ 完整产物</h2>
       <div class="method-grid">
-        <article><strong>统一 SAM 3.1 主体</strong><p>boat / building / cup 都先选定实例，再生成同一份 canonical RGBA，避免背景分割差异污染模型比较。</p></article>
+        <article><strong>统一 canonical 主体</strong><p>每个场景固定预处理方法、输入 SHA256 与 canonical RGBA；同一场景的 4 个模型读取完全相同的内容寻址输入。</p></article>
         <article><strong>指标看 full artifact</strong><p>Inference、faces 与 Full GLB 都来自 Modal 真实完整输出；网页 preview 只是传输优化副本。</p></article>
         <article><strong>3D 点击才加载</strong><p>几何预览使用 Draco，Pixal 保留 PBR/UV 并压缩纹理；首屏不会一次下载全部 3D。</p></article>
       </div>

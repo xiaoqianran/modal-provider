@@ -1,0 +1,262 @@
+{
+  "schema": "modal-3d.pages-single-scene.v1",
+  "generated_at": "2026-08-28T02:25:00+08:00",
+  "purpose": "final single-scene full-quality validation after benchmark/worker hardening",
+  "gpu": "NVIDIA L40S",
+  "seed": 42,
+  "input": {
+    "id": "scene-teapot",
+    "label": "Ceramic Teapot",
+    "prompt": "a ceramic teapot with handle, lid and curved spout, three-quarter view",
+    "source": {
+      "repo": "VAST-AI-Research/TripoSR",
+      "path": "examples/teapot.png",
+      "commit": "107cefdc244c39106fa830359024f6a2f1c78871",
+      "url": "https://raw.githubusercontent.com/VAST-AI-Research/TripoSR/107cefdc244c39106fa830359024f6a2f1c78871/examples/teapot.png",
+      "sha256": "66b0b8f7dd759e97d20665999885e0548f96c95dadee6bf9762ccd877c596b8c"
+    },
+    "preprocess": {
+      "engine": "birefnet-general-lite",
+      "rembg_elapsed_ms": 685.01,
+      "builder": "scripts/build_canonical.py"
+    },
+    "canonical": {
+      "path": "benchmarks/inputs/full-quality-2026-08-28/scene-teapot.png",
+      "sha256": "4bfd1723f0874ccadf938dd66ea46e2623e28c24d13f53b851897bd166ce4aa1",
+      "bytes": 387678,
+      "modal_path": "client-inputs/4bfd1723f0874ccadf938dd66ea46e2623e28c24d13f53b851897bd166ce4aa1.png",
+      "contract": {
+        "width": 1024,
+        "height": 1024,
+        "mode": "RGBA"
+      },
+      "foreground_fraction": 0.2525663375854492,
+      "foreground_rgb_nonzero_fraction": 1.0,
+      "foreground_bbox": [
+        83,
+        221,
+        939,
+        800
+      ]
+    }
+  },
+  "models": {
+    "fastsam3d-plus-plus": {
+      "task_id": "fc-01M126V1JMCBTV35DFX6JDRPG0",
+      "submitted_at": 1787854423.6812243,
+      "finished_at": 1787854558.0286644,
+      "client_wall_s": 134.34744000434875,
+      "options": {
+        "dmd_interval": 1,
+        "dmd_history": 5
+      },
+      "result": {
+        "model": "fastsam3d-plus-plus",
+        "artifact": {
+          "bytes": 4333284,
+          "sha256": "fd974f9808b195d8f5ba2ff2cedb0bd91ebf86a9c72159530fe1ab23a46d87a2",
+          "mime": "model/gltf-binary",
+          "glb_version": 2,
+          "path": "fastsam3d-plus-plus/8bd8dda0402a415094d2f7d1079e1cec.glb"
+        },
+        "timing": {
+          "load_s": 27.243318170000002,
+          "inference_s": 6.160141933000006
+        },
+        "metrics": {
+          "fork_commit": "36191e491ca0bf9d51cda39aa7b6c91205eb82e3",
+          "sam_revision": "2e73555018d2741ccd486e56c24fac41155a1dc6",
+          "moge_revision": "ad326bfb61facd6c52b5a825bc1e34d7c97d9672",
+          "gpu": "NVIDIA L40S",
+          "seed": 42,
+          "dmd_interval": 1,
+          "dmd_enabled": false,
+          "dmd_history": 5,
+          "hfer_2d": 0.5133520185112397,
+          "source_vertices": 108308,
+          "source_faces": 216612,
+          "startup_s": 32.240613343999996,
+          "load_profile": {
+            "imports_s": 4.8465742,
+            "cuda_check_s": 0.10668666200000043,
+            "config_s": 0.0440302930000005,
+            "model_load_s": 27.243318170000002,
+            "total_s": 32.240613343999996
+          },
+          "timings": {
+            "decode_s": 0.026128931999998883,
+            "hfer_s": 0.06660596500000082,
+            "inference_s": 6.160141933000006,
+            "glb_export_s": 0.016943472000001236,
+            "artifact_write_commit_s": 4.126643424000001,
+            "total_s": 10.397011827,
+            "job_input_validation_s": 0.900570076000001,
+            "job_artifact_validation_s": 0.00550350399999644,
+            "job_total_s": 11.304424621999999
+          },
+          "peak_vram_allocated_gb": 16.912528038024902,
+          "peak_vram_reserved_gb": 17.0703125
+        }
+      },
+      "preview": {
+        "path": "assets/models/teapot/fastsam3d.glb",
+        "bytes": 279556,
+        "sha256": "a6e9c0720139f8e6a4d4f926b38fede65a857dfc9d71dffa360538d8937deb5f",
+        "codec": "Draco geometry · vertex color"
+      }
+    },
+    "hunyuan2.1-plus-plus": {
+      "task_id": "fc-01M126V21V0WGQGXK27CEY1VTQ",
+      "submitted_at": 1787854424.1752532,
+      "finished_at": 1787854626.806504,
+      "client_wall_s": 202.63125085830688,
+      "options": {
+        "acceleration": "base",
+        "interval": 1,
+        "history": 6,
+        "num_inference_steps": 50,
+        "paint_remesh": true
+      },
+      "result": {
+        "model": "hunyuan2.1-plus-plus",
+        "artifact": {
+          "bytes": 2534508,
+          "sha256": "fd4b2c9fb2007744662ca20f525d85a4ca5301ea08480e55e0fab1576ff7b175",
+          "mime": "model/gltf-binary",
+          "glb_version": 2,
+          "path": "hunyuan21pp/c8332b37b7254106a4c62ab3e7e5453e.glb"
+        },
+        "timing": {
+          "load_s": 55.844127579,
+          "inference_s": 84.29209534499998
+        },
+        "metrics": {
+          "fork_commit": "9efd760fbec8ab490e68b330225ea1fab10de7fd",
+          "base_model_revision": "0b94677654c57bb9a6b6845cd7b704ccf551d327",
+          "gpu": "NVIDIA L40S",
+          "seed": 42,
+          "acceleration": "base",
+          "interval": 1,
+          "history": 6,
+          "num_inference_steps": 50,
+          "shape_s": 30.08581441599999,
+          "paint_s": 54.20628092899999,
+          "peak_vram_allocated_gb": 20.24928045272827,
+          "peak_vram_reserved_gb": 22.66015625,
+          "source_vertices": 322613,
+          "source_faces": 645232,
+          "paint_views": 6,
+          "paint_resolution": 512,
+          "texture_size": 2048,
+          "paint_remesh": true
+        }
+      },
+      "preview": {
+        "path": "assets/models/teapot/hunyuan.glb",
+        "bytes": 153360,
+        "sha256": "f8bff13f0baaa0bc1f30fe239f4fae649e9f50a0c7cf6f68ac55d7686e7b2453",
+        "codec": "Draco geometry + WebP PBR"
+      }
+    },
+    "hermit-trellis2-plus-plus": {
+      "task_id": "fc-01M126V30AFM882Y237SCP5AGV",
+      "submitted_at": 1787854425.1580675,
+      "finished_at": 1787855038.1947157,
+      "client_wall_s": 613.036648273468,
+      "options": {
+        "pipeline_type": "1536_cascade",
+        "acceleration": "base",
+        "texture_size": 4096
+      },
+      "result": {
+        "model": "hermit-trellis2-plus-plus",
+        "artifact": {
+          "bytes": 37450036,
+          "sha256": "e21380a23b267e31693e4dee1561361c7d3b1c67788b2e2a645e25fb98951235",
+          "mime": "model/gltf-binary",
+          "glb_version": 2,
+          "path": "trellis2/880d39d7ac914504b153a22ecce8cd3d.glb"
+        },
+        "timing": {
+          "load_s": 92.692072588,
+          "inference_s": 364.119513039
+        },
+        "metrics": {
+          "generation_s": 162.843113815,
+          "postprocess_s": 201.276399224,
+          "peak_vram_allocated_gb": 13.50020980834961,
+          "peak_vram_reserved_gb": 14.298828125,
+          "source_vertices": 9550091,
+          "source_faces": 19172844,
+          "resolution": 1536,
+          "pipeline_type": "1536_cascade",
+          "acceleration": "base",
+          "texture_size": 4096,
+          "pbr_channels": [
+            "alpha",
+            "base_color",
+            "metallic",
+            "roughness"
+          ]
+        }
+      },
+      "preview": {
+        "path": "assets/models/teapot/hermit.glb",
+        "bytes": 2793572,
+        "sha256": "efbad538e1ae73d4f7ec4274ae623f9e524bf62fd9223e757bb4d713de20b1d2",
+        "codec": "Draco geometry + WebP PBR"
+      }
+    },
+    "pixal3d": {
+      "task_id": "fc-01M126V3FDPPT7DM9CCPQ1RSAA",
+      "submitted_at": 1787854425.631385,
+      "finished_at": 1787854861.6309881,
+      "client_wall_s": 435.9996030330658,
+      "options": {
+        "fov": null,
+        "pipeline_type": "1536_cascade",
+        "max_num_tokens": 49152,
+        "texture_size": 4096
+      },
+      "result": {
+        "model": "pixal3d",
+        "artifact": {
+          "bytes": 35088312,
+          "sha256": "d04ad4e9f669291118e2a5246de4e60435e109594e22aeb92abf26d30d4d69c0",
+          "mime": "model/gltf-binary",
+          "glb_version": 2,
+          "path": "pixal3d/a08224aca2e44c86aebea3b3afb03fd0.glb"
+        },
+        "timing": {
+          "load_s": 90.991972397,
+          "inference_s": 194.74975732299998
+        },
+        "metrics": {
+          "gpu": "L40S",
+          "resolution": 1536,
+          "pipeline_type": "1536_cascade",
+          "max_num_tokens": 49152,
+          "texture_size": 4096,
+          "fov": null,
+          "seed": 42,
+          "source_vertices": 4147652,
+          "source_faces": 8317832,
+          "peak_vram_gb": 40.3095703125
+        }
+      },
+      "preview": {
+        "path": "assets/models/teapot/pixal3d.glb",
+        "bytes": 2078588,
+        "sha256": "f3cbd16a73420b0dad588eb8dce8be4cf7900146e3a5564662d23da69f22a6a4",
+        "codec": "Draco geometry + WebP PBR"
+      }
+    }
+  },
+  "preview_policy": "Browser-only derivatives; full artifact metrics remain unchanged.",
+  "notes": [
+    "Only one final scene was run across all four models; no 5x4 matrix was executed.",
+    "All four models consumed the exact same content-addressed canonical PNG.",
+    "Hunyuan used the retained full-quality 50-step Shape + 6-view/512 PBR Paint path with paint_remesh=true.",
+    "Hermit and Pixal used 1536 PBR profiles; FastSAM used the upstream Fast-SAM3D accelerated profile with runtime 25/25 steps and DMD disabled."
+  ]
+}

@@ -3,10 +3,10 @@
     "date": "2026-08-23",
     "gpu": "NVIDIA L40S",
     "seed": 42,
-    "preprocess": "SAM 3.1 concept segmentation → selected instance → bounded 3D-aware mask repair when fragmented → canonical 1024×1024 RGBA",
+    "preprocess": "Per-scene segmentation → canonical 1024×1024 RGBA; each input records its actual preprocessing path.",
     "preview_policy": "Full-output metrics are preserved; browser previews are separately simplified/compressed and lazy-loaded.",
-    "latest_update": "2026-08-24",
-    "latest_evidence": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json"
+    "latest_update": "2026-08-28",
+    "latest_evidence": "benchmarks/pages-teapot-full-quality-2026-08-28.json"
   },
   "inputs": [
     {
@@ -16,7 +16,8 @@
       "image": "./assets/inputs/sample.webp",
       "width": 1024,
       "height": 1024,
-      "source": "https://github.com/xiaoqianran/modal-lab/blob/main/005-v2-pixal3d-l40s/inputs/sample.webp"
+      "source": "https://github.com/xiaoqianran/modal-lab/blob/main/005-v2-pixal3d-l40s/inputs/sample.webp",
+      "preprocess_label": "SAM 3.1"
     },
     {
       "id": "pinterest-a1",
@@ -25,7 +26,8 @@
       "image": "./assets/inputs/pinterest-a1.jpg",
       "width": 640,
       "height": 855,
-      "source": "https://i.pinimg.com/736x/a1/d4/aa/a1d4aafc23c7591e4b84b3b1320577bf.jpg"
+      "source": "https://i.pinimg.com/736x/a1/d4/aa/a1d4aafc23c7591e4b84b3b1320577bf.jpg",
+      "preprocess_label": "SAM 3.1"
     },
     {
       "id": "pinterest-01",
@@ -34,7 +36,20 @@
       "image": "./assets/inputs/pinterest-01.jpg",
       "width": 928,
       "height": 1232,
-      "source": "https://i.pinimg.com/1200x/01/9a/b7/019ab75e6655c5a8d2a657a27743f09e.jpg"
+      "source": "https://i.pinimg.com/1200x/01/9a/b7/019ab75e6655c5a8d2a657a27743f09e.jpg",
+      "preprocess_label": "SAM 3.1"
+    },
+    {
+      "id": "teapot",
+      "label": "Open source · Ceramic Teapot",
+      "subject": "teapot",
+      "image": "./assets/inputs/teapot.png",
+      "width": 874,
+      "height": 874,
+      "source": "https://raw.githubusercontent.com/VAST-AI-Research/TripoSR/107cefdc244c39106fa830359024f6a2f1c78871/examples/teapot.png",
+      "preprocess_label": "BiRefNet",
+      "prompt": "a ceramic teapot with handle, lid and curved spout, three-quarter view",
+      "canonical_sha256": "4bfd1723f0874ccadf938dd66ea46e2623e28c24d13f53b851897bd166ce4aa1"
     }
   ],
   "results": {
@@ -311,6 +326,96 @@
         "preview_bytes": 7263664,
         "artifact": "pixal3d/a7ace572cc924626aa265758bf4e501e.glb",
         "peak_vram_gb": 31.19921875
+      }
+    ],
+    "teapot": [
+      {
+        "id": "fastsam3d",
+        "name": "FastSAM3D++",
+        "role": "Fast-SAM3D accelerated · vertex color",
+        "kind": "geometry",
+        "recommended": false,
+        "source": "https://github.com/xiaoqianran/modal-3D/blob/master/modal_3d/fastsam3d_plus_plus.py",
+        "preview_codec": "Draco geometry · vertex color",
+        "gpu": "NVIDIA L40S",
+        "seed": 42,
+        "inference_s": 6.160141933000006,
+        "client_wall_s": 134.34744000434875,
+        "load_s": 27.243318170000002,
+        "vertices": 108308,
+        "faces": 216612,
+        "glb_bytes": 4333284,
+        "preview": "./assets/models/teapot/fastsam3d.glb",
+        "preview_bytes": 279556,
+        "artifact": "fastsam3d-plus-plus/8bd8dda0402a415094d2f7d1079e1cec.glb",
+        "peak_vram_allocated_gb": 16.912528038024902
+      },
+      {
+        "id": "hunyuan",
+        "name": "Hunyuan2.1++",
+        "role": "50-step shape + 6-view PBR paint",
+        "kind": "textured",
+        "recommended": true,
+        "source": "https://github.com/xiaoqianran/modal-3D/blob/master/modal_3d/hunyuan2_1_plus_plus.py",
+        "preview_codec": "Draco geometry + WebP PBR",
+        "gpu": "NVIDIA L40S",
+        "seed": 42,
+        "inference_s": 84.29209534499998,
+        "client_wall_s": 202.63125085830688,
+        "load_s": 55.844127579,
+        "vertices": 322613,
+        "faces": 645232,
+        "glb_bytes": 2534508,
+        "preview": "./assets/models/teapot/hunyuan.glb",
+        "preview_bytes": 153360,
+        "artifact": "hunyuan21pp/c8332b37b7254106a4c62ab3e7e5453e.glb",
+        "peak_vram_allocated_gb": 20.24928045272827,
+        "shape_s": 30.08581441599999,
+        "paint_s": 54.20628092899999
+      },
+      {
+        "id": "hermit",
+        "name": "Hermite-TRELLIS2++",
+        "role": "1536 full-quality PBR",
+        "kind": "textured",
+        "recommended": false,
+        "source": "https://github.com/xiaoqianran/modal-3D/blob/master/modal_3d/hermit_trellis2_plus_plus.py",
+        "preview_codec": "Draco geometry + WebP PBR",
+        "gpu": "NVIDIA L40S",
+        "seed": 42,
+        "inference_s": 364.119513039,
+        "client_wall_s": 613.036648273468,
+        "load_s": 92.692072588,
+        "vertices": 9550091,
+        "faces": 19172844,
+        "glb_bytes": 37450036,
+        "preview": "./assets/models/teapot/hermit.glb",
+        "preview_bytes": 2793572,
+        "artifact": "trellis2/880d39d7ac914504b153a22ecce8cd3d.glb",
+        "peak_vram_allocated_gb": 13.50020980834961,
+        "generation_s": 162.843113815,
+        "postprocess_s": 201.276399224
+      },
+      {
+        "id": "pixal3d",
+        "name": "Pixal3D",
+        "role": "1536 standard PBR",
+        "kind": "textured",
+        "recommended": false,
+        "source": "https://github.com/xiaoqianran/modal-3D/blob/master/modal_3d/pixal3d.py",
+        "preview_codec": "Draco geometry + WebP PBR",
+        "gpu": "NVIDIA L40S",
+        "seed": 42,
+        "inference_s": 194.74975732299998,
+        "client_wall_s": 435.9996030330658,
+        "load_s": 90.991972397,
+        "vertices": 4147652,
+        "faces": 8317832,
+        "glb_bytes": 35088312,
+        "preview": "./assets/models/teapot/pixal3d.glb",
+        "preview_bytes": 2078588,
+        "artifact": "pixal3d/a08224aca2e44c86aebea3b3afb03fd0.glb",
+        "peak_vram_gb": 40.3095703125
       }
     ]
   }

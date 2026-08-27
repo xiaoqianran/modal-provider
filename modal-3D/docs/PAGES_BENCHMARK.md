@@ -4,9 +4,9 @@ The public gallery compares four deployed `modal-3D` workers on a data-driven se
 
 ## Input policy
 
-The original scene is shown in the UI. Before any 3D worker runs, SAM 3.1 selects one object instance and materializes the same 1024×1024 canonical RGBA for every downstream model.
+The original scene is shown in the UI. Each benchmark scene records the actual preprocessing path used to materialize one content-addressed 1024×1024 canonical RGBA. Historical boat/building/cup scenes use SAM 3.1; the 2026-08-28 Teapot refresh uses BiRefNet. Every downstream model for a scene consumes the exact same canonical PNG.
 
-For image-to-3D, a semantic mask can be non-empty yet still be a bad 3D contract. The production materializer now detects multiple major connected fragments and may apply a bounded morphological repair. It searches for the smallest closing footprint that reduces fragmentation, rejects repairs that add more than 12% foreground area, does not merge far-separated objects, preserves the original `mask.png`, and writes the repaired `mask_3d.png` separately.
+For the SAM 3.1 image-to-3D path, a semantic mask can be non-empty yet still be a bad 3D contract. The production materializer detects multiple major connected fragments and may apply a bounded morphological repair. It searches for the smallest closing footprint that reduces fragmentation, rejects repairs that add more than 12% foreground area, does not merge far-separated objects, preserves the original `mask.png`, and writes the repaired `mask_3d.png` separately.
 
 | Input | Selected subject |
 | --- | --- |
@@ -48,3 +48,11 @@ Pages assets are separate derivatives. Current Building previews preserve materi
 ## Safe refresh workflow
 
 See `docs/BENCHMARKING.md`. New matrices are smoke-first, cost-budgeted, and dry-run by default. Canonical inputs are rejected before GPU submission when the visible foreground contains almost no RGB information.
+
+## 2026-08-28 Teapot final refresh
+
+The final post-hardening benchmark intentionally runs **one scene across the four models**, not a 5×4 matrix. The open-source TripoSR teapot is preprocessed with BiRefNet into one content-addressed 1024×1024 canonical RGBA and the exact same PNG is verified from Modal Volume before submission.
+
+The machine-readable evidence is `benchmarks/pages-teapot-full-quality-2026-08-28.json`. Final worker inference times are FastSAM3D++ 6.16s, Hunyuan2.1++ 84.29s, Hermite-TRELLIS2++ 364.12s, and Pixal3D 194.75s. Hunyuan remains the recommended complete PBR path for this scene: 50 shape steps, 6 paint views at 512, and `paint_remesh=true`.
+
+The public gallery now displays each scene's actual preprocessing method instead of labeling every input as SAM 3.1. Teapot browser previews are separate Draco/WebP derivatives and do not change the full artifact metrics.

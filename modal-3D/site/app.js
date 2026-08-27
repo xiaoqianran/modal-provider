@@ -2,6 +2,7 @@ const state = { data: null, input: null, sort: 'speed', activeViewer: null };
 const $ = (s) => document.querySelector(s);
 const fmt = new Intl.NumberFormat('en-US');
 const palette = ['#a6d189','#ca9ee6','#8caaee','#ef9f76','#99d1db'];
+const preprocessLabel = input => input.preprocess_label || 'SAM 3.1';
 
 function seconds(v){ return Number.isFinite(v) ? `${v.toFixed(v < 10 ? 2 : 1)}s` : '—'; }
 function bytes(v){
@@ -26,7 +27,7 @@ function renderInputs(){
   $('#input-tabs').innerHTML = state.data.inputs.map((input,i)=>`
     <button class="input-card" role="tab" aria-selected="${input.id===state.input}" data-input="${input.id}">
       <img class="input-image" src="${input.image}" alt="${esc(input.label)}" loading="${i?'lazy':'eager'}" decoding="async">
-      <span class="input-meta"><span class="input-copy"><strong>${esc(input.label)}</strong><span>SAM 3.1 → ${esc(input.subject)}</span></span><span>${input.width}×${input.height}</span></span>
+      <span class="input-meta"><span class="input-copy"><strong>${esc(input.label)}</strong><span>${esc(preprocessLabel(input))} → ${esc(input.subject)}</span></span><span>${input.width}×${input.height}</span></span>
     </button>`).join('');
   document.querySelectorAll('.input-card').forEach(btn=>btn.addEventListener('click',()=>{
     state.input=btn.dataset.input; renderInputs(); renderResults();
@@ -46,7 +47,7 @@ function renderResults(){
   const finite=results.filter(x=>Number.isFinite(x.inference_s));
   const fastest=finite.length?Math.min(...finite.map(x=>x.inference_s)):1;
   const slowest=finite.length?Math.max(...finite.map(x=>x.inference_s)):1;
-  $('#result-summary').innerHTML=`<strong>${esc(input.label)}</strong><span class="summary-dot"></span><span>SAM 3.1 → ${esc(input.subject)}</span><span class="summary-dot"></span><span>${results.length} models · seed 42 · L40S</span>`;
+  $('#result-summary').innerHTML=`<strong>${esc(input.label)}</strong><span class="summary-dot"></span><span>${esc(preprocessLabel(input))} → ${esc(input.subject)}</span><span class="summary-dot"></span><span>${results.length} models · seed 42 · L40S</span>`;
   $('#model-grid').innerHTML=results.map((r,idx)=>{
     const width=Number.isFinite(r.inference_s)?Math.max(10,100-((r.inference_s-fastest)/Math.max(.001,slowest-fastest))*76):10;
     const badges=[r.kind==='textured'?'Textured':'Geometry'];
