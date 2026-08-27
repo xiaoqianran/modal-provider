@@ -268,12 +268,7 @@ class JobService:
 
     def _bind(self, job: Job) -> Job:
         if job.status == "cancel_requested":
-            return self._save(
-                job,
-                status="cancelled",
-                error_code="remote.cancelled",
-                retryable=False,
-            )
+            return job
         try:
             remote = generation.submit(job.model, job.input_path, job.profile, job.seed)
         except _RECOVERABLE:
@@ -288,10 +283,12 @@ class JobService:
             )
         remote_id = str(remote["call_id"])
         latest = self.store.get(job.id)
-        if latest.status == "cancel_requested":
+        if latest.status in {"cancel_requested", "cancelled"}:
             try:
                 modal.FunctionCall.from_id(remote_id, client=client()).cancel()
             except _RECOVERABLE:
+                if latest.status == "cancelled":
+                    return latest
                 return self._save(
                     latest,
                     remote_call_id=remote_id,
@@ -300,6 +297,8 @@ class JobService:
                     retryable=True,
                 )
             except (OutputExpiredError, NotFoundError):
+                if latest.status == "cancelled":
+                    return latest
                 return self._save(
                     latest,
                     remote_call_id=remote_id,
@@ -307,6 +306,8 @@ class JobService:
                     error_code="remote.output_expired",
                     retryable=False,
                 )
+            if latest.status == "cancelled":
+                return latest
             return self._save(
                 latest,
                 remote_call_id=remote_id,
@@ -327,6 +328,8 @@ class JobService:
         if job.status in _TERMINAL:
             return job.public()
         if not job.remote_call_id:
+            if job.status == "cancel_requested":
+                return job.public()
             job = self._bind(job)
             if not job.remote_call_id:
                 return job.public()

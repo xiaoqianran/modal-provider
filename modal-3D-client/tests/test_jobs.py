@@ -278,7 +278,7 @@ def test_cancel_before_remote_binding_preserves_intent_and_cancels_new_call(
     assert bound_call.cancelled is True
 
 
-def test_poll_cancel_requested_without_remote_call_finishes_locally(
+def test_poll_cancel_requested_without_remote_call_waits_without_resubmitting(
     tmp_path, monkeypatch, source_png
 ):
     svc = service(tmp_path)
@@ -305,6 +305,6 @@ def test_poll_cancel_requested_without_remote_call_finishes_locally(
         lambda *args: pytest.fail("cancelled unbound job must not submit remotely"),
     )
     state = svc.poll("req_local_cancel")
-    assert state["status"] == "cancelled"
-    assert state["error_code"] == "remote.cancelled"
-    assert state["retryable"] is False
+    assert state["status"] == "cancel_requested"
+    assert state["error_code"] is None
+    assert state["retryable"] is True
