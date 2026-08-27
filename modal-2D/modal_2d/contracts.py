@@ -6,11 +6,14 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 APP_NAME = "modal-2d"
+PROVIDER = "modal-2d"
 CONTRACT = "modal-2d.generation.v1"
+CAPABILITY_KIND = "image.generate"
 OPERATION = "modal-2d.image.text_to_image.v1"
 ARTIFACT_ROLE = "primary-image"
 ARTIFACT_MIME = "image/png"
 ARTIFACT_FORMAT = "png"
+ARTIFACT_VOLUME = "modal-2d-artifacts"
 IMAGE_SIZE = 1024
 MAX_PROMPT_CHARS = 4000
 MAX_SEED = 2**32 - 1
@@ -107,14 +110,31 @@ def validate_normalized_request(value: Any) -> dict[str, object]:
 
 
 def capabilities_document() -> dict[str, object]:
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["prompt"],
+        "properties": {
+            "prompt": {"type": "string", "minLength": 1, "maxLength": MAX_PROMPT_CHARS},
+            "model": {"type": "string", "enum": [model.id for model in MODELS]},
+            "seed": {"type": "integer", "minimum": 0, "maximum": MAX_SEED},
+            "guidance": {"type": "number", "minimum": 0.0, "maximum": 20.0},
+        },
+    }
     return {
         "contract": CONTRACT,
-        "provider": "modal-2d",
+        "provider": PROVIDER,
+        "kind": CAPABILITY_KIND,
         "operation": OPERATION,
+        "inputSchema": schema,
+        "outputs": [{"role": ARTIFACT_ROLE, "mediaType": ARTIFACT_MIME}],
+        "execution": {"mode": "async", "cancellable": True},
         "generation": {
             "app": APP_NAME,
             "submit_function": "submit",
             "artifact_function": "read_artifact",
+            "artifact_volume": ARTIFACT_VOLUME,
+            "artifact_path_field": "remote_path",
             "job_transport": "modal-function-call",
         },
         "input": {

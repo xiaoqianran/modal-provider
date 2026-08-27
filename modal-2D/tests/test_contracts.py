@@ -2,6 +2,7 @@ import pytest
 
 from modal_2d.contracts import (
     ARTIFACT_MIME,
+    CAPABILITY_KIND,
     DEFAULT_MODEL,
     MODELS,
     OPERATION,
@@ -53,7 +54,11 @@ def test_request_rejects_invalid_or_unknown_input(payload):
 def test_capability_is_stable_and_lossless():
     doc = capabilities_document()
     assert doc["provider"] == "modal-2d"
+    assert doc["kind"] == CAPABILITY_KIND
     assert doc["operation"] == OPERATION
+    assert doc["inputSchema"]["required"] == ["prompt"]
+    assert doc["outputs"] == [{"role": "primary-image", "mediaType": ARTIFACT_MIME}]
+    assert doc["execution"] == {"mode": "async", "cancellable": True}
     assert doc["artifact"] == {
         "role": "primary-image",
         "mime": ARTIFACT_MIME,

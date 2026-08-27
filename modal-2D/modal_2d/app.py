@@ -50,7 +50,12 @@ def capabilities() -> dict[str, object]:
     return capabilities_document()
 
 
-@app.function(image=download_image, volumes={str(MODEL_ROOT): models}, secrets=[huggingface], timeout=30 * 60)
+@app.function(
+    image=download_image,
+    volumes={str(MODEL_ROOT): models},
+    secrets=[huggingface],
+    timeout=30 * 60,
+)
 def prefetch(model_id: str) -> dict[str, object]:
     from huggingface_hub import snapshot_download
 

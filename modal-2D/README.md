@@ -17,14 +17,17 @@ SanaSprintWorker(model_id)
    ▼
 primary-image PNG
    │
-   ├─ SHA-256
-   ├─ bytes
-   └─ opaque artifact id
+   ├─ mediaType + bytes + sha256 digest
+   ├─ producer identity
+   ├─ opaque artifact id
+   └─ Provider-private Volume location
 ```
 
 ## 设计边界
 
 - 云端只负责模型、推理和远端 Artifact。
+- Artifact 内容身份使用 `mediaType + bytes + sha256 digest`；`remote_path`/Modal Volume 仅是 Provider 私有位置，不进入 AgentScape 领域语义。
+- `read_artifact` 暂保留为兼容 fallback；Reference Sidecar 优先直接读取命名 Volume，避免大 bytes 再经过一次 Modal Function result。
 - 不包含 Web UI、SQLite、用户账号、Connector、业务编排。
 - `submit` 是稳定异步边界，客户端可直接对 Modal FunctionCall 做 poll/cancel。
 - 新模型通过 `ModelSpec` + 推理 adapter 扩展，不把模型分支散落到 HTTP/Job 层。
