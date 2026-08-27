@@ -7,11 +7,13 @@ from copy import deepcopy
 from modal_3d.capabilities import (
     CONTRACT,
     capabilities_document,
+    has_current_adapter_revision,
     profile_options,
     validate_capability,
     validate_options,
     worker_app,
 )
+from modal_3d.common import WORKER_ADAPTER_REVISION
 from modal_3d.fastsam3d_plus_plus import CAPABILITY as FASTSAM3D
 from modal_3d.hermit_trellis2_plus_plus import CAPABILITY as TRELLIS2
 from modal_3d.hunyuan2_1_plus_plus import CAPABILITY as HUNYUAN
@@ -110,6 +112,25 @@ class CapabilityContractTests(unittest.TestCase):
     def test_worker_lookup_is_part_of_same_contract(self) -> None:
         self.assertEqual(worker_app("fastsam3d-plus-plus", self.registry), "modal-3d-fastsam3d")
         self.assertEqual(worker_app("pixal3d", self.registry), "modal-3d-pixal3d")
+
+    def test_worker_manifest_carries_current_adapter_revision(self) -> None:
+        for capability in (FASTSAM3D, TRELLIS2, HUNYUAN, PIXAL3D):
+            self.assertTrue(has_current_adapter_revision(capability))
+            self.assertEqual(
+                capability["deployment"]["adapter_revision"],
+                WORKER_ADAPTER_REVISION,
+            )
+
+    def test_stale_worker_is_not_advertised_or_routable(self) -> None:
+        stale = deepcopy(HUNYUAN)
+        stale["deployment"]["adapter_revision"] = "modal-3d.worker-adapter.v1"
+        registry = FakeRegistry([FASTSAM3D, stale])
+        self.assertEqual(
+            [model["id"] for model in capabilities_document(registry)["models"]],
+            ["fastsam3d-plus-plus"],
+        )
+        with self.assertRaisesRegex(ValueError, "stale; redeploy required"):
+            worker_app("hunyuan2.1-plus-plus", registry)
 
     def test_capability_document_is_not_mutable_global_state(self) -> None:
         first = capabilities_document(self.registry)

@@ -15,6 +15,10 @@ import modal
 # cloudpickle and cannot be unpickled inside Modal's Linux containers.
 ARTIFACT_ROOT = "/artifacts"
 REGISTRY_NAME = "modal-3d-model-registry"
+# Every serialized adapter deployment must carry this revision into the registry.
+# Bump it whenever the closure/runtime contract changes so desktop deployment can
+# distinguish a merely-existing Worker from the Worker version it actually needs.
+WORKER_ADAPTER_REVISION = "modal-3d.worker-adapter.v2"
 CANONICAL_INPUT = {
     "role": "canonical_rgba",
     "mime": "image/png",
@@ -210,8 +214,9 @@ def worker_capability(
         "priority": priority,
         "reference": reference,
     }
-    if deployment:
-        capability["deployment"] = deployment
+    deployment_metadata = dict(deployment or {})
+    deployment_metadata["adapter_revision"] = WORKER_ADAPTER_REVISION
+    capability["deployment"] = deployment_metadata
     return capability
 
 
@@ -277,7 +282,12 @@ def register_worker_entrypoint(
         return remote_cls().warmup.remote()
 
     def health() -> dict:
-        return {"ok": True, "model": model_id, "worker_app": worker_app}
+        return {
+            "ok": True,
+            "model": model_id,
+            "worker_app": worker_app,
+            "adapter_revision": WORKER_ADAPTER_REVISION,
+        }
 
     def register() -> dict:
         registry = modal.Dict.from_name(REGISTRY_NAME, create_if_missing=True)
@@ -286,12 +296,14 @@ def register_worker_entrypoint(
         registered["registration"] = {
             "registered_at": registered_at,
             "worker_app": worker_app,
+            "adapter_revision": WORKER_ADAPTER_REVISION,
         }
         registry.put(model_id, registered)
         return {
             "registered": model_id,
             "worker_app": worker_app,
             "registered_at": registered_at,
+            "adapter_revision": WORKER_ADAPTER_REVISION,
         }
 
     function_options = {

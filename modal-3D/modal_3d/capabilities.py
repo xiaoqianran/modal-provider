@@ -5,7 +5,7 @@ from typing import Protocol
 
 import modal
 
-from .common import CANONICAL_INPUT, REGISTRY_NAME
+from .common import CANONICAL_INPUT, REGISTRY_NAME, WORKER_ADAPTER_REVISION
 
 CONTRACT = "modal-3d.capabilities.v2"
 PROFILE_RECOMMENDED = "recommended"
@@ -19,6 +19,16 @@ class Registry(Protocol):
 
 def model_registry() -> modal.Dict:
     return modal.Dict.from_name(REGISTRY_NAME, create_if_missing=True)
+
+
+def has_current_adapter_revision(capability: object) -> bool:
+    if not isinstance(capability, dict):
+        return False
+    deployment = capability.get("deployment")
+    return (
+        isinstance(deployment, dict)
+        and deployment.get("adapter_revision") == WORKER_ADAPTER_REVISION
+    )
 
 
 def validate_capability(capability: dict) -> dict:
@@ -36,6 +46,7 @@ def validate_capability(capability: dict) -> dict:
         "profiles",
         "options",
         "reference",
+        "deployment",
     }
     missing = sorted(required - capability.keys())
     if missing:
@@ -50,6 +61,10 @@ def validate_capability(capability: dict) -> dict:
         raise ValueError("output must be geometry or textured")
     if capability["input"] != CANONICAL_INPUT:
         raise ValueError("worker input contract must be canonical 1024x1024 RGBA PNG")
+    if not has_current_adapter_revision(capability):
+        raise ValueError(
+            f"worker adapter revision mismatch: expected {WORKER_ADAPTER_REVISION}"
+        )
     profiles, options = capability["profiles"], capability["options"]
     if not isinstance(profiles, list) or not profiles or not isinstance(options, dict):
         raise TypeError("profiles must be non-empty and options must be an object")
@@ -75,7 +90,15 @@ def validate_capability(capability: dict) -> dict:
 
 def _registered_models(registry: Registry | None = None) -> list[dict]:
     source = registry if registry is not None else model_registry()
-    models = [validate_capability(value) for _, value in source.items()]
+    # Registry entries survive redeploys. Never advertise a Worker whose adapter
+    # revision predates the current serialized runtime contract. This turns a
+    # stale deployment into an explicit unavailable model instead of routing new
+    # paid work into a container-start retry loop.
+    models = [
+        validate_capability(value)
+        for _, value in source.items()
+        if has_current_adapter_revision(value)
+    ]
     return sorted(models, key=lambda item: (item.get("priority", 1000), item["id"]))
 
 
@@ -97,6 +120,11 @@ def model_capability(model: str, registry: Registry | None = None) -> dict:
     capability = source.get(model)
     if capability is None:
         raise ValueError(f"unknown model: {model}")
+    if not has_current_adapter_revision(capability):
+        raise ValueError(
+            f"model {model} worker deployment is stale; redeploy required "
+            f"({WORKER_ADAPTER_REVISION})"
+        )
     return validate_capability(capability)
 
 
