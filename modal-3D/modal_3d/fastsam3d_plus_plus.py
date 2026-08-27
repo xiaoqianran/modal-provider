@@ -231,7 +231,7 @@ def sync_weights() -> dict:
     volumes={"/models": weights, "/artifacts": artifacts},
     min_containers=0,
     max_containers=1,
-    scaledown_window=300,
+    scaledown_window=120,
     timeout=30 * 60,
     startup_timeout=20 * 60,
 )

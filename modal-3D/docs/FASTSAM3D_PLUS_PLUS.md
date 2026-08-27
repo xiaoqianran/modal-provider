@@ -2,7 +2,7 @@
 
 Production single-object geometry worker for `Archerkattri/fastsam3d-plus-plus`, pinned at `36191e4`.
 
-Runtime policy: `min_containers=0`, `scaledown_window=300`. The capability reports warm wall time (`6.06s`) separately from the current production cold-start reference (`105s`).
+Runtime policy: `min_containers=0`, `scaledown_window=120`. The capability reports warm wall time (`6.06s`) separately from the current production cold-start reference (`105s`).
 
 - GPU: L40S / `sm_89`
 - CUDA: 12.1.1
