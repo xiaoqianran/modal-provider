@@ -249,6 +249,13 @@ class Model:
         if torch.cuda.get_device_capability() != (8, 9):
             raise RuntimeError(f"expected L40S sm_89, got {torch.cuda.get_device_name()}")
 
+        shape_dir = Path(MODEL_DIR) / "hunyuan3d-dit-v2-1"
+        paint_dir = Path(MODEL_DIR) / "hunyuan3d-paintpbr-v2-1"
+        if not shape_dir.is_dir() or not paint_dir.is_dir():
+            raise RuntimeError(
+                "Hunyuan3D weights are not provisioned; run sync_weights before GPU warmup"
+            )
+
         torch.cuda.reset_peak_memory_stats()
         t0 = time.perf_counter()
         self.shape_pipe = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(MODEL_DIR)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import time
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import modal
 
@@ -33,8 +33,10 @@ PYTORCH3D_WHEELS_URL = (
     f"https://github.com/xiaoqianran/modal-build/releases/download/{BUILD_TAG}/{BUILD_TAG}.wheels.zip"
 )
 
-SRC = Path("/opt/fastsam3d-plus-plus")
-MODEL_DIR = Path("/models/sam3d")
+# These paths are interpreted by Linux image-build/runtime code. PurePosixPath
+# keeps their spelling stable when the deployment command itself runs on Windows.
+SRC = PurePosixPath("/opt/fastsam3d-plus-plus")
+MODEL_DIR = PurePosixPath("/models/sam3d")
 PIPELINE = MODEL_DIR / "checkpoints/pipeline.fast.yaml"
 
 app = modal.App(APP_NAME)
@@ -124,7 +126,10 @@ runtime_image = (
     )
     .add_local_file(PATCH, "/tmp/fastsam3d.patch", copy=True)
     .run_commands(
-        f"git -C {SRC} apply --check /tmp/fastsam3d.patch && git -C {SRC} apply /tmp/fastsam3d.patch"
+        # Windows Git checkouts may materialize .patch files with CRLF. Normalize
+        # inside the Linux image before matching patch context.
+        "python -c \"from pathlib import Path; p=Path('/tmp/fastsam3d.patch'); p.write_bytes(p.read_bytes().replace(bytes((13, 10)), bytes((10,))))\"",
+        f"git -C {SRC} apply --check /tmp/fastsam3d.patch && git -C {SRC} apply /tmp/fastsam3d.patch",
     )
     .run_commands(
         f"curl -fL '{PYTORCH3D_WHEELS_URL}' -o /tmp/pytorch3d-wheels.zip && "
@@ -170,7 +175,7 @@ def sync_weights() -> dict:
     snapshot_download(
         SAM_REPO,
         revision=SAM_REVISION,
-        local_dir=MODEL_DIR,
+        local_dir=str(MODEL_DIR),
         allow_patterns=[
             "checkpoints/pipeline.yaml",
             "checkpoints/ss_generator.yaml",
@@ -191,7 +196,7 @@ def sync_weights() -> dict:
         MOGE_REPO, revision=MOGE_REVISION, local_dir="/models/moge", allow_patterns=["model.pt"]
     )
 
-    ckpt = MODEL_DIR / "checkpoints"
+    ckpt = Path(MODEL_DIR) / "checkpoints"
     ss = (ckpt / "ss_generator.yaml").read_text()
     slat = (ckpt / "slat_generator.yaml").read_text()
     (ckpt / "ss_generator_faster.yaml").write_text(
@@ -226,7 +231,7 @@ def sync_weights() -> dict:
     i = hits[0]
     indent = lines[i][: len(lines[i]) - len(lines[i].lstrip())]
     lines[i] = f"{indent}pretrained_model_name_or_path: /models/moge/model.pt"
-    PIPELINE.write_text("\n".join(lines) + "\n")
+    Path(PIPELINE).write_text("\n".join(lines) + "\n")
 
     weights.commit()
     total = sum(p.stat().st_size for p in Path("/models").rglob("*") if p.is_file())

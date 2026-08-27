@@ -18,7 +18,7 @@ REGISTRY_NAME = "modal-3d-model-registry"
 # Every serialized adapter deployment must carry this revision into the registry.
 # Bump it whenever the closure/runtime contract changes so desktop deployment can
 # distinguish a merely-existing Worker from the Worker version it actually needs.
-WORKER_ADAPTER_REVISION = "modal-3d.worker-adapter.v2"
+WORKER_ADAPTER_REVISION = "modal-3d.worker-adapter.v3"
 CANONICAL_INPUT = {
     "role": "canonical_rgba",
     "mime": "image/png",

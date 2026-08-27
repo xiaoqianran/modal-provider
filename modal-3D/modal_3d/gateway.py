@@ -17,7 +17,9 @@ from .capabilities import (
 )
 
 APP_NAME = "modal-3d-gateway"
-ARTIFACT_ROOT = Path("/artifacts")
+# This value is consumed while the deployment graph is built on the desktop.
+# Keep it platform-neutral; construct a concrete Path only inside Linux runtime code.
+ARTIFACT_ROOT = "/artifacts"
 RETENTION_SECONDS = 7 * 86400
 
 app = modal.App(APP_NAME)
@@ -186,20 +188,21 @@ def submit(model: str, input_path: str, options: dict | None = None) -> dict:
 @app.function(
     image=image,
     schedule=modal.Cron("0 3 * * *", timezone="Asia/Shanghai"),
-    volumes={str(ARTIFACT_ROOT): artifacts},
+    volumes={ARTIFACT_ROOT: artifacts},
     timeout=10 * 60,
 )
 def cleanup_artifacts() -> dict:
+    artifact_root = Path(ARTIFACT_ROOT)
     cutoff = time.time() - RETENTION_SECONDS
     deleted_files = 0
     deleted_bytes = 0
-    for path in ARTIFACT_ROOT.rglob("*"):
+    for path in artifact_root.rglob("*"):
         if path.is_file() and path.stat().st_mtime < cutoff:
             deleted_bytes += path.stat().st_size
             path.unlink()
             deleted_files += 1
     for path in sorted(
-        (item for item in ARTIFACT_ROOT.rglob("*") if item.is_dir()),
+        (item for item in artifact_root.rglob("*") if item.is_dir()),
         key=lambda item: len(item.parts),
         reverse=True,
     ):
