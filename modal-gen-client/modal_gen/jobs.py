@@ -90,6 +90,7 @@ class JobService:
             context=ProviderContext(
                 owner_client=owner_client,
                 owner_origin=owner_origin,
+                request_id=idempotency,
                 artifacts=self.artifacts,
             ),
         )

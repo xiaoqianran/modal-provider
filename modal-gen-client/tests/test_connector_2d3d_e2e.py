@@ -29,6 +29,7 @@ class ThreeDHarness:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
         self.upload_contains_png = False
+        self.expected_request_id: str | None = None
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.calls.append((request.method, request.url.path))
@@ -84,6 +85,7 @@ class ThreeDHarness:
             )
         if request.method == "POST" and request.url.path == "/v1/projects/project_3d/generation":
             assert json.loads(request.content) == {
+                "request_id": self.expected_request_id,
                 "model": "fastsam3d-plus-plus",
                 "profile": "recommended",
                 "seed": 9,
@@ -198,9 +200,9 @@ def test_connector_composes_2d_artifact_into_3d_and_recovers_after_restart(
     assert source["role"] == "primary-image"
     assert two_d.artifact_reads == 0
 
-    model_job = runtime.jobs.submit(
-        three_d_request(snapshot, source, str(image_job["id"])), session
-    )
+    model_request = three_d_request(snapshot, source, str(image_job["id"]))
+    harness.expected_request_id = str(model_request["idempotencyKey"])
+    model_job = runtime.jobs.submit(model_request, session)
     assert model_job["status"] == "accepted"
     assert two_d.artifact_reads == 1
     assert harness.upload_contains_png is True

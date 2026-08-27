@@ -132,7 +132,12 @@ class Modal3DAdapter:
             generation = self._json(
                 "POST",
                 f"/v1/projects/{project_id}/generation",
-                json={"model": model, "profile": effective_profile, "seed": seed},
+                json={
+                    "request_id": context.request_id,
+                    "model": model,
+                    "profile": effective_profile,
+                    "seed": seed,
+                },
                 timeout=_PREPROCESS_TIMEOUT,
                 connection=connection,
             )

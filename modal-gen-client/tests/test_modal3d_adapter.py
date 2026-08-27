@@ -37,6 +37,7 @@ def context(path: Path) -> ProviderContext:
     return ProviderContext(
         owner_client="agentscape",
         owner_origin="https://xiaoqianran.github.io",
+        request_id="idem_0123456789abcdef0123456789abcdef01234567",
         artifacts=Resolver(path),
     )
 
@@ -134,6 +135,7 @@ def test_modal3d_adapter_maps_connector_artifact_to_project_pipeline(tmp_path: P
             )
         if request.method == "POST" and request.url.path == "/v1/projects/project_01/generation":
             assert json.loads(request.content) == {
+                "request_id": "idem_0123456789abcdef0123456789abcdef01234567",
                 "model": "fastsam3d-plus-plus",
                 "profile": "recommended",
                 "seed": 7,

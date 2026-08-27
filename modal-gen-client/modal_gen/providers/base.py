@@ -39,6 +39,7 @@ class ArtifactResolver(Protocol):
 class ProviderContext:
     owner_client: str
     owner_origin: str
+    request_id: str
     artifacts: ArtifactResolver
 
 

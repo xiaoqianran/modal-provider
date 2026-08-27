@@ -20,6 +20,7 @@ class NullArtifacts:
 CONTEXT = ProviderContext(
     owner_client="agentscape",
     owner_origin="https://xiaoqianran.github.io",
+    request_id="idem_0123456789abcdef0123456789abcdef01234567",
     artifacts=NullArtifacts(),
 )
 
