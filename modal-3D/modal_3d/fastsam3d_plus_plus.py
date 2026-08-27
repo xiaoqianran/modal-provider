@@ -54,6 +54,29 @@ CAPABILITY = worker_capability(
         "dmd_history": {"type": "integer", "default": 5},
     },
     profile={"dmd_interval": 1, "dmd_history": 5},
+    profile_name="推荐 · Fast-SAM3D 加速",
+    profile_metadata={
+        "quality": {
+            "tier": "accelerated",
+            "basis": "wlfeng0509/Fast-SAM3D official acceleration recipe",
+            "sampler": {
+                "ss_steps": 2,
+                "slat_steps": 12,
+                "ss_cache_stride": 3,
+                "slat_carving_ratio": 0.1,
+            },
+            "verification": {
+                "status": "verified",
+                "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+            },
+        }
+    },
+    reference_metadata={
+        "status": "legacy",
+        "benchmark": "benchmarks/fastsam3d-plus-plus-l40s-2026-08-23.json",
+        "metric": "adapter_wall_s",
+        "profile_id": "recommended",
+    },
     output="textured",
     deployment={
         "source": FORK,

@@ -7,6 +7,7 @@ import zlib
 from pathlib import Path
 
 from modal_3d.common import validate_canonical_png
+from modal_3d.png import foreground_stats
 
 
 def chunk(kind: bytes, body: bytes) -> bytes:
@@ -21,13 +22,14 @@ def rgba_png(
     *,
     foreground_alpha: int = 255,
     background_alpha: int = 0,
+    foreground_rgb: tuple[int, int, int] = (120, 140, 160),
 ) -> bytes:
     ihdr = (
         width.to_bytes(4, "big")
         + height.to_bytes(4, "big")
         + bytes([8, 6, 0, 0, 0])
     )
-    foreground = bytes([120, 140, 160, foreground_alpha])
+    foreground = bytes([*foreground_rgb, foreground_alpha])
     background = bytes([0, 0, 0, background_alpha])
     rows = []
     split = width // 2
@@ -56,6 +58,15 @@ class CanonicalContractTests(unittest.TestCase):
         self.assertEqual(result["mode"], "RGBA")
         self.assertEqual(result["alpha_min"], 0)
         self.assertEqual(result["alpha_max"], 255)
+
+    def test_foreground_stats_detect_benchmark_rgb_loss(self) -> None:
+        colored = rgba_png()
+        black = rgba_png(foreground_rgb=(0, 0, 0))
+        colored_stats = foreground_stats(colored, 1024, 1024)
+        black_stats = foreground_stats(black, 1024, 1024)
+        self.assertGreater(colored_stats["foreground_rgb_nonzero_fraction"], 0.99)
+        self.assertEqual(black_stats["foreground_rgb_nonzero_fraction"], 0.0)
+        self.assertEqual(colored_stats["foreground_bbox"], [512, 0, 1024, 1024])
 
     def test_rejects_wrong_dimensions(self) -> None:
         with self.assertRaisesRegex(ValueError, "1024x1024"):

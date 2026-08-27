@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import binascii
 import hashlib
 import sys
 import time
-import zlib
 from copy import deepcopy
 from pathlib import Path
 
 import modal
+
+from .png import alpha_range as _png_rgba_alpha_range
 
 # Keep values captured by serialized Modal adapter functions platform-neutral.
 # A concrete Path created while deploying from Windows becomes WindowsPath in
@@ -30,93 +30,6 @@ CANONICAL_INPUT = {
     "alpha": "channel_required",
 }
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-
-
-def _paeth(left: int, up: int, upper_left: int) -> int:
-    estimate = left + up - upper_left
-    distance_left = abs(estimate - left)
-    distance_up = abs(estimate - up)
-    distance_upper_left = abs(estimate - upper_left)
-    if distance_left <= distance_up and distance_left <= distance_upper_left:
-        return left
-    if distance_up <= distance_upper_left:
-        return up
-    return upper_left
-
-
-def _png_rgba_alpha_range(data: bytes, width: int, height: int) -> tuple[int, int]:
-    offset = 8
-    idat = bytearray()
-    saw_iend = False
-    while offset + 12 <= len(data):
-        length = int.from_bytes(data[offset : offset + 4], "big")
-        chunk_type = data[offset + 4 : offset + 8]
-        body_start = offset + 8
-        body_end = body_start + length
-        crc_end = body_end + 4
-        if crc_end > len(data):
-            raise ValueError("PNG chunk is truncated")
-        body = data[body_start:body_end]
-        expected_crc = int.from_bytes(data[body_end:crc_end], "big")
-        actual_crc = binascii.crc32(chunk_type)
-        actual_crc = binascii.crc32(body, actual_crc) & 0xFFFFFFFF
-        if actual_crc != expected_crc:
-            raise ValueError("PNG chunk CRC is invalid")
-        if chunk_type == b"IDAT":
-            idat.extend(body)
-        elif chunk_type == b"IEND":
-            saw_iend = True
-            break
-        offset = crc_end
-    if not idat or not saw_iend:
-        raise ValueError("PNG must contain IDAT and IEND chunks")
-
-    try:
-        raw = zlib.decompress(bytes(idat))
-    except zlib.error as exc:
-        raise ValueError("PNG image data could not be decompressed") from exc
-
-    stride = width * 4
-    expected = height * (stride + 1)
-    if len(raw) != expected:
-        raise ValueError("PNG decoded data length does not match dimensions")
-
-    # PNG filters operate independently on each byte position. For object-contract
-    # validation we only need the A byte of every RGBA pixel, so reconstructing RGB
-    # would add ~3x CPU work without adding any validation value.
-    previous = bytearray(width)
-    alpha_min = 255
-    alpha_max = 0
-    cursor = 0
-    for _ in range(height):
-        filter_type = raw[cursor]
-        cursor += 1
-        row = raw[cursor : cursor + stride]
-        cursor += stride
-        encoded = row[3::4]
-        if filter_type == 0:
-            current = bytearray(encoded)
-        elif filter_type in {1, 2, 3, 4}:
-            current = bytearray(width)
-            for index, value in enumerate(encoded):
-                left = current[index - 1] if index else 0
-                up = previous[index]
-                upper_left = previous[index - 1] if index else 0
-                if filter_type == 1:
-                    predictor = left
-                elif filter_type == 2:
-                    predictor = up
-                elif filter_type == 3:
-                    predictor = (left + up) // 2
-                else:
-                    predictor = _paeth(left, up, upper_left)
-                current[index] = (value + predictor) & 0xFF
-        else:
-            raise ValueError(f"unsupported PNG filter type: {filter_type}")
-        alpha_min = min(alpha_min, min(current))
-        alpha_max = max(alpha_max, max(current))
-        previous = current
-    return alpha_min, alpha_max
 
 
 def validate_canonical_png(path: Path) -> dict:
@@ -193,6 +106,9 @@ def worker_capability(
     cold_start_seconds: float | None = None,
     generation_entrypoint: dict | None = None,
     profile: dict | None = None,
+    profile_name: str = "推荐 · 已验证",
+    profile_metadata: dict | None = None,
+    reference_metadata: dict | None = None,
     output: str = "geometry",
     deployment: dict | None = None,
     priority: int = 1000,
@@ -200,6 +116,16 @@ def worker_capability(
     reference = {"warm_seconds": warm_seconds}
     if cold_start_seconds is not None:
         reference["cold_start_seconds"] = cold_start_seconds
+    if reference_metadata:
+        reference.update(deepcopy(reference_metadata))
+
+    recommended_profile = {
+        "id": "recommended",
+        "name": profile_name,
+        "options": profile or {},
+    }
+    if profile_metadata:
+        recommended_profile.update(deepcopy(profile_metadata))
 
     capability = {
         "id": model_id,
@@ -210,7 +136,7 @@ def worker_capability(
         "output": output,
         "artifact": {"mime": "model/gltf-binary", "extension": ".glb"},
         "input": deepcopy(CANONICAL_INPUT),
-        "profiles": [{"id": "recommended", "name": "推荐 · 已验证", "options": profile or {}}],
+        "profiles": [recommended_profile],
         "options": options,
         "priority": priority,
         "reference": reference,

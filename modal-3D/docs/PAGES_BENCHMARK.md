@@ -1,6 +1,6 @@
 # GitHub Pages benchmark
 
-The public gallery compares four deployed `modal-3D` workers on three real images. The original 2026-08-23 gallery remains the baseline for the boat and coffee-cup scenes. The Pinterest Building scene was fully regenerated on 2026-08-24 after the production-quality texture/export fixes and the SAM 3.1 3D-mask repair were validated on Modal L40S.
+The public gallery compares four deployed `modal-3D` workers on a data-driven set of real images. The original 2026-08-23 gallery remains the baseline for the boat and coffee-cup scenes. The Pinterest Building scene was fully regenerated on 2026-08-24 after the production-quality texture/export fixes and the SAM 3.1 3D-mask repair were validated on Modal L40S.
 
 ## Input policy
 
@@ -43,4 +43,8 @@ Pages assets are separate derivatives. Current Building previews preserve materi
 
 ## Deployment gate
 
-`scripts/validate_pages.py` validates exactly three inputs and exactly four model IDs per input. It verifies referenced files, declared preview byte counts, GLB v2 headers/lengths, path safety, and the 15 MiB per-preview budget before the Pages artifact can deploy.
+`scripts/validate_pages.py` accepts any non-empty input set and requires exactly the four expected model IDs for every input. It verifies referenced files, declared preview byte counts, GLB v2 headers/lengths, path safety, and the 15 MiB per-preview budget before the Pages artifact can deploy.
+
+## Safe refresh workflow
+
+See `docs/BENCHMARKING.md`. New matrices are smoke-first, cost-budgeted, and dry-run by default. Canonical inputs are rejected before GPU submission when the visible foreground contains almost no RGB information.

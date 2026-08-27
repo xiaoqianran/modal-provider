@@ -12,6 +12,13 @@ from .common import register_worker_entrypoint, worker_capability
 
 APP_NAME = "modal-3d-hermit-trellis2-plus-plus"
 MODEL_ID = "microsoft/TRELLIS.2-4B"
+MODEL_REVISION = "af44b45f2e35a493886929c6d786e563ec68364d"
+TRELLIS_IMAGE_ID = "microsoft/TRELLIS-image-large"
+TRELLIS_IMAGE_REVISION = "25e0d31ffbebe4b5a97464dd851910efc3002d96"
+DINO_ID = "facebook/dinov3-vitl16-pretrain-lvd1689m"
+DINO_REVISION = "ea8dc2863c51be0a264bab82070e3e8836b02d51"
+BIREFNET_ID = "ZhengPeng7/BiRefNet"
+BIREFNET_REVISION = "e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4"
 MODEL_DIR = "/models/TRELLIS.2-4B"
 HF_CACHE = "/models/hf-cache"
 SRC_DIR = "/opt/hermit"
@@ -47,13 +54,32 @@ CAPABILITY = worker_capability(
         },
     },
     profile={"pipeline_type": "1536_cascade", "acceleration": "base", "texture_size": 4096},
+    profile_name="推荐 · 官方高质量",
+    profile_metadata={
+        "quality": {
+            "tier": "full_quality",
+            "basis": "microsoft/TRELLIS.2 1536 cascade + stock sampler + 4096 PBR export",
+            "verification": {
+                "status": "verified",
+                "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+            },
+        }
+    },
+    reference_metadata={
+        "status": "verified",
+        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+        "metric": "worker_inference_s",
+        "profile_id": "recommended",
+    },
     output="textured",
     deployment={
         "source": "Archerkattri/hermit-trellis2-plus-plus",
         "source_revision": "2c8402a92ea97c510c09e278fae557771aad774d",
         "build_artifact": BUILD_TAG,
+        "base_model": MODEL_ID,
+        "base_model_revision": MODEL_REVISION,
     },
-    warm_seconds=11.98,
+    warm_seconds=297.25,
     cold_start_seconds=108.32,
     priority=20,
 )
@@ -106,13 +132,13 @@ def sync_weights() -> dict:
     Path(MODEL_DIR).mkdir(parents=True, exist_ok=True)
     Path(HF_CACHE).mkdir(parents=True, exist_ok=True)
 
-    snapshot_download(MODEL_ID, local_dir=MODEL_DIR)
-    for repo in (
-        "microsoft/TRELLIS-image-large",
-        "facebook/dinov3-vitl16-pretrain-lvd1689m",
-        "ZhengPeng7/BiRefNet",
+    snapshot_download(MODEL_ID, revision=MODEL_REVISION, local_dir=MODEL_DIR)
+    for repo, revision in (
+        (TRELLIS_IMAGE_ID, TRELLIS_IMAGE_REVISION),
+        (DINO_ID, DINO_REVISION),
+        (BIREFNET_ID, BIREFNET_REVISION),
     ):
-        snapshot_download(repo, cache_dir=HF_CACHE)
+        snapshot_download(repo, revision=revision, cache_dir=HF_CACHE)
 
     weights.commit()
     total = sum(p.stat().st_size for p in Path("/models").rglob("*") if p.is_file())

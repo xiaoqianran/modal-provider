@@ -13,7 +13,7 @@ $relativePath = [IO.Path]::GetRelativePath($repoRoot, $workerPath)
 if ($relativePath.StartsWith("..")) {
     throw "Worker must be inside the repository: $workerPath"
 }
-$module = [IO.Path]::ChangeExtension($relativePath, $null) -replace [\/], .
+$module = [IO.Path]::ChangeExtension($relativePath, $null) -replace '[\\/]', '.'
 
 Push-Location $repoRoot
 try {

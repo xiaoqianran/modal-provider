@@ -62,8 +62,8 @@ def main() -> None:
     results = data.get("results")
     if not isinstance(inputs, list) or not isinstance(results, dict):
         fail("results.json must contain inputs[] and results{}")
-    if len(inputs) != 3:
-        fail(f"expected 3 benchmark inputs, got {len(inputs)}")
+    if not inputs:
+        fail("benchmark must contain at least one input")
 
     seen_inputs: set[str] = set()
     preview_total = 0

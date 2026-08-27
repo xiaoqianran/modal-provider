@@ -6,6 +6,13 @@ This document records the production shape, benchmark evidence, mistakes encount
 and the reasoning behind the final deployment structure. It should be read together with
 `benchmarks/hermit-trellis2-plus-plus-l40s-2026-08-22.json` and `docs/ENGINEERING_RETROSPECTIVE.md`.
 
+
+## Current production quality profile
+
+The current recommended profile is `1536_cascade`, `acceleration=base`, and `texture_size=4096`. `base` restores the stock TRELLIS.2 samplers; GLB export matches Microsoft's public high-quality example (`remesh=True`, 1,000,000 decimation target, 4096 PBR textures). Older 1024/Hermite-DMD sections below are historical benchmark records, not the current recommended profile.
+
+The current 1536/base reference is `benchmarks/pages-pinterest-a1-quality-2026-08-24.json` (~297.25s worker inference).
+
 ## 1. What this worker is
 
 This worker is the Python/PyTorch/Hermite-DMD implementation of TRELLIS.2. It is intentionally named after

@@ -18,6 +18,13 @@ from .common import register_worker_entrypoint, worker_capability
 APP_NAME = "modal-3d-pixal3d"
 GPU = "L40S"
 MODEL_ID = "TencentARC/Pixal3D"
+MODEL_REVISION = "0b31f9160aa400719af409098bff7936a932f726"
+DINO_ID = "camenduru/dinov3-vitl16-pretrain-lvd1689m"
+DINO_REVISION = "3c276edd87d6f6e569ff0c4400e086807d0f3881"
+MOGE_ID = "Ruicheng/moge-2-vitl"
+MOGE_REVISION = "39c4d5e957afe587e04eec59dc2bcc3be5ecd968"
+BIREFNET_ID = "ZhengPeng7/BiRefNet"
+BIREFNET_REVISION = "e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4"
 MODEL_DIR = "/models/Pixal3D"
 HF_HOME = "/models/hf"
 TORCH_HOME = "/models/torch"
@@ -51,13 +58,32 @@ CAPABILITY = worker_capability(
         "max_num_tokens": 49152,
         "texture_size": 4096,
     },
+    profile_name="推荐 · 官方标准高质量",
+    profile_metadata={
+        "quality": {
+            "tier": "full_quality",
+            "basis": "TencentARC/Pixal3D standard 1536 cascade + 4096 PBR export",
+            "verification": {
+                "status": "verified",
+                "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+            },
+        }
+    },
+    reference_metadata={
+        "status": "verified",
+        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+        "metric": "worker_inference_s",
+        "profile_id": "recommended",
+    },
     output="textured",
     deployment={
         "source": MODEL_ID,
         "source_revision": "cdbb2bbffbf4e6f298b5f2af3d1d76a8d823d2af",
         "build_artifact": TAG,
+        "base_model": MODEL_ID,
+        "base_model_revision": MODEL_REVISION,
     },
-    warm_seconds=108.92,
+    warm_seconds=197.18,
     cold_start_seconds=99.08,
     priority=40,
 )
@@ -116,12 +142,13 @@ def sync_weights() -> dict:
     t0 = time.perf_counter()
     Path(MODEL_DIR).mkdir(parents=True, exist_ok=True)
     Path(HF_HOME).mkdir(parents=True, exist_ok=True)
-    snapshot_download(MODEL_ID, local_dir=MODEL_DIR)
-    for repo in (
-        "camenduru/dinov3-vitl16-pretrain-lvd1689m",
-        "Ruicheng/moge-2-vitl",
+    snapshot_download(MODEL_ID, revision=MODEL_REVISION, local_dir=MODEL_DIR)
+    for repo, revision in (
+        (DINO_ID, DINO_REVISION),
+        (MOGE_ID, MOGE_REVISION),
+        (BIREFNET_ID, BIREFNET_REVISION),
     ):
-        snapshot_download(repo, cache_dir=f"{HF_HOME}/hub")
+        snapshot_download(repo, revision=revision, cache_dir=f"{HF_HOME}/hub")
 
     # Replace gated/default RMBG with the cached public BiRefNet model.
     pipeline = Path(MODEL_DIR) / "pipeline.json"

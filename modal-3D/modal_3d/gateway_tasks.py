@@ -19,7 +19,7 @@ class TaskCoordinator:
         *,
         retention_seconds: float,
         reservation_wait_seconds: float = 5.0,
-        reservation_stale_seconds: float = 30.0,
+        reservation_stale_seconds: float = 300.0,
         reservation_poll_seconds: float = 0.02,
     ) -> None:
         self.tasks = tasks

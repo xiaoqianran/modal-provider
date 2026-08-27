@@ -74,10 +74,45 @@ def validate_capability(capability: dict) -> dict:
         unknown = sorted(set(profile["options"]) - set(options))
         if unknown:
             raise ValueError(f"profile references unknown options: {', '.join(unknown)}")
+        quality = profile.get("quality")
+        if quality is not None:
+            if not isinstance(quality, dict):
+                raise TypeError("profile.quality must be an object")
+            tier = quality.get("tier")
+            if tier not in {"full_quality", "accelerated"}:
+                raise ValueError("profile.quality.tier must be full_quality or accelerated")
+            basis = quality.get("basis")
+            if not isinstance(basis, str) or not basis:
+                raise ValueError("profile.quality.basis must be a non-empty string")
+            verification = quality.get("verification")
+            if not isinstance(verification, dict) or verification.get("status") not in {
+                "verified",
+                "stale",
+                "unverified",
+            }:
+                raise ValueError(
+                    "profile.quality.verification.status must be verified, stale, or unverified"
+                )
+            benchmark = verification.get("benchmark")
+            if verification.get("status") in {"verified", "stale"} and (
+                not isinstance(benchmark, str) or not benchmark
+            ):
+                raise ValueError("verified/stale profile quality requires a benchmark path")
     reference = capability.get("reference", {})
     warm_seconds = reference.get("warm_seconds")
-    if not isinstance(warm_seconds, (int, float)) or isinstance(warm_seconds, bool):
-        raise TypeError("reference.warm_seconds must be a number")
+    if (
+        not isinstance(warm_seconds, (int, float))
+        or isinstance(warm_seconds, bool)
+        or warm_seconds <= 0
+    ):
+        raise TypeError("reference.warm_seconds must be a positive number")
+    reference_status = reference.get("status")
+    if reference_status is not None and reference_status not in {"verified", "stale", "legacy"}:
+        raise ValueError("reference.status must be verified, stale, or legacy")
+    benchmark = reference.get("benchmark")
+    if benchmark is not None and (not isinstance(benchmark, str) or not benchmark):
+        raise ValueError("reference.benchmark must be a non-empty string when present")
+
     cold_start_seconds = reference.get("cold_start_seconds")
     if cold_start_seconds is not None and (
         not isinstance(cold_start_seconds, (int, float))

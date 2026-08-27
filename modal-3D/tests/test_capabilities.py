@@ -97,7 +97,7 @@ class CapabilityContractTests(unittest.TestCase):
         )
         self.assertEqual(
             profile_options("hunyuan2.1-plus-plus", "recommended", self.registry),
-            {"acceleration": "base", "interval": 1, "history": 6, "num_inference_steps": 50, "paint_remesh": False},
+            {"acceleration": "base", "interval": 1, "history": 6, "num_inference_steps": 50, "paint_remesh": True},
         )
         self.assertEqual(
             profile_options("pixal3d", "recommended", self.registry),
@@ -108,6 +108,37 @@ class CapabilityContractTests(unittest.TestCase):
                 "texture_size": 4096,
             },
         )
+
+    def test_recommended_profiles_declare_quality_and_provenance(self) -> None:
+        expected_tiers = {
+            "fastsam3d-plus-plus": "accelerated",
+            "hermit-trellis2-plus-plus": "full_quality",
+            "hunyuan2.1-plus-plus": "full_quality",
+            "pixal3d": "full_quality",
+        }
+        for capability in (FASTSAM3D, TRELLIS2, HUNYUAN, PIXAL3D):
+            profile = capability["profiles"][0]
+            self.assertEqual(profile["quality"]["tier"], expected_tiers[capability["id"]])
+            self.assertIn(profile["quality"]["verification"]["status"], {"verified", "stale"})
+            self.assertIn("benchmark", capability["reference"])
+            self.assertIn("status", capability["reference"])
+
+    def test_fastsam_sampler_metadata_matches_accelerated_configs(self) -> None:
+        sampler = FASTSAM3D["profiles"][0]["quality"]["sampler"]
+        self.assertEqual(sampler["ss_steps"], 2)
+        self.assertEqual(sampler["slat_steps"], 12)
+        self.assertEqual(sampler["ss_cache_stride"], 3)
+        self.assertEqual(sampler["slat_carving_ratio"], 0.1)
+
+    def test_hunyuan_full_quality_defaults_are_bounded(self) -> None:
+        options = HUNYUAN["options"]
+        self.assertEqual(options["paint_remesh"]["default"], True)
+        self.assertEqual(options["interval"]["default"], 1)
+        self.assertEqual(options["interval"]["maximum"], 12)
+        self.assertEqual(options["history"]["maximum"], 32)
+        self.assertEqual(options["num_inference_steps"]["maximum"], 100)
+        self.assertEqual(HUNYUAN["reference"]["status"], "stale")
+        self.assertGreater(HUNYUAN["reference"]["warm_seconds"], 500)
 
     def test_worker_lookup_is_part_of_same_contract(self) -> None:
         self.assertEqual(worker_app("fastsam3d-plus-plus", self.registry), "modal-3d-fastsam3d")
@@ -191,6 +222,10 @@ class CapabilityContractTests(unittest.TestCase):
             validate_options("hunyuan2.1-plus-plus", {"interval": 0}, self.registry)
         with self.assertRaisesRegex(ValueError, "history must be >= 4"):
             validate_options("hunyuan2.1-plus-plus", {"history": 3}, self.registry)
+        with self.assertRaisesRegex(ValueError, "num_inference_steps must be <= 100"):
+            validate_options("hunyuan2.1-plus-plus", {"num_inference_steps": 101}, self.registry)
+        with self.assertRaisesRegex(ValueError, "interval must be <= 12"):
+            validate_options("hunyuan2.1-plus-plus", {"interval": 13}, self.registry)
 
     def test_valid_options_are_preserved_without_inventing_defaults(self) -> None:
         options = {"seed": 7, "interval": 3, "history": 6, "num_inference_steps": 50}

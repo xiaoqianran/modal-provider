@@ -45,17 +45,36 @@ CAPABILITY = worker_capability(
             "default": "base",
             "enum": ["base", "dmd"],
         },
-        "interval": {"type": "integer", "default": 3, "minimum": 1},
-        "history": {"type": "integer", "default": 6, "minimum": 4},
-        "num_inference_steps": {"type": "integer", "default": 50},
-        "paint_remesh": {"type": "boolean", "default": False},
+        "interval": {"type": "integer", "default": 1, "minimum": 1, "maximum": 12},
+        "history": {"type": "integer", "default": 6, "minimum": 4, "maximum": 32},
+        "num_inference_steps": {"type": "integer", "default": 50, "minimum": 1, "maximum": 100},
+        "paint_remesh": {"type": "boolean", "default": True},
     },
     profile={
         "acceleration": "base",
         "interval": 1,
         "history": 6,
         "num_inference_steps": 50,
-        "paint_remesh": False,
+        "paint_remesh": True,
+    },
+    profile_name="推荐 · 官方完整 PBR",
+    profile_metadata={
+        "quality": {
+            "tier": "full_quality",
+            "basis": "Tencent Hunyuan3D-2.1 official Shape + Paint defaults",
+            "verification": {
+                "status": "stale",
+                "reason": "latest recorded full-pipeline benchmark used paint_remesh=false",
+                "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+            },
+        }
+    },
+    reference_metadata={
+        "status": "stale",
+        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+        "metric": "worker_inference_s",
+        "profile_id": "recommended",
+        "note": "557.26s reference used paint_remesh=false; re-smoke required for remesh=true",
     },
     output="textured",
     deployment={
@@ -65,7 +84,7 @@ CAPABILITY = worker_capability(
         "base_model_revision": MODEL_REVISION,
         "build_artifact": PAINT_TAG,
     },
-    warm_seconds=29.56,
+    warm_seconds=557.26,
     cold_start_seconds=52.88,
     priority=30,
 )
@@ -281,17 +300,19 @@ class Model:
         interval: int = 1,
         history: int = 6,
         num_inference_steps: int = 50,
-        paint_remesh: bool = False,
+        paint_remesh: bool = True,
     ) -> dict:
         import torch
         from PIL import Image
 
         if acceleration not in {"base", "dmd"}:
             raise ValueError("acceleration must be base or dmd")
-        if interval < 1:
-            raise ValueError("interval must be >= 1")
-        if history < 4:
-            raise ValueError("history must be >= 4")
+        if not 1 <= interval <= 12:
+            raise ValueError("interval must be between 1 and 12")
+        if not 4 <= history <= 32:
+            raise ValueError("history must be between 4 and 32")
+        if not 1 <= num_inference_steps <= 100:
+            raise ValueError("num_inference_steps must be between 1 and 100")
 
         image = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
         if image.getchannel("A").getextrema()[0] == 255:
