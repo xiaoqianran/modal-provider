@@ -27,12 +27,12 @@ def public_capabilities(registry) -> dict:
 
 
 def normalize_input_path(input_path: str) -> str:
-    """Normalize and confine a gateway input to the canonical client namespace."""
+    """Normalize and confine a gateway input to a supported provider namespace."""
     rel = Path(input_path)
     if rel.is_absolute() or ".." in rel.parts:
         raise ValueError("input_path must be relative to /artifacts")
-    if not rel.parts or rel.parts[0] != "client-inputs":
-        raise ValueError("input_path must be under client-inputs/")
+    if not rel.parts or rel.parts[0] not in {"client-inputs", "source-inputs"}:
+        raise ValueError("input_path must be under client-inputs/ or source-inputs/")
     return rel.as_posix()
 
 

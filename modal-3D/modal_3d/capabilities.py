@@ -9,6 +9,14 @@ from .common import CANONICAL_INPUT, REGISTRY_NAME, WORKER_ADAPTER_REVISION
 
 CONTRACT = "modal-3d.capabilities.v2"
 PROFILE_RECOMMENDED = "recommended"
+PUBLIC_IMAGE_INPUT = {
+    "role": "source_image",
+    "mediaTypes": ["image/png", "image/jpeg", "image/webp"],
+    "maxBytes": 20 * 1024 * 1024,
+    "alpha": "optional",
+    "conditioning": "provider",
+    "pathPrefix": "source-inputs/",
+}
 
 
 class Registry(Protocol):
@@ -158,6 +166,8 @@ def capabilities_document(registry: Registry | None = None) -> dict:
             "app": "modal-3d-gateway",
             "submit_function": "submit",
             "job_transport": "modal.FunctionCall",
+            "public_input_contract": deepcopy(PUBLIC_IMAGE_INPUT),
+            # Legacy/internal worker contract kept during the strangler migration.
             "input_contract": deepcopy(CANONICAL_INPUT),
         },
         "models": models,

@@ -39,12 +39,23 @@ class CapabilityContractTests(unittest.TestCase):
         encoded = json.dumps(capabilities_document(self.registry), sort_keys=True)
         self.assertIn(CONTRACT, encoded)
 
-    def test_generation_contract_is_canonical_only(self) -> None:
+    def test_generation_contract_exposes_public_source_and_internal_canonical_inputs(self) -> None:
         document = capabilities_document(self.registry)
         generation = document["generation"]
         self.assertNotIn("sam", document)
         self.assertNotIn("pipeline_function", generation)
         self.assertNotIn("http", generation)
+        self.assertEqual(
+            generation["public_input_contract"],
+            {
+                "role": "source_image",
+                "mediaTypes": ["image/png", "image/jpeg", "image/webp"],
+                "maxBytes": 20 * 1024 * 1024,
+                "alpha": "optional",
+                "conditioning": "provider",
+                "pathPrefix": "source-inputs/",
+            },
+        )
         self.assertEqual(
             generation["input_contract"],
             {

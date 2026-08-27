@@ -34,6 +34,8 @@ job_keys = modal.Dict.from_name("modal-3d-job-keys", create_if_missing=True)
 registry_health = modal.Dict.from_name("modal-3d-registry-health", create_if_missing=True)
 registry = model_registry()
 REGISTRY_FAILURE_LIMIT = 3
+CONDITIONER_APP = "modal-3d-rembg"
+CONDITIONER_FUNCTION = "condition"
 
 
 def _task_coordinator() -> TaskCoordinator:
@@ -56,13 +58,35 @@ def _submit(model: str, input_path: str, options: dict | None = None) -> dict:
     assert reservation is not None
 
     try:
-        call = spawn_generation(capability, normalized_path, validated)
+        if normalized_path.startswith("source-inputs/"):
+            call = conditioned_generation.spawn(capability, normalized_path, validated)
+        else:
+            call = spawn_generation(capability, normalized_path, validated)
         record = coordinator.create_record(call, model, "generation", capability, key)
     except Exception:
         coordinator.release(key, reservation)
         raise
     coordinator.publish(key, call.object_id)
     return record
+
+
+def _condition_and_generate(capability: dict, input_path: str, options: dict) -> dict:
+    conditioner = modal.Function.from_name(CONDITIONER_APP, CONDITIONER_FUNCTION)
+    conditioned = conditioner.remote(input_path)
+    if not isinstance(conditioned, dict) or not isinstance(conditioned.get("path"), str):
+        raise TypeError("modal-3D conditioner returned an invalid result")
+    call = spawn_generation(capability, conditioned["path"], options)
+    result = call.get(timeout=35 * 60)
+    if not isinstance(result, dict):
+        raise TypeError("modal-3D worker returned an invalid result")
+    output = dict(result)
+    output["conditioning"] = conditioned
+    return output
+
+
+@app.function(image=image, timeout=40 * 60, max_containers=20)
+def conditioned_generation(capability: dict, input_path: str, options: dict) -> dict:
+    return _condition_and_generate(capability, input_path, options)
 
 
 @app.function(image=image)

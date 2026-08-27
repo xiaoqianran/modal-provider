@@ -55,6 +55,25 @@ class FakeSpawnFunction:
         return FakeCall(object_id=f"fc-{len(self.calls)}")
 
 
+class FakeConditionedSpawnFunction:
+    def __init__(self):
+        self.calls: list[tuple[dict, str, dict]] = []
+
+    def spawn(self, capability: dict, input_path: str, options: dict):
+        self.calls.append((dict(capability), input_path, dict(options)))
+        return FakeCall(object_id=f"fc-conditioned-{len(self.calls)}")
+
+
+class FakeRemoteFunction:
+    def __init__(self, value):
+        self.value = value
+        self.calls: list[tuple] = []
+
+    def remote(self, *args):
+        self.calls.append(args)
+        return self.value
+
+
 class FakeRemoteMethod:
     def __init__(self):
         self.calls: list[tuple[str, dict]] = []
@@ -113,6 +132,7 @@ class GatewaySubmissionTests(unittest.TestCase):
         self.tasks = FakeDict()
         self.keys = FakeDict()
         self.spawn = FakeSpawnFunction()
+        self.conditioned = FakeConditionedSpawnFunction()
         self.capability = {
             "worker_app": "modal-3d-test",
             "reference": {"warm_seconds": 1, "cold_start_seconds": 90},
@@ -127,6 +147,7 @@ class GatewaySubmissionTests(unittest.TestCase):
                 side_effect=lambda _cap, opts: dict(opts or {}),
             ),
             patch.object(gateway_routing.modal.Function, "from_name", return_value=self.spawn),
+            patch.object(gateway, "conditioned_generation", self.conditioned),
             patch.object(
                 gateway.modal.functions.FunctionCall,
                 "from_id",
@@ -159,6 +180,7 @@ class GatewaySubmissionTests(unittest.TestCase):
         self.assertEqual(direct.calls, [("client-inputs/abc.png", {"seed": 42})])
         self.assertEqual(record["task_id"], "fc-direct-1")
         self.assertEqual(self.spawn.calls, [])
+        self.assertEqual(self.conditioned.calls, [])
 
     def test_duplicate_generation_reuses_existing_task(self) -> None:
         first = gateway._submit("test", "client-inputs/abc.png", {"seed": 42})
@@ -188,9 +210,11 @@ class GatewaySubmissionTests(unittest.TestCase):
         self.assertEqual(sum(bool(record["deduplicated"]) for record in records), 7)
 
     def test_spawn_failure_releases_atomic_reservation(self) -> None:
-        with patch.object(gateway, "spawn_generation", side_effect=RuntimeError("spawn failed")):
-            with self.assertRaisesRegex(RuntimeError, "spawn failed"):
-                gateway._submit("test", "client-inputs/abc.png", {"seed": 42})
+        with (
+            patch.object(gateway, "spawn_generation", side_effect=RuntimeError("spawn failed")),
+            self.assertRaisesRegex(RuntimeError, "spawn failed"),
+        ):
+            gateway._submit("test", "client-inputs/abc.png", {"seed": 42})
         key = gateway_routing.generation_job_key("test", "client-inputs/abc.png", {"seed": 42})
         self.assertIsNone(self.keys.get(key))
 
@@ -213,10 +237,63 @@ class GatewaySubmissionTests(unittest.TestCase):
         right = gateway_routing.generation_job_key("test", "client-inputs/abc.png", {"b": 2, "a": 1})
         self.assertEqual(left, right)
 
-    def test_only_client_inputs_are_accepted(self) -> None:
-        with self.assertRaisesRegex(ValueError, "client-inputs"):
+    def test_source_input_uses_conditioned_generation_slice(self) -> None:
+        record = gateway._submit("test", "source-inputs/source.jpg", {"seed": 42})
+        self.assertEqual(record["task_id"], "fc-conditioned-1")
+        self.assertEqual(len(self.conditioned.calls), 1)
+        capability, input_path, options = self.conditioned.calls[0]
+        self.assertEqual(capability, self.capability)
+        self.assertEqual(input_path, "source-inputs/source.jpg")
+        self.assertEqual(options, {"seed": 42})
+        self.assertEqual(self.spawn.calls, [])
+
+    def test_duplicate_source_input_reuses_existing_conditioned_task(self) -> None:
+        first = gateway._submit("test", "source-inputs/source.png", {"seed": 42})
+        second = gateway._submit("test", "source-inputs/source.png", {"seed": 42})
+        self.assertEqual(len(self.conditioned.calls), 1)
+        self.assertEqual(first["task_id"], second["task_id"])
+        self.assertTrue(second["deduplicated"])
+
+    def test_only_supported_input_namespaces_are_accepted(self) -> None:
+        with self.assertRaisesRegex(ValueError, "client-inputs/ or source-inputs"):
             gateway._submit("test", "sam31/legacy/canonical.png", {})
         self.assertEqual(self.spawn.calls, [])
+        self.assertEqual(self.conditioned.calls, [])
+
+
+class ConditionedGenerationTests(unittest.TestCase):
+    def test_conditioning_reuses_worker_routing_and_attaches_evidence(self) -> None:
+        conditioner = FakeRemoteFunction(
+            {
+                "path": "client-inputs/canonical.png",
+                "strategy": "birefnet",
+                "canonical_sha256": "a" * 64,
+            }
+        )
+        worker_call = FakeCall(
+            value={"model": "test", "artifact": {"path": "generated/test.glb"}}
+        )
+        capability = {"worker_app": "modal-3d-test"}
+        with (
+            patch.object(gateway.modal.Function, "from_name", return_value=conditioner),
+            patch.object(gateway, "spawn_generation", return_value=worker_call) as spawn,
+        ):
+            value = gateway._condition_and_generate(
+                capability, "source-inputs/source.png", {"seed": 42}
+            )
+        self.assertEqual(conditioner.calls, [("source-inputs/source.png",)])
+        spawn.assert_called_once_with(capability, "client-inputs/canonical.png", {"seed": 42})
+        self.assertEqual(value["conditioning"]["strategy"], "birefnet")
+
+    def test_invalid_conditioner_result_fails_closed(self) -> None:
+        conditioner = FakeRemoteFunction({"strategy": "birefnet"})
+        with (
+            patch.object(gateway.modal.Function, "from_name", return_value=conditioner),
+            self.assertRaisesRegex(TypeError, "conditioner"),
+        ):
+            gateway._condition_and_generate(
+                {"worker_app": "modal-3d-test"}, "source-inputs/source.png", {}
+            )
 
 
 class RegistryReconcileTests(unittest.TestCase):

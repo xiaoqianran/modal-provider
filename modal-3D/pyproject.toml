@@ -8,4 +8,4 @@ dependencies = ["modal[api-proxy-support]>=1.5,<2"]
 line-length = 100
 
 [dependency-groups]
-dev = ["numpy==1.26.4", "scipy==1.14.1"]
+dev = ["numpy==2.3.5", "Pillow==12.1.0", "scipy==1.16.3"]
