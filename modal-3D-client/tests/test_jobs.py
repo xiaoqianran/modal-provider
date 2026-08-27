@@ -242,3 +242,69 @@ def test_cancel_requested_survives_timeout_then_becomes_cancelled(
     assert terminal["status"] == "cancelled"
     assert terminal["error_code"] == "remote.cancelled"
     assert terminal["retryable"] is False
+
+
+def test_cancel_before_remote_binding_preserves_intent_and_cancels_new_call(
+    tmp_path, monkeypatch, source_png
+):
+    svc = service(tmp_path)
+    sha = hashlib.sha256(source_png).hexdigest()
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+    monkeypatch.setattr(
+        artifacts,
+        "upload_source",
+        lambda data: {"path": f"source-inputs/{sha}.png", "sha256": sha, "bytes": len(data)},
+    )
+    bound_call = Call()
+    monkeypatch.setattr(jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: bound_call)
+    monkeypatch.setattr(jobs, "client", lambda: object())
+
+    def submit(*args):
+        pending = svc.cancel("req_submit_cancel")
+        assert pending["status"] == "cancel_requested"
+        assert pending["error_code"] is None
+        return {
+            "model": "fastsam3d-plus-plus",
+            "status": "running",
+            "call_id": "fc_bound_after_cancel",
+        }
+
+    monkeypatch.setattr(generation, "submit", submit)
+    state = svc.submit(
+        source_png, model="fastsam3d-plus-plus", job_id="req_submit_cancel"
+    )
+    assert state["status"] == "cancel_requested"
+    assert svc.store.get("req_submit_cancel").remote_call_id == "fc_bound_after_cancel"
+    assert bound_call.cancelled is True
+
+
+def test_poll_cancel_requested_without_remote_call_finishes_locally(
+    tmp_path, monkeypatch, source_png
+):
+    svc = service(tmp_path)
+    sha = hashlib.sha256(source_png).hexdigest()
+    timestamp = jobs._now()
+    svc.store.save(
+        jobs.Job(
+            id="req_local_cancel",
+            model="fastsam3d-plus-plus",
+            profile="recommended",
+            seed=42,
+            input_path=f"source-inputs/{sha}.png",
+            input_sha256=sha,
+            remote_call_id=None,
+            status="cancel_requested",
+            created_at=timestamp,
+            updated_at=timestamp,
+            retryable=True,
+        )
+    )
+    monkeypatch.setattr(
+        generation,
+        "submit",
+        lambda *args: pytest.fail("cancelled unbound job must not submit remotely"),
+    )
+    state = svc.poll("req_local_cancel")
+    assert state["status"] == "cancelled"
+    assert state["error_code"] == "remote.cancelled"
+    assert state["retryable"] is False

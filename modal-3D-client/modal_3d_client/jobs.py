@@ -267,18 +267,55 @@ class JobService:
         return self._bind(intent).public()
 
     def _bind(self, job: Job) -> Job:
+        if job.status == "cancel_requested":
+            return self._save(
+                job,
+                status="cancelled",
+                error_code="remote.cancelled",
+                retryable=False,
+            )
         try:
             remote = generation.submit(job.model, job.input_path, job.profile, job.seed)
         except _RECOVERABLE:
+            latest = self.store.get(job.id)
+            if latest.status == "cancel_requested":
+                return latest
             return self._save(
-                job,
+                latest,
                 status="connection_required",
                 error_code="remote.submission_unknown",
                 retryable=True,
             )
         remote_id = str(remote["call_id"])
+        latest = self.store.get(job.id)
+        if latest.status == "cancel_requested":
+            try:
+                modal.FunctionCall.from_id(remote_id, client=client()).cancel()
+            except _RECOVERABLE:
+                return self._save(
+                    latest,
+                    remote_call_id=remote_id,
+                    status="cancel_requested",
+                    error_code="modal.connection_required",
+                    retryable=True,
+                )
+            except (OutputExpiredError, NotFoundError):
+                return self._save(
+                    latest,
+                    remote_call_id=remote_id,
+                    status="expired",
+                    error_code="remote.output_expired",
+                    retryable=False,
+                )
+            return self._save(
+                latest,
+                remote_call_id=remote_id,
+                status="cancel_requested",
+                error_code=None,
+                retryable=True,
+            )
         return self._save(
-            job,
+            latest,
             remote_call_id=remote_id,
             status="running",
             error_code=None,
@@ -348,8 +385,8 @@ class JobService:
         if not job.remote_call_id:
             return self._save(
                 job,
-                status="connection_required",
-                error_code="remote.submission_unknown",
+                status="cancel_requested",
+                error_code=None,
                 retryable=True,
             ).public()
         try:
