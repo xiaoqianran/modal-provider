@@ -9,9 +9,6 @@ import modal
 
 from .constants import (
     ARTIFACTS_VOLUME,
-    CANONICAL_MIME,
-    CANONICAL_ROLE,
-    CANONICAL_SIZE,
     CAPABILITIES_FUNCTION,
     CAPABILITY_KIND,
     CONTRACT,
@@ -21,6 +18,10 @@ from .constants import (
     OPERATION,
     OUTPUT_MIME,
     OUTPUT_ROLE,
+    SOURCE_MAX_BYTES,
+    SOURCE_MEDIA_TYPES,
+    SOURCE_PATH_PREFIX,
+    SOURCE_ROLE,
 )
 from .modal_session import client
 from .storage import data_dir
@@ -79,17 +80,19 @@ def _validate_document(value: object) -> dict[str, object]:
     if generation.get("artifact_path_field") not in (None, "path"):
         raise IncompatibleCapability("modal-3D artifact path field is incompatible")
 
-    input_contract = generation.get("input_contract")
-    if not isinstance(input_contract, dict):
-        raise IncompatibleCapability("modal-3D input contract is missing")
-    if (
-        input_contract.get("role") != CANONICAL_ROLE
-        or input_contract.get("mime") != CANONICAL_MIME
-        or input_contract.get("mode") != "RGBA"
-        or input_contract.get("width") != CANONICAL_SIZE
-        or input_contract.get("height") != CANONICAL_SIZE
-    ):
-        raise IncompatibleCapability("modal-3D canonical input contract is incompatible")
+    public_input = generation.get("public_input_contract")
+    if not isinstance(public_input, dict):
+        raise IncompatibleCapability("modal-3D public input contract is missing")
+    expected_input = {
+        "role": SOURCE_ROLE,
+        "mediaTypes": list(SOURCE_MEDIA_TYPES),
+        "maxBytes": SOURCE_MAX_BYTES,
+        "alpha": "optional",
+        "conditioning": "provider",
+        "pathPrefix": SOURCE_PATH_PREFIX,
+    }
+    if public_input != expected_input:
+        raise IncompatibleCapability("modal-3D public input contract is incompatible")
 
     models = doc.get("models")
     if not isinstance(models, list) or not models:

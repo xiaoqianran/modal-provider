@@ -40,31 +40,48 @@ class Volume:
         return iter(self.chunks)
 
 
-def test_validate_canonical_png_requires_rgba_1024(canonical_png):
-    result = artifacts.validate_canonical_png(canonical_png)
-    assert result["bytes"] == len(canonical_png)
-    assert result["digest"] == f"sha256:{hashlib.sha256(canonical_png).hexdigest()}"
+def test_validate_source_image_accepts_png_jpeg_webp(source_png, source_jpeg, source_webp):
+    cases = [
+        (source_png, "image/png", ".png", [640, 480]),
+        (source_jpeg, "image/jpeg", ".jpg", [320, 240]),
+        (source_webp, "image/webp", ".webp", [256, 192]),
+    ]
+    for data, media_type, extension, dimensions in cases:
+        result = artifacts.validate_source_image(data)
+        assert result["bytes"] == len(data)
+        assert result["digest"] == f"sha256:{hashlib.sha256(data).hexdigest()}"
+        assert result["mediaType"] == media_type
+        assert result["extension"] == extension
+        assert [result["width"], result["height"]] == dimensions
 
-    image = Image.new("RGB", (1024, 1024), "red")
+
+def test_validate_source_image_does_not_require_rgba_or_1024(source_jpeg):
+    result = artifacts.validate_source_image(source_jpeg)
+    assert result["mode"] == "RGB"
+    assert (result["width"], result["height"]) == (320, 240)
+
+
+def test_validate_source_image_rejects_unsupported_format():
+    image = Image.new("RGB", (64, 64), "red")
     stream = io.BytesIO()
-    image.save(stream, format="PNG")
-    with pytest.raises(ContractError, match="RGBA"):
-        artifacts.validate_canonical_png(stream.getvalue())
-
-    image = Image.new("RGBA", (512, 512), "red")
-    stream = io.BytesIO()
-    image.save(stream, format="PNG")
-    with pytest.raises(ContractError, match="1024x1024"):
-        artifacts.validate_canonical_png(stream.getvalue())
+    image.save(stream, format="BMP")
+    with pytest.raises(ContractError, match="unsupported source image format"):
+        artifacts.validate_source_image(stream.getvalue())
 
 
-def test_upload_canonical_is_content_addressed(monkeypatch, canonical_png):
+def test_validate_source_image_enforces_byte_limit(monkeypatch, source_png):
+    monkeypatch.setattr(artifacts, "SOURCE_MAX_BYTES", len(source_png) - 1)
+    with pytest.raises(ContractError, match="20 MiB"):
+        artifacts.validate_source_image(source_png)
+
+
+def test_upload_source_is_content_addressed_and_byte_exact(monkeypatch, source_jpeg):
     volume = Volume()
     monkeypatch.setattr(artifacts, "_volume", lambda: volume)
-    result = artifacts.upload_canonical(canonical_png)
-    sha = hashlib.sha256(canonical_png).hexdigest()
-    assert result["path"] == f"client-inputs/{sha}.png"
-    assert volume.batch.files[result["path"]] == canonical_png
+    result = artifacts.upload_source(source_jpeg)
+    sha = hashlib.sha256(source_jpeg).hexdigest()
+    assert result["path"] == f"source-inputs/{sha}.jpg"
+    assert volume.batch.files[result["path"]] == source_jpeg
 
 
 def test_fetch_streams_verified_glb_to_content_cache(tmp_path: Path, monkeypatch, glb_bytes):

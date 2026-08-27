@@ -7,10 +7,27 @@ from PIL import Image
 
 
 @pytest.fixture
-def canonical_png() -> bytes:
-    image = Image.new("RGBA", (1024, 1024), (255, 0, 0, 255))
+def source_png() -> bytes:
+    image = Image.new("RGB", (640, 480), (255, 255, 255))
+    image.paste((220, 20, 20), (220, 120, 420, 360))
     stream = io.BytesIO()
     image.save(stream, format="PNG")
+    return stream.getvalue()
+
+
+@pytest.fixture
+def source_jpeg() -> bytes:
+    image = Image.new("RGB", (320, 240), (220, 20, 20))
+    stream = io.BytesIO()
+    image.save(stream, format="JPEG", quality=92)
+    return stream.getvalue()
+
+
+@pytest.fixture
+def source_webp() -> bytes:
+    image = Image.new("RGBA", (256, 192), (220, 20, 20, 180))
+    stream = io.BytesIO()
+    image.save(stream, format="WEBP", lossless=True)
     return stream.getvalue()
 
 

@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 import modal
 from PIL import Image
 
-from .constants import ARTIFACTS_VOLUME, CANONICAL_SIZE, OUTPUT_MIME, OUTPUT_ROLE
+from .constants import ARTIFACTS_VOLUME, OUTPUT_MIME, OUTPUT_ROLE, SOURCE_MAX_BYTES
 from .contracts import ContractError, validate_artifact
 from .modal_session import client
 from .storage import data_dir
@@ -30,29 +30,45 @@ def _safe_path(value: str) -> str:
     return path.as_posix()
 
 
-def validate_canonical_png(data: bytes) -> dict[str, object]:
+def validate_source_image(data: bytes) -> dict[str, object]:
     if not data:
-        raise ContractError("canonical PNG is empty")
+        raise ContractError("source image is empty")
+    if len(data) > SOURCE_MAX_BYTES:
+        raise ContractError("source image exceeds 20 MiB")
     try:
         with Image.open(io.BytesIO(data)) as image:
             image.load()
-            if image.format != "PNG":
-                raise ContractError("canonical input must be PNG")
-            if image.size != (CANONICAL_SIZE, CANONICAL_SIZE):
-                raise ContractError(f"canonical PNG must be {CANONICAL_SIZE}x{CANONICAL_SIZE}")
-            if image.mode != "RGBA":
-                raise ContractError("canonical PNG must be RGBA")
-    except ContractError:
-        raise
+            image_format = image.format
+            width, height = image.size
+            mode = image.mode
     except Exception as exc:
-        raise ContractError("canonical PNG is invalid") from exc
+        raise ContractError("source image could not be decoded") from exc
+    formats = {
+        "PNG": ("image/png", ".png"),
+        "JPEG": ("image/jpeg", ".jpg"),
+        "WEBP": ("image/webp", ".webp"),
+    }
+    if image_format not in formats:
+        raise ContractError(f"unsupported source image format: {image_format}")
+    if width <= 0 or height <= 0:
+        raise ContractError("source image dimensions are invalid")
+    media_type, extension = formats[image_format]
     sha256 = hashlib.sha256(data).hexdigest()
-    return {"bytes": len(data), "sha256": sha256, "digest": f"sha256:{sha256}"}
+    return {
+        "bytes": len(data),
+        "sha256": sha256,
+        "digest": f"sha256:{sha256}",
+        "mediaType": media_type,
+        "extension": extension,
+        "width": width,
+        "height": height,
+        "mode": mode,
+    }
 
 
-def upload_canonical(data: bytes) -> dict[str, object]:
-    descriptor = validate_canonical_png(data)
-    path = f"client-inputs/{descriptor['sha256']}.png"
+def upload_source(data: bytes) -> dict[str, object]:
+    descriptor = validate_source_image(data)
+    path = f"source-inputs/{descriptor['sha256']}{descriptor['extension']}"
     with _volume().batch_upload(force=True) as batch:
         batch.put_file(io.BytesIO(data), path)
     return {**descriptor, "path": path}

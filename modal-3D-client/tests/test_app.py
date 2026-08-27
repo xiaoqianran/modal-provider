@@ -23,12 +23,21 @@ class Service:
         return {"id": job_id, "status": "cancel_requested"}
 
 
-def test_job_api_accepts_canonical_upload(canonical_png):
+def test_job_api_accepts_source_image_upload(source_jpeg):
     client = TestClient(create_app(Service()))
     response = client.post(
         "/v1/jobs",
-        files={"file": ("canonical.png", canonical_png, "image/png")},
-        data={"model": "fastsam3d-plus-plus", "profile": "recommended", "seed": "42", "job_id": "req_1"},
+        files={"file": ("source.jpg", source_jpeg, "image/jpeg")},
+        data={
+            "model": "fastsam3d-plus-plus",
+            "profile": "recommended",
+            "seed": "42",
+            "job_id": "req_1",
+        },
     )
     assert response.status_code == 200
-    assert response.json() == {"id": "req_1", "status": "running", "model": "fastsam3d-plus-plus"}
+    assert response.json() == {
+        "id": "req_1",
+        "status": "running",
+        "model": "fastsam3d-plus-plus",
+    }

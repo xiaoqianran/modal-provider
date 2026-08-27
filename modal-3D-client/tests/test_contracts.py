@@ -1,5 +1,6 @@
 import pytest
 
+from modal_3d_client.constants import SOURCE_MEDIA_TYPES, SOURCE_PATH_PREFIX, SOURCE_ROLE
 from modal_3d_client.contracts import ContractError, validate_artifact
 
 
@@ -42,7 +43,7 @@ def test_artifact_rejects_identity_mismatch():
         )
 
 
-def test_provider_private_canonical_role_is_stable():
-    from modal_3d_client.constants import CANONICAL_ROLE
-
-    assert CANONICAL_ROLE == "canonical_rgba"
+def test_public_source_contract_constants_do_not_expose_provider_canonical_details():
+    assert SOURCE_ROLE == "source_image"
+    assert SOURCE_MEDIA_TYPES == ("image/png", "image/jpeg", "image/webp")
+    assert SOURCE_PATH_PREFIX == "source-inputs/"

@@ -41,6 +41,27 @@ _RECOVERABLE = (
     ServiceError,
     TimeoutError,
 )
+_CONDITIONING_EVIDENCE_FIELDS = frozenset(
+    {
+        "strategy",
+        "engine",
+        "source_sha256",
+        "canonical_sha256",
+        "source_format",
+        "source_size",
+        "foreground_bbox",
+        "foreground_ratio",
+        "canonical_size",
+        "bytes",
+        "mask_elapsed_ms",
+    }
+)
+
+
+def _public_conditioning(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    return {key: item for key, item in value.items() if key in _CONDITIONING_EVIDENCE_FIELDS}
 
 
 def _now() -> str:
@@ -204,7 +225,7 @@ class JobService:
 
     def submit(
         self,
-        canonical: bytes,
+        source_image: bytes,
         *,
         model: str,
         profile: str = "recommended",
@@ -215,7 +236,7 @@ class JobService:
         if not _JOB_ID.fullmatch(local_id):
             raise ContractError("job_id must be a URL-safe identifier")
         models.options_for(model, profile, seed)
-        local_input = artifacts.validate_canonical_png(canonical)
+        local_input = artifacts.validate_source_image(source_image)
         try:
             existing = self.store.get(local_id)
         except KeyError:
@@ -227,7 +248,7 @@ class JobService:
                 raise ContractError("job_id is already bound to another request")
             return existing.public()
 
-        uploaded = artifacts.upload_canonical(canonical)
+        uploaded = artifacts.upload_source(source_image)
         timestamp = _now()
         intent = Job(
             id=local_id,
@@ -305,10 +326,14 @@ class JobService:
             return self._save(
                 job, status="failed", error_code="artifact.invalid", retryable=False
             ).public()
+        result: dict[str, object] = {"artifact": descriptor}
+        conditioning = _public_conditioning(value.get("conditioning"))
+        if conditioning:
+            result["conditioning"] = conditioning
         return self._save(
             job,
             status="succeeded",
-            result={"artifact": descriptor},
+            result=result,
             error_code=None,
             retryable=False,
         ).public()
