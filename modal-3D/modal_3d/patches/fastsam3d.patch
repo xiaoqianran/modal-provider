@@ -118,7 +118,7 @@ index de7a4da..f577aa7 100644
  from loguru import logger
  
 diff --git a/sam3d_objects/model/io.py b/sam3d_objects/model/io.py
-index 9d05de6..07f0f58 100644
+index 9d05de6..10f7115 100644
 --- a/sam3d_objects/model/io.py
 +++ b/sam3d_objects/model/io.py
 @@ -1,15 +1,10 @@
@@ -159,7 +159,14 @@ index 9d05de6..07f0f58 100644
      checkpoint_path: str,
      strict: bool = True,
      device: Optional[str] = None,
-@@ -167,7 +156,7 @@ def load_model_from_checkpoint(
+@@ -161,13 +150,14 @@ def load_model_from_checkpoint(
+             checkpoint_path,
+             map_location=device,
+             weights_only=False,
++            mmap=True,
+         )
+     elif os.path.isdir(checkpoint_path):  # sharded
+         checkpoint = load_sharded_checkpoint(checkpoint_path, device=device)
      else:  # if neither a file nor a directory, path does not exist
          raise FileNotFoundError(checkpoint_path)
  

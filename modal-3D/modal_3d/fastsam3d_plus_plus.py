@@ -55,7 +55,7 @@ CAPABILITY = worker_capability(
         "build_artifact": BUILD_TAG,
     },
     warm_seconds=6.06,
-    cold_start_seconds=105.0,
+    cold_start_seconds=60.0,
     priority=10,
 )
 
@@ -202,6 +202,8 @@ def sync_weights() -> dict:
         ("ss_generator.yaml", "ss_generator_faster.yaml"),
         ("slat_generator.yaml", "slat_generator_faster.yaml"),
         ("compile_model: true", "compile_model: false"),
+        ("slat_decoder_gs_4_config_path: slat_decoder_gs_4.yaml", "slat_decoder_gs_4_config_path: null"),
+        ("slat_decoder_gs_4_ckpt_path: slat_decoder_gs_4.ckpt", "slat_decoder_gs_4_ckpt_path: null"),
     ):
         if old not in pipeline:
             raise RuntimeError(f"pipeline config changed: missing {old}")
@@ -238,19 +240,27 @@ def sync_weights() -> dict:
 class Model:
     @modal.enter()
     def load(self) -> None:
+        startup_t0 = time.perf_counter()
+
+        imports_t0 = time.perf_counter()
         import torch
         from hydra.utils import instantiate
         from omegaconf import OmegaConf
+        imports_s = time.perf_counter() - imports_t0
 
+        cuda_check_t0 = time.perf_counter()
         if torch.cuda.get_device_capability() != (8, 9):
             raise RuntimeError(f"expected L40S sm_89, got {torch.cuda.get_device_name()}")
+        cuda_check_s = time.perf_counter() - cuda_check_t0
 
+        config_t0 = time.perf_counter()
         config = OmegaConf.load(PIPELINE)
         config.workspace_dir = str(PIPELINE.parent)
         config.rendering_engine = "pytorch3d"
         config.compile_model = False
+        config_s = time.perf_counter() - config_t0
 
-        t0 = time.perf_counter()
+        load_t0 = time.perf_counter()
         self.pipe = instantiate(config)
         self.pipe.ss_params = {
             "ss_faster_stride": 3,
@@ -269,11 +279,25 @@ class Model:
         }
         self.pipe.enable_mesh = True
         torch.cuda.synchronize()
-        self.load_s = time.perf_counter() - t0
+        self.load_s = time.perf_counter() - load_t0
+        self.startup_s = time.perf_counter() - startup_t0
+        self.load_profile = {
+            "imports_s": imports_s,
+            "cuda_check_s": cuda_check_s,
+            "config_s": config_s,
+            "model_load_s": self.load_s,
+            "total_s": self.startup_s,
+        }
+        print(f"FASTSAM3D_STARTUP_PROFILE {self.load_profile}", flush=True)
 
     @modal.method()
     def warmup(self) -> dict:
-        return {"model": CAPABILITY["id"], "load_s": self.load_s}
+        return {
+            "model": CAPABILITY["id"],
+            "load_s": self.load_s,
+            "startup_s": self.startup_s,
+            "load_profile": self.load_profile,
+        }
 
     @modal.method()
     def generate(
@@ -289,15 +313,20 @@ class Model:
         from fft.fft2d import calculate_hfer_robust
         from PIL import Image
 
+        wall_t0 = time.perf_counter()
+        decode_t0 = time.perf_counter()
         image = np.array(Image.open(io.BytesIO(image_bytes)).convert("RGBA"), dtype=np.uint8)
+        decode_s = time.perf_counter() - decode_t0
         alpha = image[..., 3]
         if alpha.min() == 255:
             raise ValueError("FastSAM3D++ input must contain a foreground alpha mask")
 
         # Fast-SAM3D's spectral mesh policy uses the object crop HFER.
+        hfer_t0 = time.perf_counter()
         tmp = Path("/tmp/fastsam3d-input.png")
         cv2.imwrite(str(tmp), cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA))
         self.pipe.hfer_2d = float(calculate_hfer_robust(str(tmp)))
+        hfer_s = time.perf_counter() - hfer_t0
 
         fm = self.pipe.models["slat_generator"]
         if dmd_interval <= 1:
@@ -329,12 +358,18 @@ class Model:
         inference_s = time.perf_counter() - t0
 
         mesh = out["mesh"][0]
+        export_t0 = time.perf_counter()
         glb = out["glb"].export(file_type="glb")
+        export_s = time.perf_counter() - export_t0
+
+        artifact_t0 = time.perf_counter()
         name = f"fastsam3d-plus-plus/{uuid.uuid4().hex}.glb"
         path = Path("/artifacts") / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(glb)
         artifacts.commit()
+        artifact_s = time.perf_counter() - artifact_t0
+        total_s = time.perf_counter() - wall_t0
 
         return {
             "model": "fastsam3d-plus-plus",
@@ -352,7 +387,17 @@ class Model:
             "source_vertices": len(mesh.vertices),
             "source_faces": len(mesh.faces),
             "load_s": self.load_s,
+            "startup_s": self.startup_s,
+            "load_profile": self.load_profile,
             "inference_s": inference_s,
+            "timings": {
+                "decode_s": decode_s,
+                "hfer_s": hfer_s,
+                "inference_s": inference_s,
+                "glb_export_s": export_s,
+                "artifact_write_commit_s": artifact_s,
+                "total_s": total_s,
+            },
             "peak_vram_allocated_gb": torch.cuda.max_memory_allocated() / 2**30,
             "peak_vram_reserved_gb": torch.cuda.max_memory_reserved() / 2**30,
         }
