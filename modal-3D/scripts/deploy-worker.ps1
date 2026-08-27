@@ -8,10 +8,17 @@ if ([IO.Path]::GetExtension($workerPath) -ne ".py") {
     throw "Worker must be a Python file: $workerPath"
 }
 
-& modal deploy $Worker
+$rootPath = (Get-Location).Path
+$relativePath = [IO.Path]::GetRelativePath($rootPath, $workerPath)
+if ($relativePath.StartsWith("..")) {
+    throw "Worker must be importable from the current project root: $workerPath"
+}
+$module = [IO.Path]::ChangeExtension($relativePath, $null).Replace("\", ".").Replace("/", ".")
+
+& modal deploy -m $module
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-& modal run "${Worker}::register"
+& modal run -m "${module}::register"
 exit $LASTEXITCODE

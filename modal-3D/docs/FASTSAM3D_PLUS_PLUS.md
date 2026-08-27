@@ -33,6 +33,6 @@ The first control inference was 5.73s because it included first-inference warm-u
 All tested outputs were watertight with zero boundary and non-manifold edges. DMD changed surface geometry slightly (~0.35–0.38% normalized symmetric surface distance versus control) without reducing warm latency.
 
 ```bash
-modal run modal_3d/fastsam3d_plus_plus.py::sync_weights
+modal run -m modal_3d.fastsam3d_plus_plus::sync_weights
 ./scripts/deploy-worker.ps1 modal_3d/fastsam3d_plus_plus.py
 ```
