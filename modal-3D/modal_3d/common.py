@@ -183,11 +183,16 @@ def worker_capability(
     options: dict,
     *,
     warm_seconds: float,
+    cold_start_seconds: float | None = None,
     profile: dict | None = None,
     output: str = "geometry",
     deployment: dict | None = None,
     priority: int = 1000,
 ) -> dict:
+    reference = {"warm_seconds": warm_seconds}
+    if cold_start_seconds is not None:
+        reference["cold_start_seconds"] = cold_start_seconds
+
     capability = {
         "id": model_id,
         "name": name,
@@ -200,7 +205,7 @@ def worker_capability(
         "profiles": [{"id": "recommended", "name": "推荐 · 已验证", "options": profile or {}}],
         "options": options,
         "priority": priority,
-        "reference": {"warm_seconds": warm_seconds},
+        "reference": reference,
     }
     if deployment:
         capability["deployment"] = deployment

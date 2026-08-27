@@ -55,6 +55,7 @@ CAPABILITY = worker_capability(
         "build_artifact": BUILD_TAG,
     },
     warm_seconds=6.06,
+    cold_start_seconds=105.0,
     priority=10,
 )
 
@@ -230,7 +231,7 @@ def sync_weights() -> dict:
     volumes={"/models": weights, "/artifacts": artifacts},
     min_containers=0,
     max_containers=1,
-    scaledown_window=60,
+    scaledown_window=300,
     timeout=30 * 60,
     startup_timeout=20 * 60,
 )

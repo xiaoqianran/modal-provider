@@ -60,7 +60,9 @@ def _task_record(call, model: str, kind: str, capability: dict, job_key: str) ->
         "kind": kind,
         "status": "running",
         "submitted_at": time.time(),
-        "cold_start_seconds": capability.get("reference", {}).get("warm_seconds"),
+        # Cold-start and warm latency are different metrics. Never use the
+        # warm request latency as a proxy for container/model startup.
+        "cold_start_seconds": capability.get("reference", {}).get("cold_start_seconds"),
         "deduplicated": False,
     }
     tasks.put(call.object_id, record)

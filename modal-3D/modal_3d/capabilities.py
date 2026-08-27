@@ -63,6 +63,13 @@ def validate_capability(capability: dict) -> dict:
     warm_seconds = reference.get("warm_seconds")
     if not isinstance(warm_seconds, (int, float)) or isinstance(warm_seconds, bool):
         raise TypeError("reference.warm_seconds must be a number")
+    cold_start_seconds = reference.get("cold_start_seconds")
+    if cold_start_seconds is not None and (
+        not isinstance(cold_start_seconds, (int, float))
+        or isinstance(cold_start_seconds, bool)
+        or cold_start_seconds <= 0
+    ):
+        raise TypeError("reference.cold_start_seconds must be a positive number when present")
     return deepcopy(capability)
 
 

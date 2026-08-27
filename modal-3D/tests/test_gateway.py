@@ -97,7 +97,10 @@ class GatewaySubmissionTests(unittest.TestCase):
         self.tasks = FakeDict()
         self.keys = FakeDict()
         self.spawn = FakeSpawnFunction()
-        self.capability = {"worker_app": "modal-3d-test", "reference": {"warm_seconds": 1}}
+        self.capability = {
+            "worker_app": "modal-3d-test",
+            "reference": {"warm_seconds": 1, "cold_start_seconds": 90},
+        }
         self.patches = [
             patch.object(gateway, "tasks", self.tasks),
             patch.object(gateway, "job_keys", self.keys),
@@ -113,6 +116,15 @@ class GatewaySubmissionTests(unittest.TestCase):
         for item in self.patches:
             item.start()
             self.addCleanup(item.stop)
+
+    def test_submission_uses_explicit_cold_start_reference(self) -> None:
+        record = gateway._submit("test", "client-inputs/abc.png", {"seed": 42})
+        self.assertEqual(record["cold_start_seconds"], 90)
+
+    def test_submission_does_not_use_warm_latency_as_cold_start(self) -> None:
+        self.capability["reference"].pop("cold_start_seconds")
+        record = gateway._submit("test", "client-inputs/abc.png", {"seed": 42})
+        self.assertIsNone(record["cold_start_seconds"])
 
     def test_duplicate_generation_reuses_existing_task(self) -> None:
         first = gateway._submit("test", "client-inputs/abc.png", {"seed": 42})

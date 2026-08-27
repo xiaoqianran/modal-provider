@@ -58,6 +58,7 @@ CAPABILITY = worker_capability(
         "build_artifact": TAG,
     },
     warm_seconds=108.92,
+    cold_start_seconds=99.08,
     priority=40,
 )
 
