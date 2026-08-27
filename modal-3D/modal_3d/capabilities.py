@@ -186,8 +186,7 @@ def _validate_value(name: str, value, schema: dict) -> None:
         raise ValueError(f"option {name} must be <= {maximum}")
 
 
-def validate_options(model: str, options: dict | None, registry: Registry | None = None) -> dict:
-    capability = model_capability(model, registry)
+def validate_options_for_capability(capability: dict, options: dict | None) -> dict:
     if options is None:
         return {}
     if not isinstance(options, dict):
@@ -202,3 +201,7 @@ def validate_options(model: str, options: dict | None, registry: Registry | None
     for name, value in validated.items():
         _validate_value(name, value, schemas[name])
     return validated
+
+
+def validate_options(model: str, options: dict | None, registry: Registry | None = None) -> dict:
+    return validate_options_for_capability(model_capability(model, registry), options)

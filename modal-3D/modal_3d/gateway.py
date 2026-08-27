@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+import uuid
 from pathlib import Path
 
 import modal
@@ -13,7 +14,7 @@ from .capabilities import (
     capabilities_document,
     model_capability,
     model_registry,
-    validate_options,
+    validate_options_for_capability,
 )
 
 APP_NAME = "modal-3d-gateway"
@@ -33,6 +34,9 @@ job_keys = modal.Dict.from_name("modal-3d-job-keys", create_if_missing=True)
 registry_health = modal.Dict.from_name("modal-3d-registry-health", create_if_missing=True)
 registry = model_registry()
 REGISTRY_FAILURE_LIMIT = 3
+SUBMISSION_RESERVATION_WAIT_SECONDS = 5.0
+SUBMISSION_RESERVATION_STALE_SECONDS = 30.0
+SUBMISSION_RESERVATION_POLL_SECONDS = 0.02
 
 
 def _public_capabilities() -> dict:
@@ -61,7 +65,15 @@ def _validate_input_path(input_path: str) -> str:
     return rel.as_posix()
 
 
-def _task_record(call, model: str, kind: str, capability: dict, job_key: str) -> dict:
+def _task_record(
+    call,
+    model: str,
+    kind: str,
+    capability: dict,
+    job_key: str,
+    *,
+    publish_job_key: bool = True,
+) -> dict:
     record = {
         "task_id": call.object_id,
         "call_id": call.object_id,
@@ -76,13 +88,14 @@ def _task_record(call, model: str, kind: str, capability: dict, job_key: str) ->
         "deduplicated": False,
     }
     tasks.put(call.object_id, record)
-    job_keys.put(job_key, call.object_id)
+    if publish_job_key:
+        job_keys.put(job_key, call.object_id)
     return record
 
 
 def _reusable_task(job_key: str) -> dict | None:
     task_id = job_keys.get(job_key)
-    if not task_id:
+    if not isinstance(task_id, str) or not task_id:
         return None
     record = tasks.get(task_id)
     if not record:
@@ -121,6 +134,44 @@ def _reusable_task(job_key: str) -> dict | None:
         return None
 
 
+def _reserve_submission(job_key: str) -> tuple[dict | None, dict | None]:
+    """Atomically reserve a job key or wait for the current owner to publish its task."""
+    reservation = {
+        "state": "reserving",
+        "token": uuid.uuid4().hex,
+        "reserved_at": time.time(),
+    }
+    deadline = time.monotonic() + SUBMISSION_RESERVATION_WAIT_SECONDS
+    while True:
+        current = job_keys.get(job_key)
+        if current is None:
+            if job_keys.put(job_key, reservation, skip_if_exists=True):
+                return reservation, None
+        elif isinstance(current, str):
+            reusable = _reusable_task(job_key)
+            if reusable is not None:
+                return None, reusable
+        elif isinstance(current, dict) and current.get("state") == "reserving":
+            reserved_at = current.get("reserved_at")
+            if isinstance(reserved_at, (int, float)) and time.time() - reserved_at > SUBMISSION_RESERVATION_STALE_SECONDS:
+                # A reservation should last only for the very short spawn call. If it
+                # is this old, its owner died before publishing a FunctionCall ID.
+                if job_keys.get(job_key) == current:
+                    job_keys.pop(job_key, None)
+                continue
+        else:
+            raise RuntimeError("job key contains an invalid reservation value")
+
+        if time.monotonic() >= deadline:
+            raise RuntimeError("concurrent submission is still being reserved; retry")
+        time.sleep(SUBMISSION_RESERVATION_POLL_SECONDS)
+
+
+def _release_submission_reservation(job_key: str, reservation: dict) -> None:
+    if job_keys.get(job_key) == reservation:
+        job_keys.pop(job_key, None)
+
+
 def _spawn_generation(capability: dict, input_path: str, options: dict):
     entrypoint = capability.get("generation_entrypoint")
     if entrypoint is not None:
@@ -133,14 +184,28 @@ def _spawn_generation(capability: dict, input_path: str, options: dict):
 
 def _submit(model: str, input_path: str, options: dict | None = None) -> dict:
     capability = model_capability(model, registry)
-    validated = validate_options(model, options, registry)
+    validated = validate_options_for_capability(capability, options)
     normalized_path = _validate_input_path(input_path)
     key = _job_key(model, normalized_path, validated)
-    existing = _reusable_task(key)
+    reservation, existing = _reserve_submission(key)
     if existing is not None:
         return existing
-    call = _spawn_generation(capability, normalized_path, validated)
-    return _task_record(call, model, "generation", capability, key)
+    assert reservation is not None
+    try:
+        call = _spawn_generation(capability, normalized_path, validated)
+        record = _task_record(
+            call,
+            model,
+            "generation",
+            capability,
+            key,
+            publish_job_key=False,
+        )
+    except Exception:
+        _release_submission_reservation(key, reservation)
+        raise
+    job_keys.put(key, call.object_id)
+    return record
 
 
 def _status(task_id: str) -> dict:
@@ -180,6 +245,7 @@ def capabilities() -> dict:
 
 
 @app.function(image=image, max_containers=1)
+@modal.concurrent(max_inputs=32, target_inputs=8)
 def submit(model: str, input_path: str, options: dict | None = None) -> dict:
     return _submit(model, input_path, options)
 
@@ -219,8 +285,15 @@ def cleanup_artifacts() -> dict:
             if record.get("job_key"):
                 job_keys.pop(record["job_key"], None)
             deleted_tasks += 1
-    for key, task_id in list(job_keys.items()):
-        if tasks.get(task_id) is None:
+    for key, task_ref in list(job_keys.items()):
+        if isinstance(task_ref, str):
+            if tasks.get(task_ref) is None:
+                job_keys.pop(key, None)
+        elif isinstance(task_ref, dict):
+            reserved_at = task_ref.get("reserved_at")
+            if isinstance(reserved_at, (int, float)) and time.time() - reserved_at > SUBMISSION_RESERVATION_STALE_SECONDS:
+                job_keys.pop(key, None)
+        else:
             job_keys.pop(key, None)
     return {"files": deleted_files, "bytes": deleted_bytes, "tasks": deleted_tasks}
 

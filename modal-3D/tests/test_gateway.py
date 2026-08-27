@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import threading
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 from modal_3d import gateway
@@ -10,18 +12,26 @@ from modal_3d import gateway
 class FakeDict:
     def __init__(self, values: dict | None = None):
         self.values = dict(values or {})
+        self.lock = threading.Lock()
 
     def get(self, key, default=None):
-        return self.values.get(key, default)
+        with self.lock:
+            return self.values.get(key, default)
 
-    def put(self, key, value):
-        self.values[key] = value
+    def put(self, key, value, *, skip_if_exists: bool = False):
+        with self.lock:
+            if skip_if_exists and key in self.values:
+                return False
+            self.values[key] = value
+            return True
 
     def pop(self, key, default=None):
-        return self.values.pop(key, default)
+        with self.lock:
+            return self.values.pop(key, default)
 
     def items(self):
-        return list(self.values.items())
+        with self.lock:
+            return list(self.values.items())
 
 
 class FakeCall:
@@ -147,7 +157,11 @@ class GatewaySubmissionTests(unittest.TestCase):
             patch.object(gateway, "tasks", self.tasks),
             patch.object(gateway, "job_keys", self.keys),
             patch.object(gateway, "model_capability", return_value=self.capability),
-            patch.object(gateway, "validate_options", side_effect=lambda _m, opts, _r: dict(opts or {})),
+            patch.object(
+                gateway,
+                "validate_options_for_capability",
+                side_effect=lambda _cap, opts: dict(opts or {}),
+            ),
             patch.object(gateway.modal.Function, "from_name", return_value=self.spawn),
             patch.object(
                 gateway.modal.functions.FunctionCall,
@@ -189,6 +203,32 @@ class GatewaySubmissionTests(unittest.TestCase):
         self.assertEqual(first["task_id"], second["task_id"])
         self.assertFalse(first["deduplicated"])
         self.assertTrue(second["deduplicated"])
+
+    def test_concurrent_duplicate_submissions_spawn_once(self) -> None:
+        original_spawn = self.spawn.spawn
+
+        def slow_spawn(input_path: str, options: dict):
+            time.sleep(0.05)
+            return original_spawn(input_path, options)
+
+        self.spawn.spawn = slow_spawn
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            records = list(
+                executor.map(
+                    lambda _: gateway._submit("test", "client-inputs/abc.png", {"seed": 42}),
+                    range(8),
+                )
+            )
+        self.assertEqual(len(self.spawn.calls), 1)
+        self.assertEqual({record["task_id"] for record in records}, {"fc-1"})
+        self.assertEqual(sum(bool(record["deduplicated"]) for record in records), 7)
+
+    def test_spawn_failure_releases_atomic_reservation(self) -> None:
+        with patch.object(gateway, "_spawn_generation", side_effect=RuntimeError("spawn failed")):
+            with self.assertRaisesRegex(RuntimeError, "spawn failed"):
+                gateway._submit("test", "client-inputs/abc.png", {"seed": 42})
+        key = gateway._job_key("test", "client-inputs/abc.png", {"seed": 42})
+        self.assertIsNone(self.keys.get(key))
 
     def test_completed_generation_is_not_treated_as_cache(self) -> None:
         first = gateway._submit("test", "client-inputs/abc.png", {"seed": 42})
