@@ -13,6 +13,8 @@ class WindowsDeployContractTests(unittest.TestCase):
         self.assertEqual(str(fastsam3d_plus_plus.SRC), "/opt/fastsam3d-plus-plus")
         self.assertEqual(str(fastsam3d_plus_plus.MODEL_DIR), "/models/sam3d")
         self.assertEqual(str(fastsam3d_plus_plus.PIPELINE), "/models/sam3d/checkpoints/pipeline.fast.yaml")
+        source = Path(fastsam3d_plus_plus.__file__).read_text(encoding="utf-8")
+        self.assertIn("OmegaConf.load(str(PIPELINE))", source)
         self.assertIsInstance(gateway.ARTIFACT_ROOT, str)
         self.assertEqual(gateway.ARTIFACT_ROOT, "/artifacts")
 

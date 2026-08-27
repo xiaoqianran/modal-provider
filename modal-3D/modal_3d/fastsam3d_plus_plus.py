@@ -270,7 +270,10 @@ class Model:
         cuda_check_s = time.perf_counter() - cuda_check_t0
 
         config_t0 = time.perf_counter()
-        config = OmegaConf.load(PIPELINE)
+        # OmegaConf only accepts concrete pathlib.Path/str/file handles; keep
+        # PIPELINE as PurePosixPath for Windows-safe deployment, but cross the
+        # third-party API boundary as a plain POSIX string inside Linux.
+        config = OmegaConf.load(str(PIPELINE))
         config.workspace_dir = str(PIPELINE.parent)
         config.rendering_engine = "pytorch3d"
         config.compile_model = False
