@@ -85,6 +85,15 @@ def validate_capability(capability: dict) -> dict:
         or cold_start_seconds <= 0
     ):
         raise TypeError("reference.cold_start_seconds must be a positive number when present")
+
+    entrypoint = capability.get("generation_entrypoint")
+    if entrypoint is not None:
+        if not isinstance(entrypoint, dict) or entrypoint.get("kind") != "class_method":
+            raise TypeError("generation_entrypoint must be a class_method object")
+        for field in ("class_name", "method_name"):
+            value = entrypoint.get(field)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"generation_entrypoint.{field} must be a non-empty string")
     return deepcopy(capability)
 
 
@@ -103,6 +112,11 @@ def _registered_models(registry: Registry | None = None) -> list[dict]:
 
 
 def capabilities_document(registry: Registry | None = None) -> dict:
+    models = _registered_models(registry)
+    for model in models:
+        # Internal Modal routing metadata is intentionally not part of the
+        # client-facing capabilities contract.
+        model.pop("generation_entrypoint", None)
     return {
         "contract": CONTRACT,
         "generation": {
@@ -111,7 +125,7 @@ def capabilities_document(registry: Registry | None = None) -> dict:
             "job_transport": "modal.FunctionCall",
             "input_contract": deepcopy(CANONICAL_INPUT),
         },
-        "models": _registered_models(registry),
+        "models": models,
     }
 
 

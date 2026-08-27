@@ -45,6 +45,28 @@ class FakeSpawnFunction:
         return FakeCall(object_id=f"fc-{len(self.calls)}")
 
 
+class FakeRemoteMethod:
+    def __init__(self):
+        self.calls: list[tuple[str, dict]] = []
+
+    def spawn(self, input_path: str, options: dict):
+        self.calls.append((input_path, dict(options)))
+        return FakeCall(object_id=f"fc-direct-{len(self.calls)}")
+
+
+class FakeRemoteObject:
+    def __init__(self, method: FakeRemoteMethod):
+        self.generate_job = method
+
+
+class FakeRemoteClass:
+    def __init__(self, method: FakeRemoteMethod):
+        self.method = method
+
+    def __call__(self):
+        return FakeRemoteObject(self.method)
+
+
 class FakeHealthFunction:
     def __init__(self, value=None, error: Exception | None = None):
         self.value = value
@@ -54,6 +76,26 @@ class FakeHealthFunction:
         if self.error:
             raise self.error
         return self.value
+
+
+class GatewayCapabilityTests(unittest.TestCase):
+    def test_public_capabilities_strip_internal_generation_entrypoint(self) -> None:
+        document = {
+            "contract": "modal-3d.capabilities.v2",
+            "models": [
+                {
+                    "id": "test",
+                    "generation_entrypoint": {
+                        "kind": "class_method",
+                        "class_name": "Model",
+                        "method_name": "generate_job",
+                    },
+                }
+            ],
+        }
+        with patch.object(gateway, "capabilities_document", return_value=document):
+            public = gateway._public_capabilities()
+        self.assertNotIn("generation_entrypoint", public["models"][0])
 
 
 class GatewayStatusTests(unittest.TestCase):
@@ -125,6 +167,20 @@ class GatewaySubmissionTests(unittest.TestCase):
         self.capability["reference"].pop("cold_start_seconds")
         record = gateway._submit("test", "client-inputs/abc.png", {"seed": 42})
         self.assertIsNone(record["cold_start_seconds"])
+
+    def test_direct_generation_entrypoint_spawns_class_method(self) -> None:
+        direct = FakeRemoteMethod()
+        self.capability["generation_entrypoint"] = {
+            "kind": "class_method",
+            "class_name": "Model",
+            "method_name": "generate_job",
+        }
+        with patch.object(gateway.modal.Cls, "from_name", return_value=FakeRemoteClass(direct)) as lookup:
+            record = gateway._submit("test", "client-inputs/abc.png", {"seed": 42})
+        lookup.assert_called_once_with("modal-3d-test", "Model")
+        self.assertEqual(direct.calls, [("client-inputs/abc.png", {"seed": 42})])
+        self.assertEqual(record["task_id"], "fc-direct-1")
+        self.assertEqual(self.spawn.calls, [])
 
     def test_duplicate_generation_reuses_existing_task(self) -> None:
         first = gateway._submit("test", "client-inputs/abc.png", {"seed": 42})

@@ -7,7 +7,13 @@ from pathlib import Path
 
 import modal
 
-from .common import register_worker_entrypoint, worker_capability
+from .common import (
+    generation_result,
+    register_worker_entrypoint,
+    validate_canonical_png,
+    validate_glb,
+    worker_capability,
+)
 
 APP_NAME = "modal-3d-fastsam3d"
 GPU = "L40S"
@@ -56,6 +62,11 @@ CAPABILITY = worker_capability(
     },
     warm_seconds=6.06,
     cold_start_seconds=60.0,
+    generation_entrypoint={
+        "kind": "class_method",
+        "class_name": "Model",
+        "method_name": "generate_job",
+    },
     priority=10,
 )
 
@@ -299,8 +310,7 @@ class Model:
             "load_profile": self.load_profile,
         }
 
-    @modal.method()
-    def generate(
+    def _generate(
         self,
         image_bytes: bytes,
         seed: int = 42,
@@ -401,6 +411,57 @@ class Model:
             "peak_vram_allocated_gb": torch.cuda.max_memory_allocated() / 2**30,
             "peak_vram_reserved_gb": torch.cuda.max_memory_reserved() / 2**30,
         }
+
+    @modal.method()
+    def generate(
+        self,
+        image_bytes: bytes,
+        seed: int = 42,
+        dmd_interval: int = 1,
+        dmd_history: int = 5,
+    ) -> dict:
+        return self._generate(
+            image_bytes,
+            seed=seed,
+            dmd_interval=dmd_interval,
+            dmd_history=dmd_history,
+        )
+
+    @modal.method()
+    def generate_job(self, input_path: str, options: dict | None = None) -> dict:
+        job_t0 = time.perf_counter()
+        rel = Path(input_path)
+        if rel.is_absolute() or ".." in rel.parts or not rel.parts or rel.parts[0] != "client-inputs":
+            raise ValueError("input_path must be under client-inputs/ and relative to /artifacts")
+
+        input_path_obj = Path("/artifacts") / rel
+        if not input_path_obj.is_file():
+            artifacts.reload()
+        if not input_path_obj.is_file():
+            raise FileNotFoundError(input_path)
+
+        input_t0 = time.perf_counter()
+        validate_canonical_png(input_path_obj)
+        image_bytes = input_path_obj.read_bytes()
+        input_validation_s = time.perf_counter() - input_t0
+
+        value = self._generate(image_bytes, **dict(options or {}))
+        artifact_rel = Path(str(value.get("artifact", "")))
+        if not artifact_rel.parts or artifact_rel.is_absolute() or ".." in artifact_rel.parts:
+            raise ValueError("worker artifact path must be relative to /artifacts")
+        expected_size = value.get("glb_bytes")
+        if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size <= 0:
+            raise ValueError("worker result must contain a positive glb_bytes integer")
+
+        artifact_t0 = time.perf_counter()
+        metadata = validate_glb(Path("/artifacts") / artifact_rel, expected_size)
+        artifact_validation_s = time.perf_counter() - artifact_t0
+        metadata["path"] = artifact_rel.as_posix()
+        timings = value.setdefault("timings", {})
+        timings["job_input_validation_s"] = input_validation_s
+        timings["job_artifact_validation_s"] = artifact_validation_s
+        timings["job_total_s"] = time.perf_counter() - job_t0
+        return generation_result(CAPABILITY["id"], value, metadata)
 
 
 generate, warmup, register = register_worker_entrypoint(app, artifacts, Model, CAPABILITY)

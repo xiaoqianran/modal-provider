@@ -33,6 +33,14 @@ registry = model_registry()
 REGISTRY_FAILURE_LIMIT = 3
 
 
+def _public_capabilities() -> dict:
+    document = capabilities_document(registry)
+    for model in document.get("models", []):
+        if isinstance(model, dict):
+            model.pop("generation_entrypoint", None)
+    return document
+
+
 def _job_key(model: str, input_path: str, options: dict) -> str:
     payload = json.dumps(
         {"model": model, "input_path": input_path, "options": options},
@@ -111,6 +119,16 @@ def _reusable_task(job_key: str) -> dict | None:
         return None
 
 
+def _spawn_generation(capability: dict, input_path: str, options: dict):
+    entrypoint = capability.get("generation_entrypoint")
+    if entrypoint is not None:
+        remote_cls = modal.Cls.from_name(capability["worker_app"], entrypoint["class_name"])
+        method = getattr(remote_cls(), entrypoint["method_name"])
+        return method.spawn(input_path, options)
+    fn = modal.Function.from_name(capability["worker_app"], "generate")
+    return fn.spawn(input_path, options)
+
+
 def _submit(model: str, input_path: str, options: dict | None = None) -> dict:
     capability = model_capability(model, registry)
     validated = validate_options(model, options, registry)
@@ -119,8 +137,7 @@ def _submit(model: str, input_path: str, options: dict | None = None) -> dict:
     existing = _reusable_task(key)
     if existing is not None:
         return existing
-    fn = modal.Function.from_name(capability["worker_app"], "generate")
-    call = fn.spawn(normalized_path, validated)
+    call = _spawn_generation(capability, normalized_path, validated)
     return _task_record(call, model, "generation", capability, key)
 
 
@@ -157,7 +174,7 @@ def _status(task_id: str) -> dict:
 
 @app.function(image=image)
 def capabilities() -> dict:
-    return capabilities_document(registry)
+    return _public_capabilities()
 
 
 @app.function(image=image, max_containers=1)
@@ -263,6 +280,6 @@ def web():
 
     @api.get("/capabilities")
     def get_capabilities():
-        return capabilities_document(registry)
+        return _public_capabilities()
 
     return api

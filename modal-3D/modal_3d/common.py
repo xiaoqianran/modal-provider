@@ -191,6 +191,7 @@ def worker_capability(
     *,
     warm_seconds: float,
     cold_start_seconds: float | None = None,
+    generation_entrypoint: dict | None = None,
     profile: dict | None = None,
     output: str = "geometry",
     deployment: dict | None = None,
@@ -214,6 +215,8 @@ def worker_capability(
         "priority": priority,
         "reference": reference,
     }
+    if generation_entrypoint:
+        capability["generation_entrypoint"] = deepcopy(generation_entrypoint)
     deployment_metadata = dict(deployment or {})
     deployment_metadata["adapter_revision"] = WORKER_ADAPTER_REVISION
     capability["deployment"] = deployment_metadata

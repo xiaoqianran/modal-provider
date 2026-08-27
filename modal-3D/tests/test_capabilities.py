@@ -143,6 +143,23 @@ class CapabilityContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "does not support profile"):
             profile_options("pixal3d", "quality", self.registry)
 
+    def test_internal_generation_entrypoint_is_not_exposed_to_clients(self) -> None:
+        document = capabilities_document(self.registry)
+        fastsam = next(model for model in document["models"] if model["id"] == "fastsam3d-plus-plus")
+        self.assertNotIn("generation_entrypoint", fastsam)
+
+    def test_fastsam_advertises_direct_generation_entrypoint(self) -> None:
+        self.assertEqual(
+            FASTSAM3D["generation_entrypoint"],
+            {"kind": "class_method", "class_name": "Model", "method_name": "generate_job"},
+        )
+
+    def test_invalid_generation_entrypoint_is_rejected(self) -> None:
+        invalid = deepcopy(FASTSAM3D)
+        invalid["generation_entrypoint"] = {"kind": "class_method", "class_name": "Model"}
+        with self.assertRaisesRegex(ValueError, "method_name"):
+            validate_capability(invalid)
+
     def test_invalid_manifest_is_rejected_before_registration(self) -> None:
         with self.assertRaisesRegex(ValueError, "missing fields"):
             validate_capability({"id": "incomplete"})
