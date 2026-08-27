@@ -47,3 +47,35 @@ def test_public_source_contract_constants_do_not_expose_provider_canonical_detai
     assert SOURCE_ROLE == "source_image"
     assert SOURCE_MEDIA_TYPES == ("image/png", "image/jpeg", "image/webp")
     assert SOURCE_PATH_PREFIX == "source-inputs/"
+
+
+def test_remote_artifact_requires_provider_locator():
+    sha = "a" * 64
+    with pytest.raises(ContractError, match="artifact.path is required"):
+        validate_artifact(
+            {
+                "mime": "model/gltf-binary",
+                "sha256": sha,
+                "bytes": 12,
+            },
+            model="fastsam3d-plus-plus",
+        )
+
+
+def test_cached_public_artifact_may_omit_provider_locator():
+    sha = "a" * 64
+    artifact = validate_artifact(
+        {
+            "id": "art_cached",
+            "role": "primary-glb",
+            "mediaType": "model/gltf-binary",
+            "digest": f"sha256:{sha}",
+            "mime": "model/gltf-binary",
+            "sha256": sha,
+            "bytes": 12,
+        },
+        model="fastsam3d-plus-plus",
+        require_path=False,
+    )
+    assert artifact["id"] == "art_cached"
+    assert "path" not in artifact

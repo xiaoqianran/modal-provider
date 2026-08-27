@@ -162,7 +162,7 @@ def _public_descriptor(
 
 
 def cached(descriptor: object, *, model: str) -> tuple[dict[str, object], Path]:
-    artifact = validate_artifact(descriptor, model=model)
+    artifact = validate_artifact(descriptor, model=model, require_path=False)
     sha256 = str(artifact["sha256"])
     path = _cache_path(sha256)
     if not path.is_file():

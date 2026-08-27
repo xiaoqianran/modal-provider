@@ -127,3 +127,25 @@ def test_fetch_rejects_corrupt_glb(tmp_path: Path, monkeypatch, glb_bytes):
     with pytest.raises(ContractError):
         artifacts.fetch(descriptor, model="fastsam3d-plus-plus")
     assert not list(tmp_path.rglob("*.part"))
+
+
+def test_cached_artifact_uses_public_descriptor_without_remote_path(
+    tmp_path: Path, monkeypatch, glb_bytes
+):
+    sha = hashlib.sha256(glb_bytes).hexdigest()
+    monkeypatch.setenv("MODAL_3D_CLIENT_DATA_DIR", str(tmp_path))
+    cache = artifacts._cache_path(sha)
+    cache.write_bytes(glb_bytes)
+    descriptor = {
+        "id": "art_cached",
+        "role": "primary-glb",
+        "mediaType": "model/gltf-binary",
+        "digest": f"sha256:{sha}",
+        "mime": "model/gltf-binary",
+        "sha256": sha,
+        "bytes": len(glb_bytes),
+    }
+    public, path = artifacts.cached(descriptor, model="fastsam3d-plus-plus")
+    assert path == cache
+    assert public["id"] == "art_cached"
+    assert "path" not in public

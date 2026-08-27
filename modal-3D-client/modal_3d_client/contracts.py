@@ -11,7 +11,9 @@ class ContractError(ValueError):
     pass
 
 
-def validate_artifact(value: object, *, model: str) -> dict[str, object]:
+def validate_artifact(
+    value: object, *, model: str, require_path: bool = True
+) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ContractError("artifact must be an object")
     artifact = dict(value)
@@ -30,8 +32,10 @@ def validate_artifact(value: object, *, model: str) -> dict[str, object]:
     if artifact.get("role") not in (None, OUTPUT_ROLE):
         raise ContractError("artifact.role is incompatible")
     path = artifact.get("path")
-    if not isinstance(path, str) or not path:
+    if require_path and (not isinstance(path, str) or not path):
         raise ContractError("artifact.path is required")
+    if path is not None and (not isinstance(path, str) or not path):
+        raise ContractError("artifact.path is invalid")
     producer = artifact.get("producer")
     if producer is not None:
         if not isinstance(producer, dict):
