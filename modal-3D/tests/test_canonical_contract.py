@@ -97,3 +97,28 @@ class CanonicalContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class CanonicalInputIdentityTests(unittest.TestCase):
+    def test_content_addressed_filename_must_match_bytes(self) -> None:
+        import hashlib
+        from modal_3d.common import validate_canonical_input
+
+        payload = rgba_png()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            good = Path(temp_dir) / f"{hashlib.sha256(payload).hexdigest()}.png"
+            good.write_bytes(payload)
+            self.assertEqual(validate_canonical_input(good)["sha256"], good.stem)
+
+            bad = Path(temp_dir) / ("0" * 64 + ".png")
+            bad.write_bytes(payload)
+            with self.assertRaisesRegex(ValueError, "SHA256"):
+                validate_canonical_input(bad)
+
+    def test_non_content_addressed_filename_keeps_legacy_compatibility(self) -> None:
+        from modal_3d.common import validate_canonical_input
+
+        payload = rgba_png()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "legacy.png"
+            path.write_bytes(payload)
+            self.assertEqual(validate_canonical_input(path)["width"], 1024)

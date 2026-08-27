@@ -65,7 +65,7 @@ CAPABILITY = worker_capability(
             "basis": "TencentARC/Pixal3D standard 1536 cascade + 4096 PBR export",
             "verification": {
                 "status": "verified",
-                "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+                "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json",
             },
         }
     },

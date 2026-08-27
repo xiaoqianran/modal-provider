@@ -63,9 +63,8 @@ CAPABILITY = worker_capability(
             "tier": "full_quality",
             "basis": "Tencent Hunyuan3D-2.1 official Shape + Paint defaults",
             "verification": {
-                "status": "stale",
-                "reason": "latest recorded full-pipeline benchmark used paint_remesh=false",
-                "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+                "status": "verified",
+                "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json",
             },
         }
     },

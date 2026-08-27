@@ -10,6 +10,7 @@ import modal
 from .common import (
     generation_result,
     register_worker_entrypoint,
+    validate_canonical_input,
     validate_canonical_png,
     validate_glb,
     worker_capability,
@@ -49,9 +50,9 @@ CAPABILITY = worker_capability(
     APP_NAME,
     "最快的彩色资产生成；vertex-color GLB",
     {
-        "seed": {"type": "integer", "default": 42},
-        "dmd_interval": {"type": "integer", "default": 1},
-        "dmd_history": {"type": "integer", "default": 5},
+        "seed": {"type": "integer", "default": 42, "minimum": 0, "maximum": 4294967295},
+        "dmd_interval": {"type": "integer", "default": 1, "minimum": 1, "maximum": 12},
+        "dmd_history": {"type": "integer", "default": 5, "minimum": 4, "maximum": 25},
     },
     profile={"dmd_interval": 1, "dmd_history": 5},
     profile_name="推荐 · Fast-SAM3D 加速",
@@ -60,14 +61,16 @@ CAPABILITY = worker_capability(
             "tier": "accelerated",
             "basis": "wlfeng0509/Fast-SAM3D official acceleration recipe",
             "sampler": {
-                "ss_steps": 2,
-                "slat_steps": 12,
+                "runtime_ss_steps": 25,
+                "runtime_slat_steps": 25,
+                "generator_config_ss_steps": 2,
+                "generator_config_slat_steps": 12,
                 "ss_cache_stride": 3,
                 "slat_carving_ratio": 0.1,
             },
             "verification": {
                 "status": "verified",
-                "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+                "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json",
             },
         }
     },
@@ -354,6 +357,13 @@ class Model:
         from fft.fft2d import calculate_hfer_robust
         from PIL import Image
 
+        if not 0 <= seed <= 4294967295:
+            raise ValueError("seed must be between 0 and 4294967295")
+        if not 1 <= dmd_interval <= 12:
+            raise ValueError("dmd_interval must be between 1 and 12")
+        if not 4 <= dmd_history <= 25:
+            raise ValueError("dmd_history must be between 4 and 25")
+
         wall_t0 = time.perf_counter()
         decode_t0 = time.perf_counter()
         image = np.array(Image.open(io.BytesIO(image_bytes)).convert("RGBA"), dtype=np.uint8)
@@ -472,7 +482,7 @@ class Model:
             raise FileNotFoundError(input_path)
 
         input_t0 = time.perf_counter()
-        validate_canonical_png(input_path_obj)
+        validate_canonical_input(input_path_obj, input_path)
         image_bytes = input_path_obj.read_bytes()
         input_validation_s = time.perf_counter() - input_t0
 

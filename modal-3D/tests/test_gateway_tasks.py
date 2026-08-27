@@ -98,3 +98,59 @@ class TaskCoordinatorTests(unittest.TestCase):
         retry, existing = coordinator.reserve("job", lambda _: FakeCall(error=TimeoutError()))
         self.assertIsNotNone(retry)
         self.assertIsNone(existing)
+
+class ReservationSafetyTests(unittest.TestCase):
+    def test_stale_reservation_is_not_deleted_in_hot_path(self) -> None:
+        tasks = FakeDict()
+        keys = FakeDict(
+            {
+                "job": {
+                    "state": "reserving",
+                    "token": "owner",
+                    "reserved_at": time.time() - 10,
+                }
+            }
+        )
+        coordinator = TaskCoordinator(
+            tasks,
+            keys,
+            retention_seconds=60,
+            reservation_wait_seconds=0.01,
+            reservation_stale_seconds=1,
+            reservation_poll_seconds=0.001,
+        )
+        with self.assertRaisesRegex(RuntimeError, "stale"):
+            coordinator.reserve("job", lambda _: FakeCall(error=TimeoutError()))
+        self.assertEqual(keys.get("job")["token"], "owner")
+
+    def test_cleanup_does_not_reclaim_recent_stale_reservation(self) -> None:
+        tasks = FakeDict()
+        reservation = {
+            "state": "reserving",
+            "token": "owner",
+            "reserved_at": time.time() - 10,
+        }
+        keys = FakeDict({"job": reservation})
+        coordinator = TaskCoordinator(
+            tasks,
+            keys,
+            retention_seconds=60,
+            reservation_stale_seconds=1,
+        )
+        coordinator.cleanup(time.time() - 60)
+        self.assertEqual(keys.get("job"), reservation)
+
+    def test_cleanup_reclaims_reservation_only_after_retention_window(self) -> None:
+        tasks = FakeDict()
+        keys = FakeDict(
+            {
+                "job": {
+                    "state": "reserving",
+                    "token": "owner",
+                    "reserved_at": time.time() - 120,
+                }
+            }
+        )
+        coordinator = TaskCoordinator(tasks, keys, retention_seconds=60, reservation_stale_seconds=1)
+        coordinator.cleanup(time.time() - 60)
+        self.assertIsNone(keys.get("job"))

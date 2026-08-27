@@ -117,9 +117,11 @@ class TaskCoordinator:
                     isinstance(reserved_at, (int, float))
                     and time.time() - reserved_at > self.reservation_stale_seconds
                 ):
-                    if self.job_keys.get(job_key) == current:
-                        self.job_keys.pop(job_key, None)
-                    continue
+                    # Dict has atomic create-if-absent, but no compare-and-delete.
+                    # Never clear a reservation in the hot path: an owner may publish
+                    # its FunctionCall ID between a separate get() and pop(), which
+                    # could otherwise permit a duplicate paid GPU spawn.
+                    raise RuntimeError("submission reservation is stale; cleanup is required before retry")
             else:
                 raise RuntimeError("job key contains an invalid reservation value")
 
@@ -171,8 +173,10 @@ class TaskCoordinator:
                 reserved_at = task_ref.get("reserved_at")
                 if (
                     isinstance(reserved_at, (int, float))
-                    and time.time() - reserved_at > self.reservation_stale_seconds
+                    and time.time() - reserved_at > self.retention_seconds
                 ):
+                    # Scheduled cleanup only reclaims abandoned reservations after
+                    # the full task-retention window, far beyond a legitimate spawn.
                     self.job_keys.pop(key, None)
             else:
                 self.job_keys.pop(key, None)

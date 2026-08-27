@@ -9,6 +9,7 @@ from pathlib import Path
 
 from modal_3d.common import validate_canonical_png
 from modal_3d.png import foreground_stats
+from modal_3d.gateway_routing import generation_job_key
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class Scene:
     id: str
     canonical: Path
     modal_path: str
+    sha256: str
     prompt: str = ""
 
 
@@ -56,17 +58,38 @@ def load_manifest(path: Path, *, min_rgb_nonzero_fraction: float = 0.01) -> list
         seen.add(scene_id)
 
         canonical_value = row.get("canonical")
-        modal_path = row.get("modal_path")
-        if not isinstance(canonical_value, str) or not isinstance(modal_path, str):
-            raise ValueError(f"{scene_id}: canonical and modal_path are required")
-        canonical = (path.parent / canonical_value).resolve()
+        if isinstance(canonical_value, dict):
+            canonical_path = canonical_value.get("path")
+            modal_path = canonical_value.get("modal_path")
+        else:
+            canonical_path = canonical_value
+            modal_path = row.get("modal_path")
+        if not isinstance(canonical_path, str) or not isinstance(modal_path, str):
+            raise ValueError(f"{scene_id}: canonical path and modal_path are required")
+        candidate = Path(canonical_path)
+        canonical = (
+            (path.parent / candidate).resolve()
+            if not candidate.parts or candidate.parts[0] != "benchmarks"
+            else (path.parents[1] / candidate).resolve()
+        )
         if not canonical.is_file():
             raise FileNotFoundError(canonical)
         if not modal_path.startswith("client-inputs/") or ".." in Path(modal_path).parts:
             raise ValueError(f"{scene_id}: modal_path must be under client-inputs/")
 
+        payload = canonical.read_bytes()
+        digest = hashlib.sha256(payload).hexdigest()
+        if isinstance(canonical_value, dict):
+            declared_sha = canonical_value.get("sha256")
+            declared_bytes = canonical_value.get("bytes")
+            if declared_sha is not None and declared_sha != digest:
+                raise ValueError(f"{scene_id}: canonical SHA256 does not match manifest")
+            if declared_bytes is not None and declared_bytes != len(payload):
+                raise ValueError(f"{scene_id}: canonical byte count does not match manifest")
+        if Path(modal_path).stem != digest:
+            raise ValueError(f"{scene_id}: modal_path filename must equal canonical SHA256")
         contract = validate_canonical_png(canonical)
-        stats = foreground_stats(canonical.read_bytes(), contract["width"], contract["height"])
+        stats = foreground_stats(payload, contract["width"], contract["height"])
         if stats["foreground_rgb_nonzero_fraction"] < min_rgb_nonzero_fraction:
             raise ValueError(
                 f"{scene_id}: foreground RGB contains too little information "
@@ -77,6 +100,7 @@ def load_manifest(path: Path, *, min_rgb_nonzero_fraction: float = 0.01) -> list
                 id=scene_id,
                 canonical=canonical,
                 modal_path=modal_path,
+                sha256=digest,
                 prompt=str(row.get("prompt") or ""),
             )
         )
@@ -114,10 +138,41 @@ def build_plan(capabilities: list[dict], scenes: list[Scene], model_ids: list[st
     return {
         "mode": "full" if full else "smoke",
         "scene_count": len(scenes),
+        "scenes": [
+            {"id": scene.id, "modal_path": scene.modal_path, "sha256": scene.sha256}
+            for scene in scenes
+        ],
         "total_calls": calls_per_model * len(model_ids),
         "estimated_gpu_seconds": estimated_gpu_seconds,
         "models": rows,
     }
+
+
+
+
+def recover_task_id(model_id: str, modal_path: str, options: dict, job_keys, tasks, *, intent_at: float) -> str | None:
+    """Recover a task spawned before local state persisted its FunctionCall ID.
+
+    The fast path uses the live job-key index. The task scan is only a crash
+    recovery fallback and therefore does not add overhead to normal submissions.
+    """
+    key = generation_job_key(model_id, modal_path, options)
+    indexed = job_keys.get(key)
+    if isinstance(indexed, str):
+        record = tasks.get(indexed)
+        if isinstance(record, dict) and record.get("job_key") == key:
+            return indexed
+
+    matches: list[tuple[float, str]] = []
+    for task_id, record in tasks.items():
+        if not isinstance(record, dict) or record.get("job_key") != key:
+            continue
+        submitted_at = record.get("submitted_at")
+        if isinstance(submitted_at, (int, float)) and submitted_at >= intent_at - 1:
+            matches.append((float(submitted_at), str(task_id)))
+    if not matches:
+        return None
+    return max(matches)[1]
 
 
 def validate_budget(plan: dict, *, max_calls: int, max_estimated_gpu_seconds: float) -> None:

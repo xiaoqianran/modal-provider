@@ -125,10 +125,21 @@ class CapabilityContractTests(unittest.TestCase):
 
     def test_fastsam_sampler_metadata_matches_accelerated_configs(self) -> None:
         sampler = FASTSAM3D["profiles"][0]["quality"]["sampler"]
-        self.assertEqual(sampler["ss_steps"], 2)
-        self.assertEqual(sampler["slat_steps"], 12)
+        self.assertEqual(sampler["runtime_ss_steps"], 25)
+        self.assertEqual(sampler["runtime_slat_steps"], 25)
+        self.assertEqual(sampler["generator_config_ss_steps"], 2)
+        self.assertEqual(sampler["generator_config_slat_steps"], 12)
         self.assertEqual(sampler["ss_cache_stride"], 3)
         self.assertEqual(sampler["slat_carving_ratio"], 0.1)
+
+    def test_fastsam_dmd_controls_are_bounded(self) -> None:
+        options = FASTSAM3D["options"]
+        self.assertEqual(options["seed"]["minimum"], 0)
+        self.assertEqual(options["seed"]["maximum"], 4294967295)
+        self.assertEqual(options["dmd_interval"]["minimum"], 1)
+        self.assertEqual(options["dmd_interval"]["maximum"], 12)
+        self.assertEqual(options["dmd_history"]["minimum"], 4)
+        self.assertEqual(options["dmd_history"]["maximum"], 25)
 
     def test_hunyuan_full_quality_defaults_are_bounded(self) -> None:
         options = HUNYUAN["options"]
@@ -137,6 +148,7 @@ class CapabilityContractTests(unittest.TestCase):
         self.assertEqual(options["interval"]["maximum"], 12)
         self.assertEqual(options["history"]["maximum"], 32)
         self.assertEqual(options["num_inference_steps"]["maximum"], 100)
+        self.assertEqual(HUNYUAN["profiles"][0]["quality"]["verification"]["status"], "verified")
         self.assertEqual(HUNYUAN["reference"]["status"], "stale")
         self.assertGreater(HUNYUAN["reference"]["warm_seconds"], 500)
 

@@ -64,7 +64,18 @@ def validate_canonical_png(path: Path) -> dict:
         "mode": "RGBA",
         "alpha_min": alpha_min,
         "alpha_max": alpha_max,
+        "sha256": hashlib.sha256(data).hexdigest(),
     }
+
+
+def validate_canonical_input(path: Path, input_path: str | None = None) -> dict:
+    """Validate canonical PNG bytes and, for content-addressed inputs, their filename hash."""
+    metadata = validate_canonical_png(path)
+    candidate = Path(input_path).stem if input_path is not None else path.stem
+    if len(candidate) == 64 and all(char in "0123456789abcdef" for char in candidate.lower()):
+        if metadata["sha256"] != candidate.lower():
+            raise ValueError("canonical input SHA256 does not match its content-addressed filename")
+    return metadata
 
 
 def validate_glb(path: Path, expected_size: int | None = None) -> dict:
@@ -191,7 +202,7 @@ def register_worker_entrypoint(
             artifacts_volume.reload()
         if not path.is_file():
             raise FileNotFoundError(input_path)
-        validate_canonical_png(path)
+        validate_canonical_input(path, input_path)
         remote_cls = modal.Cls.from_name(worker_app, model_cls_name)
         value = remote_cls().generate.remote(path.read_bytes(), **dict(options or {}))
         artifact_rel = Path(str(value.get("artifact", "")))

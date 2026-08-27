@@ -21,7 +21,7 @@ CPU-only `sync_weights()` pins Meta SAM 3D Objects and MoGe revisions, then dete
 
 The worker keeps Fast-SAM3D's native acceleration path enabled: `ShortCut_faster` for sparse-structure generation, token carving in the slat stage, and the HFER mesh policy. HiCache++ DMD remains available but defaults to **off** (`dmd_interval=1`).
 
-This is explicitly the **Fast-SAM3D accelerated profile**, not the dense Meta SAM 3D Objects baseline. The pinned generator configs use SS `inference_steps=2` and SLaT `inference_steps=12`, with the public Fast-SAM3D stride/carving recipe. Those are upstream acceleration-model settings, not runtime step reductions invented by this repository.
+This is explicitly the **Fast-SAM3D accelerated profile**, not the dense Meta SAM 3D Objects baseline. The underlying generator YAMLs declare SS `2` / SLaT `12`, but the deployed pipeline overrides both runtime `inference_steps` to **25 / 25**; production logs and the 2026-08-28 full-quality smoke confirm those runtime values. Acceleration comes from the public Fast-SAM3D stride/cache and token-carving recipe, not from silently lowering the runtime step count.
 
 The deployed top-level `generate(input_path, options)` adapter was also validated with no DMD option supplied; it resolved to `dmd_interval=1 / dmd_enabled=false` and produced a valid GLB.
 
