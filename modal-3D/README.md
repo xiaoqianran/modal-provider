@@ -34,7 +34,7 @@ Run the script once for every existing worker before the first registry-backed G
 
 The live gallery shows four active workers. The retired SAM 3.1 preprocessing implementation and its experiment notes are preserved under `archive/sam3_1/`; they are not part of the live generation path. Historical benchmark evidence is preserved under `benchmarks/`.
 
-See `docs/PLAN.md` and `docs/PAGES_BENCHMARK.md` for architecture and benchmark details.
+See `docs/ARCHITECTURE.md` for the production boundaries, and `docs/PLAN.md` / `docs/PAGES_BENCHMARK.md` for planning and benchmark details.
 
 ## Status
 

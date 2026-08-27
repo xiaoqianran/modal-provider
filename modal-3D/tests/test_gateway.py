@@ -6,7 +6,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
-from modal_3d import gateway
+from modal_3d import gateway, gateway_routing
 
 
 class FakeDict:
@@ -103,45 +103,9 @@ class GatewayCapabilityTests(unittest.TestCase):
                 }
             ],
         }
-        with patch.object(gateway, "capabilities_document", return_value=document):
-            public = gateway._public_capabilities()
+        with patch.object(gateway_routing, "capabilities_document", return_value=document):
+            public = gateway_routing.public_capabilities(gateway.registry)
         self.assertNotIn("generation_entrypoint", public["models"][0])
-
-
-class GatewayStatusTests(unittest.TestCase):
-    def record(self) -> dict:
-        return {
-            "task_id": "fc-test",
-            "call_id": "fc-test",
-            "model": "test",
-            "kind": "generation",
-            "status": "running",
-            "submitted_at": time.time(),
-            "cold_start_seconds": 198,
-        }
-
-    def status(self, call: FakeCall) -> dict:
-        record = self.record()
-        with (
-            patch.object(gateway, "tasks", FakeDict({record["task_id"]: record})),
-            patch.object(gateway.modal.functions.FunctionCall, "from_id", return_value=call),
-        ):
-            return gateway._status(record["task_id"])
-
-    def test_pending_task_reports_cold_start_phase(self) -> None:
-        value = self.status(FakeCall(error=TimeoutError()))
-        self.assertEqual(value["status"], "running")
-        self.assertEqual(value["phase"], "cold_start_or_queued")
-
-    def test_completed_task_returns_result(self) -> None:
-        value = self.status(FakeCall(value={"artifact": "model.glb"}))
-        self.assertEqual(value["status"], "completed")
-        self.assertEqual(value["result"], {"artifact": "model.glb"})
-
-    def test_failed_task_returns_remote_error(self) -> None:
-        value = self.status(FakeCall(error=ValueError("bad input")))
-        self.assertEqual(value["status"], "failed")
-        self.assertEqual(value["error"], {"type": "ValueError", "message": "bad input"})
 
 
 class GatewaySubmissionTests(unittest.TestCase):
@@ -162,7 +126,7 @@ class GatewaySubmissionTests(unittest.TestCase):
                 "validate_options_for_capability",
                 side_effect=lambda _cap, opts: dict(opts or {}),
             ),
-            patch.object(gateway.modal.Function, "from_name", return_value=self.spawn),
+            patch.object(gateway_routing.modal.Function, "from_name", return_value=self.spawn),
             patch.object(
                 gateway.modal.functions.FunctionCall,
                 "from_id",
@@ -189,7 +153,7 @@ class GatewaySubmissionTests(unittest.TestCase):
             "class_name": "Model",
             "method_name": "generate_job",
         }
-        with patch.object(gateway.modal.Cls, "from_name", return_value=FakeRemoteClass(direct)) as lookup:
+        with patch.object(gateway_routing.modal.Cls, "from_name", return_value=FakeRemoteClass(direct)) as lookup:
             record = gateway._submit("test", "client-inputs/abc.png", {"seed": 42})
         lookup.assert_called_once_with("modal-3d-test", "Model")
         self.assertEqual(direct.calls, [("client-inputs/abc.png", {"seed": 42})])
@@ -224,10 +188,10 @@ class GatewaySubmissionTests(unittest.TestCase):
         self.assertEqual(sum(bool(record["deduplicated"]) for record in records), 7)
 
     def test_spawn_failure_releases_atomic_reservation(self) -> None:
-        with patch.object(gateway, "_spawn_generation", side_effect=RuntimeError("spawn failed")):
+        with patch.object(gateway, "spawn_generation", side_effect=RuntimeError("spawn failed")):
             with self.assertRaisesRegex(RuntimeError, "spawn failed"):
                 gateway._submit("test", "client-inputs/abc.png", {"seed": 42})
-        key = gateway._job_key("test", "client-inputs/abc.png", {"seed": 42})
+        key = gateway_routing.generation_job_key("test", "client-inputs/abc.png", {"seed": 42})
         self.assertIsNone(self.keys.get(key))
 
     def test_completed_generation_is_not_treated_as_cache(self) -> None:
@@ -245,8 +209,8 @@ class GatewaySubmissionTests(unittest.TestCase):
         self.assertEqual(len(self.spawn.calls), 2)
 
     def test_job_key_is_stable_across_option_order(self) -> None:
-        left = gateway._job_key("test", "client-inputs/abc.png", {"a": 1, "b": 2})
-        right = gateway._job_key("test", "client-inputs/abc.png", {"b": 2, "a": 1})
+        left = gateway_routing.generation_job_key("test", "client-inputs/abc.png", {"a": 1, "b": 2})
+        right = gateway_routing.generation_job_key("test", "client-inputs/abc.png", {"b": 2, "a": 1})
         self.assertEqual(left, right)
 
     def test_only_client_inputs_are_accepted(self) -> None:

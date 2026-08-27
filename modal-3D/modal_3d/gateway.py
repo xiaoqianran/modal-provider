@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import time
-import uuid
 from pathlib import Path
 
 import modal
 
-from .capabilities import (
-    capabilities_document,
-    model_capability,
-    model_registry,
-    validate_options_for_capability,
+from .capabilities import model_capability, model_registry, validate_options_for_capability
+from .gateway_registry import reconcile_registry as reconcile_worker_registry
+from .gateway_routing import (
+    generation_job_key,
+    normalize_input_path,
+    public_capabilities,
+    spawn_generation,
 )
+from .gateway_tasks import TaskCoordinator
 
 APP_NAME = "modal-3d-gateway"
 # This value is consumed while the deployment graph is built on the desktop.
@@ -34,208 +34,34 @@ job_keys = modal.Dict.from_name("modal-3d-job-keys", create_if_missing=True)
 registry_health = modal.Dict.from_name("modal-3d-registry-health", create_if_missing=True)
 registry = model_registry()
 REGISTRY_FAILURE_LIMIT = 3
-SUBMISSION_RESERVATION_WAIT_SECONDS = 5.0
-SUBMISSION_RESERVATION_STALE_SECONDS = 30.0
-SUBMISSION_RESERVATION_POLL_SECONDS = 0.02
+
+
+def _task_coordinator() -> TaskCoordinator:
+    return TaskCoordinator(tasks, job_keys, retention_seconds=RETENTION_SECONDS)
 
 
 def _public_capabilities() -> dict:
-    document = capabilities_document(registry)
-    for model in document.get("models", []):
-        if isinstance(model, dict):
-            model.pop("generation_entrypoint", None)
-    return document
-
-
-def _job_key(model: str, input_path: str, options: dict) -> str:
-    payload = json.dumps(
-        {"model": model, "input_path": input_path, "options": options},
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
-
-
-def _validate_input_path(input_path: str) -> str:
-    rel = Path(input_path)
-    if rel.is_absolute() or ".." in rel.parts:
-        raise ValueError("input_path must be relative to /artifacts")
-    if not rel.parts or rel.parts[0] != "client-inputs":
-        raise ValueError("input_path must be under client-inputs/")
-    return rel.as_posix()
-
-
-def _task_record(
-    call,
-    model: str,
-    kind: str,
-    capability: dict,
-    job_key: str,
-    *,
-    publish_job_key: bool = True,
-) -> dict:
-    record = {
-        "task_id": call.object_id,
-        "call_id": call.object_id,
-        "job_key": job_key,
-        "model": model,
-        "kind": kind,
-        "status": "running",
-        "submitted_at": time.time(),
-        # Cold-start and warm latency are different metrics. Never use the
-        # warm request latency as a proxy for container/model startup.
-        "cold_start_seconds": capability.get("reference", {}).get("cold_start_seconds"),
-        "deduplicated": False,
-    }
-    tasks.put(call.object_id, record)
-    if publish_job_key:
-        job_keys.put(job_key, call.object_id)
-    return record
-
-
-def _reusable_task(job_key: str) -> dict | None:
-    task_id = job_keys.get(job_key)
-    if not isinstance(task_id, str) or not task_id:
-        return None
-    record = tasks.get(task_id)
-    if not record:
-        job_keys.pop(job_key, None)
-        return None
-    age = time.time() - record.get("submitted_at", 0)
-    if age > RETENTION_SECONDS:
-        job_keys.pop(job_key, None)
-        return None
-
-    # Task records are intentionally lightweight and the desktop client polls the
-    # underlying FunctionCall directly. On a duplicate submit, refresh the remote
-    # call once so only genuinely in-flight work is deduplicated.
-    call = modal.functions.FunctionCall.from_id(task_id)
-    try:
-        result = call.get(timeout=0)
-    except TimeoutError:
-        reused = dict(record)
-        reused["deduplicated"] = True
-        return reused
-    except Exception as exc:  # noqa: BLE001 - terminal remote failure permits a retry.
-        record.update(
-            {
-                "status": "failed",
-                "finished_at": time.time(),
-                "error": {"type": type(exc).__name__, "message": str(exc)},
-            }
-        )
-        tasks.put(task_id, record)
-        job_keys.pop(job_key, None)
-        return None
-    else:
-        record.update({"status": "completed", "finished_at": time.time(), "result": result})
-        tasks.put(task_id, record)
-        job_keys.pop(job_key, None)
-        return None
-
-
-def _reserve_submission(job_key: str) -> tuple[dict | None, dict | None]:
-    """Atomically reserve a job key or wait for the current owner to publish its task."""
-    reservation = {
-        "state": "reserving",
-        "token": uuid.uuid4().hex,
-        "reserved_at": time.time(),
-    }
-    deadline = time.monotonic() + SUBMISSION_RESERVATION_WAIT_SECONDS
-    while True:
-        current = job_keys.get(job_key)
-        if current is None:
-            if job_keys.put(job_key, reservation, skip_if_exists=True):
-                return reservation, None
-        elif isinstance(current, str):
-            reusable = _reusable_task(job_key)
-            if reusable is not None:
-                return None, reusable
-        elif isinstance(current, dict) and current.get("state") == "reserving":
-            reserved_at = current.get("reserved_at")
-            if isinstance(reserved_at, (int, float)) and time.time() - reserved_at > SUBMISSION_RESERVATION_STALE_SECONDS:
-                # A reservation should last only for the very short spawn call. If it
-                # is this old, its owner died before publishing a FunctionCall ID.
-                if job_keys.get(job_key) == current:
-                    job_keys.pop(job_key, None)
-                continue
-        else:
-            raise RuntimeError("job key contains an invalid reservation value")
-
-        if time.monotonic() >= deadline:
-            raise RuntimeError("concurrent submission is still being reserved; retry")
-        time.sleep(SUBMISSION_RESERVATION_POLL_SECONDS)
-
-
-def _release_submission_reservation(job_key: str, reservation: dict) -> None:
-    if job_keys.get(job_key) == reservation:
-        job_keys.pop(job_key, None)
-
-
-def _spawn_generation(capability: dict, input_path: str, options: dict):
-    entrypoint = capability.get("generation_entrypoint")
-    if entrypoint is not None:
-        remote_cls = modal.Cls.from_name(capability["worker_app"], entrypoint["class_name"])
-        method = getattr(remote_cls(), entrypoint["method_name"])
-        return method.spawn(input_path, options)
-    fn = modal.Function.from_name(capability["worker_app"], "generate")
-    return fn.spawn(input_path, options)
+    return public_capabilities(registry)
 
 
 def _submit(model: str, input_path: str, options: dict | None = None) -> dict:
     capability = model_capability(model, registry)
     validated = validate_options_for_capability(capability, options)
-    normalized_path = _validate_input_path(input_path)
-    key = _job_key(model, normalized_path, validated)
-    reservation, existing = _reserve_submission(key)
+    normalized_path = normalize_input_path(input_path)
+    key = generation_job_key(model, normalized_path, validated)
+    coordinator = _task_coordinator()
+    reservation, existing = coordinator.reserve(key, modal.functions.FunctionCall.from_id)
     if existing is not None:
         return existing
     assert reservation is not None
+
     try:
-        call = _spawn_generation(capability, normalized_path, validated)
-        record = _task_record(
-            call,
-            model,
-            "generation",
-            capability,
-            key,
-            publish_job_key=False,
-        )
+        call = spawn_generation(capability, normalized_path, validated)
+        record = coordinator.create_record(call, model, "generation", capability, key)
     except Exception:
-        _release_submission_reservation(key, reservation)
+        coordinator.release(key, reservation)
         raise
-    job_keys.put(key, call.object_id)
-    return record
-
-
-def _status(task_id: str) -> dict:
-    record = tasks.get(task_id)
-    if record is None:
-        raise KeyError(task_id)
-    if record["status"] != "running":
-        return record
-
-    call = modal.functions.FunctionCall.from_id(task_id)
-    try:
-        result = call.get(timeout=0)
-    except TimeoutError:
-        elapsed = time.time() - record["submitted_at"]
-        cold_start = record.get("cold_start_seconds")
-        record["phase"] = (
-            "cold_start_or_queued" if cold_start and elapsed < cold_start else "inference"
-        )
-        return record
-    except Exception as exc:  # noqa: BLE001 - the remote exception is the task result.
-        record.update(
-            {
-                "status": "failed",
-                "finished_at": time.time(),
-                "error": {"type": type(exc).__name__, "message": str(exc)},
-            }
-        )
-    else:
-        record.update({"status": "completed", "finished_at": time.time(), "result": result})
-    tasks.put(task_id, record)
+    coordinator.publish(key, call.object_id)
     return record
 
 
@@ -278,64 +104,21 @@ def cleanup_artifacts() -> dict:
             pass
     artifacts.commit()
 
-    deleted_tasks = 0
-    for task_id, record in tasks.items():
-        if record.get("submitted_at", time.time()) < cutoff:
-            tasks.pop(task_id, None)
-            if record.get("job_key"):
-                job_keys.pop(record["job_key"], None)
-            deleted_tasks += 1
-    for key, task_ref in list(job_keys.items()):
-        if isinstance(task_ref, str):
-            if tasks.get(task_ref) is None:
-                job_keys.pop(key, None)
-        elif isinstance(task_ref, dict):
-            reserved_at = task_ref.get("reserved_at")
-            if isinstance(reserved_at, (int, float)) and time.time() - reserved_at > SUBMISSION_RESERVATION_STALE_SECONDS:
-                job_keys.pop(key, None)
-        else:
-            job_keys.pop(key, None)
+    deleted_tasks = _task_coordinator().cleanup(cutoff)
     return {"files": deleted_files, "bytes": deleted_bytes, "tasks": deleted_tasks}
 
 
+def _worker_health(worker_app: str) -> dict:
+    return modal.Function.from_name(worker_app, "health").remote()
+
+
 def _reconcile_registry() -> dict:
-    checked = 0
-    healthy = 0
-    removed: list[str] = []
-    failures: dict[str, int] = {}
-    for model_id, capability in list(registry.items()):
-        checked += 1
-        worker_app = str(capability.get("worker_app", ""))
-        try:
-            probe = modal.Function.from_name(worker_app, "health").remote()
-            if not isinstance(probe, dict) or probe.get("ok") is not True or probe.get("model") != model_id:
-                raise RuntimeError("worker health payload does not match registry entry")
-        except Exception as exc:  # noqa: BLE001 - health failures are recorded, not surfaced.
-            previous = registry_health.get(model_id, {}) or {}
-            count = int(previous.get("consecutive_failures", 0)) + 1
-            failures[model_id] = count
-            registry_health.put(
-                model_id,
-                {
-                    "consecutive_failures": count,
-                    "last_failure_at": time.time(),
-                    "error": {"type": type(exc).__name__, "message": str(exc)},
-                },
-            )
-            if count >= REGISTRY_FAILURE_LIMIT:
-                registry.pop(model_id, None)
-                registry_health.pop(model_id, None)
-                removed.append(model_id)
-        else:
-            healthy += 1
-            registry_health.put(
-                model_id,
-                {
-                    "consecutive_failures": 0,
-                    "last_success_at": time.time(),
-                },
-            )
-    return {"checked": checked, "healthy": healthy, "removed": removed, "failures": failures}
+    return reconcile_worker_registry(
+        registry,
+        registry_health,
+        _worker_health,
+        failure_limit=REGISTRY_FAILURE_LIMIT,
+    )
 
 
 @app.function(
