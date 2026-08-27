@@ -3,16 +3,37 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
 
 import modal
+from modal.exception import (
+    AuthError,
+    InternalError,
+    NotFoundError,
+    PermissionDeniedError,
+    ServiceError,
+)
+from modal.exception import ConnectionError as ModalConnectionError
+from modal.exception import TimeoutError as ModalTimeoutError
 
-from .constants import APP_NAME, ARTIFACT_FUNCTION
+from .constants import APP_NAME, ARTIFACT_FUNCTION, ARTIFACT_VOLUME
 from .contracts import ContractError, validate_artifact
 from .modal_session import client
 from .storage import data_dir
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_VOLUME_FALLBACK = (
+    AuthError,
+    PermissionDeniedError,
+    ModalConnectionError,
+    ModalTimeoutError,
+    InternalError,
+    ServiceError,
+    NotFoundError,
+    FileNotFoundError,
+    OSError,
+)
 
 
 def cache_path(sha256: str) -> Path:
@@ -30,35 +51,65 @@ def fetch(descriptor: dict[str, object]) -> Path:
         destination.touch()
         return destination
 
+    remote_path = artifact.get("remote_path")
+    if isinstance(remote_path, str):
+        try:
+            return _cache_chunks(_volume_chunks(remote_path), destination, artifact)
+        except _VOLUME_FALLBACK:
+            pass
+
     fn = modal.Function.from_name(APP_NAME, ARTIFACT_FUNCTION, client=client())
     data = fn.remote(str(artifact["id"]))
     if not isinstance(data, bytes):
         raise ContractError("artifact function must return bytes")
-    _validate_bytes(data, artifact)
+    return _cache_chunks((data,), destination, artifact)
 
+
+def _volume_chunks(remote_path: str) -> Iterable[bytes]:
+    volume = modal.Volume.from_name(ARTIFACT_VOLUME, client=client())
+    return volume.read_file(remote_path)
+
+
+def _cache_chunks(
+    chunks: Iterable[bytes], destination: Path, artifact: dict[str, object]
+) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(
         prefix=".artifact-", suffix=".part", dir=destination.parent
     )
     temporary = Path(temporary_name)
+    digest = hashlib.sha256()
+    total = 0
+    signature = bytearray()
     try:
         with os.fdopen(fd, "wb") as stream:
-            stream.write(data)
+            for chunk in chunks:
+                if not isinstance(chunk, bytes):
+                    raise ContractError("artifact transport must yield bytes")
+                if len(signature) < len(PNG_SIGNATURE):
+                    signature.extend(chunk[: len(PNG_SIGNATURE) - len(signature)])
+                total += len(chunk)
+                digest.update(chunk)
+                stream.write(chunk)
             stream.flush()
             os.fsync(stream.fileno())
+        _validate_stream_result(bytes(signature), total, digest.hexdigest(), artifact)
         os.replace(temporary, destination)
+        return destination
     finally:
         temporary.unlink(missing_ok=True)
-    return destination
 
 
-def _validate_bytes(data: bytes, artifact: dict[str, object]) -> None:
-    if len(data) != artifact["bytes"]:
+def _validate_stream_result(
+    signature: bytes, size: int, digest: str, artifact: dict[str, object]
+) -> None:
+    if size != artifact["bytes"]:
         raise ContractError("artifact bytes mismatch")
-    if data[:8] != PNG_SIGNATURE:
+    if signature != PNG_SIGNATURE:
         raise ContractError("artifact is not a PNG")
-    if hashlib.sha256(data).hexdigest() != artifact["sha256"]:
+    if digest != artifact["sha256"]:
         raise ContractError("artifact SHA-256 mismatch")
+
 
 
 def _validate_file(path: Path, artifact: dict[str, object]) -> None:

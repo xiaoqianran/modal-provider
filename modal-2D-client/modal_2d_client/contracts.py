@@ -9,6 +9,7 @@ from .constants import (
     ARTIFACT_FUNCTION,
     ARTIFACT_MIME,
     ARTIFACT_ROLE,
+    ARTIFACT_VOLUME,
     CONTRACT,
     DEFAULT_MODEL,
     JOB_TRANSPORT,
@@ -31,6 +32,11 @@ def validate_capabilities(value: Any) -> dict[str, object]:
     expected = {"contract": CONTRACT, "provider": "modal-2d", "operation": OPERATION}
     if any(doc.get(key) != item for key, item in expected.items()):
         raise ContractError("incompatible modal-2D capability identity")
+    if doc.get("kind") not in (None, "image.generate"):
+        raise ContractError("incompatible modal-2D capability kind")
+    outputs = doc.get("outputs")
+    if outputs is not None and outputs != [{"role": ARTIFACT_ROLE, "mediaType": ARTIFACT_MIME}]:
+        raise ContractError("incompatible modal-2D capability outputs")
     generation = _mapping(doc.get("generation"), "generation")
     required_generation = {
         "app": APP_NAME,
@@ -40,6 +46,10 @@ def validate_capabilities(value: Any) -> dict[str, object]:
     }
     if any(generation.get(key) != item for key, item in required_generation.items()):
         raise ContractError("incompatible modal-2D generation endpoint")
+    if generation.get("artifact_volume") not in (None, ARTIFACT_VOLUME):
+        raise ContractError("incompatible modal-2D artifact volume")
+    if generation.get("artifact_path_field") not in (None, "remote_path"):
+        raise ContractError("incompatible modal-2D artifact path field")
     artifact = _mapping(doc.get("artifact"), "artifact")
     if (
         artifact.get("role") != ARTIFACT_ROLE
@@ -117,6 +127,16 @@ def validate_artifact(value: Any) -> dict[str, object]:
     digest = artifact.get("sha256")
     if not isinstance(digest, str) or not _SHA256.fullmatch(digest):
         raise ContractError("artifact.sha256 is invalid")
+    if artifact.get("mediaType") not in (None, ARTIFACT_MIME):
+        raise ContractError("artifact.mediaType is incompatible")
+    if artifact.get("digest") not in (None, f"sha256:{digest}"):
+        raise ContractError("artifact.digest does not match artifact.sha256")
+    producer = artifact.get("producer")
+    if producer is not None and producer != {"provider": "modal-2d", "operation": OPERATION}:
+        raise ContractError("artifact.producer is incompatible")
+    remote_path = artifact.get("remote_path")
+    if remote_path is not None and remote_path != f"generated/{artifact_id}.png":
+        raise ContractError("artifact.remote_path is incompatible")
     if artifact.get("width") != 1024 or artifact.get("height") != 1024:
         raise ContractError("artifact dimensions are incompatible")
     return artifact

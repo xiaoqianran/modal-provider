@@ -19,6 +19,8 @@ def test_capabilities_accept_stable_provider_contract(capability_doc):
     [
         (("contract",), "v2"),
         (("generation", "submit_function"), "other"),
+        (("generation", "artifact_volume"), "wrong-volume"),
+        (("kind",), "other.kind"),
         (("artifact", "lossless"), False),
         (("models", 0, "width"), 512),
         (("models", 0, "steps"), 1),
@@ -51,6 +53,10 @@ def test_artifact_descriptor_is_strict(png_artifact):
     broken = dict(descriptor, sha256="bad")
     with pytest.raises(ContractError, match="sha256"):
         validate_artifact(broken)
+    with pytest.raises(ContractError, match="digest"):
+        validate_artifact(dict(descriptor, digest="sha256:bad"))
+    with pytest.raises(ContractError, match="remote_path"):
+        validate_artifact(dict(descriptor, remote_path="../escape.png"))
 
 
 def test_request_rejects_steps_override():
