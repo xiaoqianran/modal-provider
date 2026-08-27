@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import shutil
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -17,8 +18,6 @@ TRELLIS_IMAGE_ID = "microsoft/TRELLIS-image-large"
 TRELLIS_IMAGE_REVISION = "25e0d31ffbebe4b5a97464dd851910efc3002d96"
 DINO_ID = "facebook/dinov3-vitl16-pretrain-lvd1689m"
 DINO_REVISION = "ea8dc2863c51be0a264bab82070e3e8836b02d51"
-BIREFNET_ID = "ZhengPeng7/BiRefNet"
-BIREFNET_REVISION = "e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4"
 MODEL_DIR = "/models/TRELLIS.2-4B"
 HF_CACHE = "/models/hf-cache"
 SRC_DIR = "/opt/hermit"
@@ -136,7 +135,6 @@ def sync_weights() -> dict:
     for repo, revision in (
         (TRELLIS_IMAGE_ID, TRELLIS_IMAGE_REVISION),
         (DINO_ID, DINO_REVISION),
-        (BIREFNET_ID, BIREFNET_REVISION),
     ):
         snapshot_download(repo, revision=revision, cache_dir=HF_CACHE)
 
@@ -164,8 +162,21 @@ class Model:
         sys.path.insert(0, SRC_DIR)
 
         import torch
-        from trellis2.pipelines import Trellis2ImageTo3DPipeline
+        from trellis2.pipelines import Trellis2ImageTo3DPipeline, rembg
 
+        class _NoopRemBg:
+            def __init__(self, **_):
+                pass
+
+            def to(self, _device):
+                return self
+
+            cuda = cpu = to
+
+            def __call__(self, _image):
+                raise RuntimeError("Hermit worker requires a pre-matted RGBA input")
+
+        rembg.BiRefNet = _NoopRemBg
         torch.cuda.reset_peak_memory_stats()
         t0 = time.perf_counter()
         self.pipe = Trellis2ImageTo3DPipeline.from_pretrained(MODEL_DIR)
@@ -238,17 +249,16 @@ class Model:
             remesh_project=0,
             verbose=False,
         )
-        work = Path("/tmp/hermit-trellis2")
-        work.mkdir(parents=True, exist_ok=True)
-        tmp_glb = work / f"{uuid.uuid4().hex}.glb"
-        glb_scene.export(tmp_glb, extension_webp=True)
-        postprocess_s = time.perf_counter() - post_t0
+        with tempfile.TemporaryDirectory(prefix="hermit-trellis2-") as temp_dir:
+            tmp_glb = Path(temp_dir) / "output.glb"
+            glb_scene.export(tmp_glb, extension_webp=True)
+            postprocess_s = time.perf_counter() - post_t0
 
-        name = f"trellis2/{uuid.uuid4().hex}.glb"
-        path = Path("/artifacts") / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(tmp_glb, path)
-        artifacts.commit()
+            name = f"trellis2/{uuid.uuid4().hex}.glb"
+            path = Path("/artifacts") / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(tmp_glb, path)
+            artifacts.commit()
 
         voxel_size = float(mesh.voxel_size)
         resolution = round(1.0 / voxel_size) if voxel_size > 0 else None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import tempfile
 import time
 import uuid
 from pathlib import Path, PurePosixPath
@@ -374,9 +375,11 @@ class Model:
 
         # Fast-SAM3D's spectral mesh policy uses the object crop HFER.
         hfer_t0 = time.perf_counter()
-        tmp = Path("/tmp/fastsam3d-input.png")
-        cv2.imwrite(str(tmp), cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA))
-        self.pipe.hfer_2d = float(calculate_hfer_robust(str(tmp)))
+        with tempfile.TemporaryDirectory(prefix="fastsam3d-hfer-") as temp_dir:
+            tmp = Path(temp_dir) / "input.png"
+            if not cv2.imwrite(str(tmp), cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)):
+                raise RuntimeError("failed to write FastSAM3D HFER input")
+            self.pipe.hfer_2d = float(calculate_hfer_robust(str(tmp)))
         hfer_s = time.perf_counter() - hfer_t0
 
         fm = self.pipe.models["slat_generator"]

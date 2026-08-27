@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import os
 import shutil
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -333,31 +334,31 @@ class Model:
         torch.cuda.synchronize()
         shape_s = time.perf_counter() - shape_t0
 
-        work = Path("/tmp/hunyuan21") / uuid.uuid4().hex
-        work.mkdir(parents=True, exist_ok=True)
-        shape_path = work / "shape.glb"
-        mesh.export(shape_path)
-        textured_obj = work / "textured_mesh.obj"
+        with tempfile.TemporaryDirectory(prefix="hunyuan21-") as temp_dir:
+            work = Path(temp_dir)
+            shape_path = work / "shape.glb"
+            mesh.export(shape_path)
+            textured_obj = work / "textured_mesh.obj"
 
-        paint_t0 = time.perf_counter()
-        self.paint_pipe(
-            mesh_path=str(shape_path),
-            image_path=image,
-            output_mesh_path=str(textured_obj),
-            use_remesh=paint_remesh,
-            save_glb=True,
-        )
-        torch.cuda.synchronize()
-        paint_s = time.perf_counter() - paint_t0
-        textured_glb = textured_obj.with_suffix(".glb")
-        if not textured_glb.is_file() or textured_glb.stat().st_size == 0:
-            raise RuntimeError("Hunyuan3D-Paint did not produce a GLB")
+            paint_t0 = time.perf_counter()
+            self.paint_pipe(
+                mesh_path=str(shape_path),
+                image_path=image,
+                output_mesh_path=str(textured_obj),
+                use_remesh=paint_remesh,
+                save_glb=True,
+            )
+            torch.cuda.synchronize()
+            paint_s = time.perf_counter() - paint_t0
+            textured_glb = textured_obj.with_suffix(".glb")
+            if not textured_glb.is_file() or textured_glb.stat().st_size == 0:
+                raise RuntimeError("Hunyuan3D-Paint did not produce a GLB")
 
-        name = f"hunyuan21pp/{uuid.uuid4().hex}.glb"
-        path = Path("/artifacts") / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(textured_glb, path)
-        artifacts.commit()
+            name = f"hunyuan21pp/{uuid.uuid4().hex}.glb"
+            path = Path("/artifacts") / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(textured_glb, path)
+            artifacts.commit()
 
         return {
             "model": "hunyuan2.1-plus-plus",

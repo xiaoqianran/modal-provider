@@ -65,12 +65,17 @@ class BenchmarkGuardrailTests(unittest.TestCase):
     def test_execute_preflight_rejects_deployment_or_profile_drift(self) -> None:
         deployed = deepcopy(HUNYUAN)
         deployed["profiles"][0]["options"]["paint_remesh"] = False
-        with self.assertRaisesRegex(ValueError, "recommended options"):
+        with self.assertRaisesRegex(ValueError, "recommended profile"):
             assert_deployed_matches(HUNYUAN, deployed)
 
         deployed = deepcopy(HUNYUAN)
         deployed["deployment"]["source_revision"] = "other"
         with self.assertRaisesRegex(ValueError, "deployment"):
+            assert_deployed_matches(HUNYUAN, deployed)
+
+        deployed = deepcopy(HUNYUAN)
+        deployed["options"]["num_inference_steps"]["maximum"] = 1000
+        with self.assertRaisesRegex(ValueError, "options"):
             assert_deployed_matches(HUNYUAN, deployed)
 
 class SubmissionRecoveryTests(unittest.TestCase):
@@ -130,3 +135,21 @@ class SubmissionRecoveryTests(unittest.TestCase):
             intent_at=20.0,
         )
         self.assertIsNone(task_id)
+
+class LowInformationOverrideTests(unittest.TestCase):
+    def test_manifest_can_explicitly_allow_reviewed_black_subject(self) -> None:
+        import hashlib
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image = root / "black.png"
+            image.write_bytes(rgba_png(foreground_rgb=(0, 0, 0)))
+            digest = hashlib.sha256(image.read_bytes()).hexdigest()
+            manifest = root / "manifest.json"
+            manifest.write_text(json.dumps({"scenes": [{
+                "id": "black",
+                "canonical": "black.png",
+                "modal_path": f"client-inputs/{digest}.png",
+                "allow_low_information": True,
+            }]}))
+            scenes = load_manifest(manifest)
+            self.assertEqual(scenes[0].sha256, digest)

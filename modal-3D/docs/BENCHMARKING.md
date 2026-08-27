@@ -56,7 +56,7 @@ python scripts/run_pages_benchmark.py \
 }
 ```
 
-The runner validates local canonical PNGs before any Modal call. Benchmark inputs with almost no RGB information inside the alpha foreground are rejected by default. Use the low-information override only when the subject is intentionally black or near-black and the source has been manually reviewed.
+The runner validates local canonical PNGs before any Modal call. Benchmark inputs with almost no RGB information inside the alpha foreground are rejected by default. For an intentionally black or near-black subject, set `"allow_low_information": true` on that specific manifest scene only after manual review; the exception then remains part of benchmark provenance.
 
 ## Provenance
 

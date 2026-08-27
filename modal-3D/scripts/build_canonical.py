@@ -25,6 +25,17 @@ def _run(command: str, *args: str) -> None:
     subprocess.run([command, *args], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
 
+def _image_size(command: str, path: Path) -> tuple[int, int]:
+    result = subprocess.run(
+        [command, str(path), "-format", "%w %h", "info:"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    width, height = result.stdout.strip().split()
+    return int(width), int(height)
+
+
 def build_canonical(source: Path, mask: Path, output: Path) -> dict:
     """Compose source RGB + alpha mask using isolated ImageMagick stages.
 
@@ -33,6 +44,12 @@ def build_canonical(source: Path, mask: Path, output: Path) -> dict:
     benchmark inputs.
     """
     command = _convert_command()
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    if not mask.is_file():
+        raise FileNotFoundError(mask)
+    if _image_size(command, source) != _image_size(command, mask):
+        raise ValueError("source and mask dimensions must match before canonical composition")
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="modal3d-canonical-") as tmp:
         tmp = Path(tmp)
@@ -49,6 +66,7 @@ def build_canonical(source: Path, mask: Path, output: Path) -> dict:
             "none",
             "-extent",
             "1024x1024",
+            "-strip",
             f"PNG32:{output}",
         )
 

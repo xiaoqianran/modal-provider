@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import io
-import json
 import os
 import shutil
 import subprocess
 import threading
+import tempfile
 import time
 import urllib.request
 import uuid
@@ -23,8 +23,6 @@ DINO_ID = "camenduru/dinov3-vitl16-pretrain-lvd1689m"
 DINO_REVISION = "3c276edd87d6f6e569ff0c4400e086807d0f3881"
 MOGE_ID = "Ruicheng/moge-2-vitl"
 MOGE_REVISION = "39c4d5e957afe587e04eec59dc2bcc3be5ecd968"
-BIREFNET_ID = "ZhengPeng7/BiRefNet"
-BIREFNET_REVISION = "e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4"
 MODEL_DIR = "/models/Pixal3D"
 HF_HOME = "/models/hf"
 TORCH_HOME = "/models/torch"
@@ -146,18 +144,8 @@ def sync_weights() -> dict:
     for repo, revision in (
         (DINO_ID, DINO_REVISION),
         (MOGE_ID, MOGE_REVISION),
-        (BIREFNET_ID, BIREFNET_REVISION),
     ):
         snapshot_download(repo, revision=revision, cache_dir=f"{HF_HOME}/hub")
-
-    # Replace gated/default RMBG with the cached public BiRefNet model.
-    pipeline = Path(MODEL_DIR) / "pipeline.json"
-    data = json.loads(pipeline.read_text())
-    data["args"]["rembg_model"] = {
-        "name": "BiRefNet",
-        "args": {"model_name": "ZhengPeng7/BiRefNet"},
-    }
-    pipeline.write_text(json.dumps(data, indent=2) + "\n")
 
     naf_ckpt = Path(TORCH_HOME) / "hub/checkpoints/naf_release.pth"
     naf_ckpt.parent.mkdir(parents=True, exist_ok=True)
@@ -288,75 +276,75 @@ class Model:
 
         image = Image.open(io.BytesIO(image_bytes))
         image = self.pipe.preprocess_image(image)
-        work = Path("/tmp/pixal3d")
-        work.mkdir(exist_ok=True)
-        temp = work / "input.png"
-        image.save(temp)
+        with tempfile.TemporaryDirectory(prefix="pixal3d-") as temp_dir:
+            work = Path(temp_dir)
+            temp = work / "input.png"
+            image.save(temp)
 
-        if fov is None:
-            self.moge.cuda()
-            camera = get_camera_params_wild_moge(str(temp), self.moge, device="cuda")
-            self.moge.cpu()
-            torch.cuda.empty_cache()
-        else:
-            grid = torch.tensor([-1.0, 0.0, 0.0])
-            distance = distance_from_fov(
-                fov,
-                grid,
-                torch.tensor([0, 511]),
-                1.0,
-                512,
-            )["distance_from_x"]
-            camera = {"camera_angle_x": fov, "distance": distance, "mesh_scale": 1.0}
+            if fov is None:
+                self.moge.cuda()
+                camera = get_camera_params_wild_moge(str(temp), self.moge, device="cuda")
+                self.moge.cpu()
+                torch.cuda.empty_cache()
+            else:
+                grid = torch.tensor([-1.0, 0.0, 0.0])
+                distance = distance_from_fov(
+                    fov,
+                    grid,
+                    torch.tensor([0, 511]),
+                    1.0,
+                    512,
+                )["distance_from_x"]
+                camera = {"camera_angle_x": fov, "distance": distance, "mesh_scale": 1.0}
 
-        vram = _Vram()
-        vram.start()
-        torch.cuda.synchronize()
-        t0 = time.perf_counter()
-        try:
-            meshes, (_, _, resolution) = self.pipe.run(
-                image,
-                camera_params=camera,
-                seed=seed,
-                preprocess_image=False,
-                return_latent=True,
-                pipeline_type=pipeline_type,
-                max_num_tokens=max_num_tokens,
-            )
-            mesh = meshes[0]
-            glb = o_voxel.postprocess.to_glb(
-                vertices=mesh.vertices,
-                faces=mesh.faces,
-                attr_volume=mesh.attrs,
-                coords=mesh.coords,
-                attr_layout=self.pipe.pbr_attr_layout,
-                grid_size=resolution,
-                aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
-                decimation_target=1_000_000,
-                texture_size=texture_size,
-                remesh=True,
-                remesh_band=1,
-                remesh_project=0,
-                use_tqdm=False,
-            )
-            glb.apply_transform(
-                np.array(
-                    [[-1, 0, 0, 0], [0, 0, -1, 0], [0, -1, 0, 0], [0, 0, 0, 1]],
-                    dtype=np.float64,
-                )
-            )
-            path = work / "output.glb"
-            glb.export(path, extension_webp=True)
+            vram = _Vram()
+            vram.start()
             torch.cuda.synchronize()
-            inference_s = time.perf_counter() - t0
-        finally:
-            peak_vram_gb = vram.stop()
+            t0 = time.perf_counter()
+            try:
+                meshes, (_, _, resolution) = self.pipe.run(
+                    image,
+                    camera_params=camera,
+                    seed=seed,
+                    preprocess_image=False,
+                    return_latent=True,
+                    pipeline_type=pipeline_type,
+                    max_num_tokens=max_num_tokens,
+                )
+                mesh = meshes[0]
+                glb = o_voxel.postprocess.to_glb(
+                    vertices=mesh.vertices,
+                    faces=mesh.faces,
+                    attr_volume=mesh.attrs,
+                    coords=mesh.coords,
+                    attr_layout=self.pipe.pbr_attr_layout,
+                    grid_size=resolution,
+                    aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
+                    decimation_target=1_000_000,
+                    texture_size=texture_size,
+                    remesh=True,
+                    remesh_band=1,
+                    remesh_project=0,
+                    use_tqdm=False,
+                )
+                glb.apply_transform(
+                    np.array(
+                        [[-1, 0, 0, 0], [0, 0, -1, 0], [0, -1, 0, 0], [0, 0, 0, 1]],
+                        dtype=np.float64,
+                    )
+                )
+                output_path = work / "output.glb"
+                glb.export(output_path, extension_webp=True)
+                torch.cuda.synchronize()
+                inference_s = time.perf_counter() - t0
+            finally:
+                peak_vram_gb = vram.stop()
 
-        name = f"pixal3d/{uuid.uuid4().hex}.glb"
-        dst = Path("/artifacts") / name
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, dst)
-        artifacts.commit()
+            name = f"pixal3d/{uuid.uuid4().hex}.glb"
+            dst = Path("/artifacts") / name
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(output_path, dst)
+            artifacts.commit()
         return {
             "model": "pixal3d",
             "gpu": GPU,

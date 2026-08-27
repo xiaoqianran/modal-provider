@@ -90,10 +90,17 @@ def load_manifest(path: Path, *, min_rgb_nonzero_fraction: float = 0.01) -> list
             raise ValueError(f"{scene_id}: modal_path filename must equal canonical SHA256")
         contract = validate_canonical_png(canonical)
         stats = foreground_stats(payload, contract["width"], contract["height"])
-        if stats["foreground_rgb_nonzero_fraction"] < min_rgb_nonzero_fraction:
+        allow_low_information = row.get("allow_low_information", False)
+        if not isinstance(allow_low_information, bool):
+            raise TypeError(f"{scene_id}: allow_low_information must be boolean")
+        if (
+            not allow_low_information
+            and stats["foreground_rgb_nonzero_fraction"] < min_rgb_nonzero_fraction
+        ):
             raise ValueError(
                 f"{scene_id}: foreground RGB contains too little information "
-                f"({stats['foreground_rgb_nonzero_fraction']:.6f})"
+                f"({stats['foreground_rgb_nonzero_fraction']:.6f}); "
+                "set allow_low_information=true only after manual review"
             )
         scenes.append(
             Scene(
@@ -189,13 +196,11 @@ def validate_budget(plan: dict, *, max_calls: int, max_estimated_gpu_seconds: fl
 
 
 def assert_deployed_matches(local: dict, deployed: dict) -> None:
-    fields = ("id", "worker_app", "deployment")
+    fields = ("id", "worker_app", "deployment", "options", "reference")
     for field in fields:
         if local.get(field) != deployed.get(field):
             raise ValueError(f"{local['id']}: deployed {field} does not match local code")
     local_profile = recommended_profile(local)
     deployed_profile = recommended_profile(deployed)
-    if local_profile.get("options") != deployed_profile.get("options"):
-        raise ValueError(f"{local['id']}: deployed recommended options do not match local code")
-    if local_profile.get("quality") != deployed_profile.get("quality"):
-        raise ValueError(f"{local['id']}: deployed quality metadata does not match local code")
+    if local_profile != deployed_profile:
+        raise ValueError(f"{local['id']}: deployed recommended profile does not match local code")
