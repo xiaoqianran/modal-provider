@@ -20,6 +20,7 @@ ARTIFACTS_VOLUME = "modal-2d-artifacts"
 app = modal.App(APP_NAME)
 models = modal.Volume.from_name(MODELS_VOLUME, create_if_missing=True)
 artifacts = modal.Volume.from_name(ARTIFACTS_VOLUME, create_if_missing=True)
+huggingface = modal.Secret.from_name("huggingface")
 
 control_image = modal.Image.debian_slim(python_version="3.12").add_local_python_source("modal_2d")
 download_image = (
@@ -49,7 +50,7 @@ def capabilities() -> dict[str, object]:
     return capabilities_document()
 
 
-@app.function(image=download_image, volumes={str(MODEL_ROOT): models}, timeout=30 * 60)
+@app.function(image=download_image, volumes={str(MODEL_ROOT): models}, secrets=[huggingface], timeout=30 * 60)
 def prefetch(model_id: str) -> dict[str, object]:
     from huggingface_hub import snapshot_download
 
