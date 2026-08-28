@@ -1,0 +1,30 @@
+[project]
+name = "modal-gen-client"
+version = "0.1.0"
+description = "Unified local Connector for Modal generation providers."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116,<1",
+    "httpx>=0.28,<1",
+    "uvicorn>=0.35,<1",
+]
+
+[project.scripts]
+modal-gen-agent = "modal_gen.server:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.12,<1"]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
