@@ -7,7 +7,13 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 from .capabilities import CapabilityRegistry, iso
-from .constants import CLIENT_IDENTITY, CONTRACT_VERSION, SESSION_PATH, SESSION_SCOPES
+from .constants import (
+    CLIENT_IDENTITY,
+    CONTRACT_VERSION,
+    SESSION_PATH,
+    SESSION_SCOPES,
+    allow_any_origin,
+)
 from .errors import ConnectorError
 from .storage import Store
 
@@ -37,7 +43,7 @@ class SessionService:
             raise ConnectorError(
                 "CONNECTOR_CONTRACT_MISMATCH", "Connector contract version 不兼容", 409
             )
-        if request_origin and normalize_origin(request_origin) != origin:
+        if not allow_any_origin() and request_origin and normalize_origin(request_origin) != origin:
             raise ConnectorError(
                 "CONNECTOR_ORIGIN_MISMATCH", "HTTP Origin 与 pairing origin 不一致", 403
             )
@@ -140,7 +146,11 @@ class SessionService:
             raise ConnectorError("CONNECTION_REQUIRED", "Connector session 无效", 401)
         if _expired(str(session["expires_at"]), now or datetime.now(UTC)):
             raise ConnectorError("CONNECTION_REQUIRED", "Connector session 已过期", 401)
-        if request_origin and normalize_origin(request_origin) != session["origin"]:
+        if (
+            not allow_any_origin()
+            and request_origin
+            and normalize_origin(request_origin) != session["origin"]
+        ):
             raise ConnectorError(
                 "CONNECTOR_ORIGIN_MISMATCH", "Connector session origin 不匹配", 403
             )

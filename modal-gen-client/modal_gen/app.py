@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .artifacts import ArtifactService
 from .capabilities import CapabilityRegistry
-from .constants import SESSION_PATH
+from .constants import SESSION_PATH, allow_any_origin
 from .errors import ConnectorError
 from .jobs import JobService
 from .providers.modal2d import Modal2DAdapter
@@ -204,11 +204,27 @@ async def _json_body(request: Request) -> dict[str, Any]:
     return payload
 
 
-def _cors_preflight(request: Request) -> Response:
+def _cors_origin(request: Request) -> str | None:
+    """Returns the Origin echo, `*` in wildcard mode, or None if not allowed."""
+    raw_origin = request.headers.get("origin")
+    if not raw_origin:
+        return None
+    if allow_any_origin():
+        return "*"
     try:
-        origin = normalize_origin(request.headers.get("origin"))
-    except ConnectorError as exc:
-        return JSONResponse(status_code=403, content=exc.payload())
+        return normalize_origin(raw_origin)
+    except ConnectorError:
+        return None
+
+
+def _cors_preflight(request: Request) -> Response:
+    origin = _cors_origin(request)
+    if origin is None:
+        try:
+            normalize_origin(request.headers.get("origin"))
+        except ConnectorError as exc:
+            return JSONResponse(status_code=403, content=exc.payload())
+        return Response(status_code=204)
     response = Response(status_code=204)
     response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
@@ -221,12 +237,8 @@ def _cors_preflight(request: Request) -> Response:
 
 
 def _apply_cors(request: Request, response: Response) -> None:
-    raw_origin = request.headers.get("origin")
-    if not raw_origin:
-        return
-    try:
-        origin = normalize_origin(raw_origin)
-    except ConnectorError:
+    origin = _cors_origin(request)
+    if origin is None:
         return
     response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Vary"] = "Origin"
