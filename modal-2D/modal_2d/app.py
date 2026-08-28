@@ -10,7 +10,6 @@ from .contracts import (
     model_spec,
     normalize_batch_request,
     normalize_request,
-    validate_normalized_request,
 )
 from .runtime import generate_png, load_pipeline, model_snapshot_ready
 
@@ -93,7 +92,7 @@ class SanaSprintWorker:
 
     @modal.method()
     def generate(self, payload: dict[str, object]) -> dict[str, object]:
-        request = validate_normalized_request(payload)
+        request = normalize_request(payload)
         if request["model"] != self.model_id:
             raise ValueError("worker model does not match request model")
         data = generate_png(self.pipe, request)
@@ -102,17 +101,16 @@ class SanaSprintWorker:
         return {"model": self.model_id, "artifact": descriptor}
 
     @modal.method()
-    def generate_batch(self, payloads: list[dict[str, object]]) -> dict[str, object]:
-        if not payloads:
-            raise ValueError("batch must not be empty")
+    def generate_batch(self, payload: dict[str, object]) -> dict[str, object]:
+        batch = normalize_batch_request(payload)
+        if batch["model"] != self.model_id:
+            raise ValueError("worker model does not match request model")
+        requests = batch["requests"]
         batch_started = perf_counter()
         worker_reused = self.batch_calls > 0
         descriptors: list[dict[str, object]] = []
         item_timings: list[dict[str, object]] = []
-        for payload in payloads:
-            request = validate_normalized_request(payload)
-            if request["model"] != self.model_id:
-                raise ValueError("worker model does not match request model")
+        for request in requests:
             item_started = perf_counter()
             inference_started = perf_counter()
             data = generate_png(self.pipe, request)
@@ -139,22 +137,6 @@ class SanaSprintWorker:
                 "items": item_timings,
             },
         }
-
-
-@app.function(image=control_image, timeout=20 * 60)
-def submit(payload: dict[str, object]) -> dict[str, object]:
-    request = normalize_request(payload)
-    model_id = str(request["model"])
-    worker = SanaSprintWorker(model_id=model_id)
-    return worker.generate.remote(request)
-
-
-@app.function(image=control_image, timeout=20 * 60)
-def submit_batch(payload: dict[str, object]) -> dict[str, object]:
-    batch = normalize_batch_request(payload)
-    model_id = str(batch["model"])
-    worker = SanaSprintWorker(model_id=model_id)
-    return worker.generate_batch.remote(batch["requests"])
 
 
 @app.function(image=control_image, volumes={str(ARTIFACT_ROOT): artifacts}, timeout=5 * 60)

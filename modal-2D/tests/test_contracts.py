@@ -11,7 +11,6 @@ from modal_2d.contracts import (
     normalize_batch_request,
     normalize_request,
     validate_artifact_id,
-    validate_normalized_request,
 )
 
 
@@ -60,8 +59,16 @@ def test_capability_is_stable_and_lossless():
     assert doc["inputSchema"]["required"] == ["prompt"]
     assert doc["outputs"] == [{"role": "primary-image", "mediaType": ARTIFACT_MIME}]
     assert doc["execution"] == {"mode": "async", "cancellable": True}
-    assert doc["generation"]["batch_submit_function"] == "submit_batch"
-    assert doc["generation"]["batch_max_size"] == 8
+    generation = doc["generation"]
+    assert generation["app"] == "modal-2d"
+    assert generation["worker_class"] == "SanaSprintWorker"
+    assert generation["generate_method"] == "generate"
+    assert generation["batch_generate_method"] == "generate_batch"
+    assert generation["artifact_function"] == "read_artifact"
+    assert generation["job_transport"] == "modal-function-call"
+    assert "submit_function" not in generation
+    assert "batch_submit_function" not in generation
+    assert generation["batch_max_size"] == 8
     assert doc["artifact"] == {
         "role": "primary-image",
         "mime": ARTIFACT_MIME,
@@ -81,13 +88,16 @@ def test_artifact_id_is_url_safe():
         validate_artifact_id("../secret")
 
 
-def test_internal_normalized_request_is_separate_from_public_schema():
+def test_public_schema_cannot_carry_internal_generation_fields():
+    """Worker 直接接受 public payload，内部字段只能由服务端 normalize 产生。"""
+    for field in ("steps", "width", "height", "output"):
+        with pytest.raises(ValueError, match="unknown generation fields"):
+            normalize_request({"prompt": "mossy house", field: 512})
+
     normalized = normalize_request({"prompt": "mossy house"})
-    assert validate_normalized_request(normalized) == normalized
-    with pytest.raises(ValueError, match="fields are invalid"):
-        validate_normalized_request({**normalized, "internal": True})
-    with pytest.raises(ValueError, match="values are invalid"):
-        validate_normalized_request({**normalized, "width": 512})
+    assert normalized["steps"] == 2 and normalized["width"] == 1024
+    public = {key: normalized[key] for key in ("prompt", "model", "seed", "guidance")}
+    assert normalize_request(public) == normalized
 
 
 def test_batch_request_normalizes_one_prompt_with_multiple_unique_seeds():

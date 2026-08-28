@@ -3,14 +3,15 @@
 `modal-2D` 是一个刻意保持很小的 Modal 文生图 Provider。当前只支持 **SANA-Sprint 0.6B / 1.6B**，输出固定为 1024×1024 lossless PNG。
 
 ```text
-submit(request) / submit_batch(requests)
+本地 client（modal-2D-client）
    │
-   ├─ 校验稳定 generation contract
-   ├─ 推理热路径不执行模型下载
+   ├─ 本地校验 public request + capability
+   └─ 按 model 直接 Cls.from_name("modal-2d", "SanaSprintWorker")(model_id=...)
+        │
+        ▼
+SanaSprintWorker(model_id)          ← 生成热路径唯一入口，没有 CPU 中转 Function
    │
-   ▼
-SanaSprintWorker(model_id)
-   │
+   ├─ normalize_request / normalize_batch_request（服务端最后一道校验）
    ├─ GPU: L40S
    ├─ 本地 Volume 权重，禁止推理容器临时下载
    │
@@ -29,8 +30,9 @@ primary-image PNG
 - Artifact 内容身份使用 `mediaType + bytes + sha256 digest`；`remote_path`/Modal Volume 仅是 Provider 私有位置，不进入 AgentScape 领域语义。
 - `read_artifact` 暂保留为兼容 fallback；Reference Sidecar 优先直接读取命名 Volume，避免大 bytes 再经过一次 Modal Function result。
 - 不包含 Web UI、SQLite、用户账号、Connector、业务编排。
-- `submit` / `submit_batch` 是稳定异步边界，客户端可直接对 Modal FunctionCall 做 poll/cancel。
-- `submit_batch` 把同 prompt 的多个 seed 放进同一个 `SanaSprintWorker`；一个 GPU/pipeline 顺序生成全部候选，避免 Modal 因并发 candidate 产生 cold-start overscaling。
+- `SanaSprintWorker.generate` / `.generate_batch` 是稳定异步边界，客户端直接对 GPU Worker 的 Modal FunctionCall 做 poll/cancel。生成热路径上没有 `submit` 这类 CPU 中转 Function：Modal 每多一层 Function 就多一次独立冷启动，中转层只会让首次请求先等一次 CPU 容器、再等一次 GPU 容器。
+- Worker 自己完成最后一道服务端校验：客户端只传 public payload（`prompt` / `model` / `seed` | `seeds` / `guidance`），`steps`、`width`、`height`、`output` 由服务端 normalize 产生，不接受外部传入。
+- `generate_batch` 把同 prompt 的多个 seed 放进同一个 `SanaSprintWorker`；一个 GPU/pipeline 顺序生成全部候选，避免 Modal 因并发 candidate 产生 cold-start overscaling。
 - `prefetch` 是显式模型准备 capability，不进入每次 generation hot path。
 - Worker `scaledown_window=300s`，让短时间连续生成复用已加载 pipeline。
 - 新模型通过 `ModelSpec` + 推理 adapter 扩展，不把模型分支散落到 HTTP/Job 层。

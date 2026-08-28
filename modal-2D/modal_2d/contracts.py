@@ -10,6 +10,12 @@ PROVIDER = "modal-2d"
 CONTRACT = "modal-2d.generation.v1"
 CAPABILITY_KIND = "image.generate"
 OPERATION = "modal-2d.image.text_to_image.v1"
+# 生成热路径的稳定远端入口：客户端直接 lookup 这个 Cls，不再经过 CPU 中转 Function。
+WORKER_CLASS = "SanaSprintWorker"
+GENERATE_METHOD = "generate"
+BATCH_GENERATE_METHOD = "generate_batch"
+PREFETCH_FUNCTION = "prefetch"
+ARTIFACT_FUNCTION = "read_artifact"
 ARTIFACT_ROLE = "primary-image"
 ARTIFACT_MIME = "image/png"
 ARTIFACT_FORMAT = "png"
@@ -106,27 +112,6 @@ def normalize_batch_request(value: Any) -> dict[str, object]:
     model = str(requests[0]["model"])
     return {"model": model, "requests": requests}
 
-def validate_normalized_request(value: Any) -> dict[str, object]:
-    if not isinstance(value, dict):
-        raise ValueError("normalized generation request must be an object")
-    expected_keys = {
-        "prompt",
-        "model",
-        "seed",
-        "steps",
-        "guidance",
-        "width",
-        "height",
-        "output",
-    }
-    if set(value) != expected_keys:
-        raise ValueError("normalized generation request fields are invalid")
-    public = {key: value[key] for key in ("prompt", "model", "seed", "guidance")}
-    normalized = normalize_request(public)
-    if normalized != value:
-        raise ValueError("normalized generation request values are invalid")
-    return normalized
-
 
 def capabilities_document() -> dict[str, object]:
     schema = {
@@ -150,11 +135,12 @@ def capabilities_document() -> dict[str, object]:
         "execution": {"mode": "async", "cancellable": True},
         "generation": {
             "app": APP_NAME,
-            "submit_function": "submit",
-            "prefetch_function": "prefetch",
-            "batch_submit_function": "submit_batch",
+            "worker_class": WORKER_CLASS,
+            "generate_method": GENERATE_METHOD,
+            "batch_generate_method": BATCH_GENERATE_METHOD,
+            "prefetch_function": PREFETCH_FUNCTION,
             "batch_max_size": MAX_BATCH_SIZE,
-            "artifact_function": "read_artifact",
+            "artifact_function": ARTIFACT_FUNCTION,
             "artifact_volume": ARTIFACT_VOLUME,
             "artifact_path_field": "remote_path",
             "job_transport": "modal-function-call",
