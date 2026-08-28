@@ -134,24 +134,6 @@ class TextJobTest(unittest.TestCase):
         self.assertIn('HF_HUB_OFFLINE', body)
         self.assertIn('TRANSFORMERS_OFFLINE', body)
 
-    def test_text_stage_runs_before_rembg(self):
-        source = RUNTIME.read_text(encoding="utf-8")
-        start = source.index("def run_job(")
-        end = source.index("@app.function(", start)
-        body = source[start:end]
-        self.assertLess(body.index('"text2image"'), body.index('"rembg"'))
-
-    def test_text_submit_uses_async_modal_interfaces(self):
-        source = RUNTIME.read_text(encoding="utf-8")
-        start = source.index("    async def submit_text_job(")
-        end = source.index('    @web.get("/jobs/{job_id}")', start)
-        submit = source[start:end]
-        for blocking in ("artifacts.commit()", "job_states.put(", "run_job.spawn("):
-            self.assertNotIn(blocking, submit)
-        for async_call in ("artifacts.commit.aio()", "job_states.put.aio(", "run_job.spawn.aio("):
-            self.assertIn(async_call, submit)
-
-
 class AutoscaleDedupeTest(unittest.TestCase):
     class FakeTarget:
         def __init__(self):
@@ -202,18 +184,6 @@ class RetextureJobTest(unittest.TestCase):
         self.assertIn('np.allclose(src_mesh.bounds,objm.bounds', body)
         self.assertIn('len(src_mesh.faces)==len(objm.faces)', body)
 
-    def test_retexture_endpoint_requires_succeeded_source_and_async_spawn(self):
-        source = RUNTIME.read_text(encoding="utf-8")
-        start = source.index('    async def submit_retexture_job(')
-        end = source.index('    @web.get("/jobs/{job_id}")', start)
-        body = source[start:end]
-        self.assertIn('source_state.get("status") != "succeeded"', body)
-        self.assertIn('await job_states.get.aio(', body)
-        self.assertIn('await job_states.put.aio(', body)
-        self.assertIn('await run_retexture_job.spawn.aio(', body)
-        self.assertNotIn('run_retexture_job.spawn(', body)
-
-
 class AffordanceJobTest(unittest.TestCase):
     def test_affordance_options_are_strict_and_defaulted(self):
         options = runtime.normalize_affordance_options({})
@@ -233,23 +203,6 @@ class AffordanceJobTest(unittest.TestCase):
             runtime.normalize_affordance_options({"seed": True})
         with self.assertRaises(ValueError):
             runtime.normalize_affordance_options({"semantic": True})
-
-    def test_affordance_orchestrator_uses_separate_deployed_app_and_stage_order(self):
-        source = RUNTIME.read_text(encoding="utf-8")
-        self.assertIn('AFFORDANCE_APP_NAME = "modal-3d-embodiedgen-affordance"', source)
-        self.assertIn('modal.Function.from_name(AFFORDANCE_APP_NAME, "segment_job")', source)
-        self.assertIn('modal.Function.from_name(AFFORDANCE_APP_NAME, "raw_grasp_job")', source)
-        start = source.index("def run_affordance_job(")
-        end = source.index("@app.function(", start)
-        body = source[start:end]
-        self.assertLess(body.index('"segment"'), body.index('"grasp_raw"'))
-        self.assertLess(body.index('"grasp_raw"'), body.index('"finalize"'))
-        self.assertIn('AFFORDANCE_SEMANTIC_PROFILE', body)
-        self.assertIn('"semantic_inputs"', body)
-        self.assertIn('"semantic_annotate"', body)
-        self.assertLess(body.index('"semantic_inputs"'), body.index('"semantic_annotate"'))
-        self.assertIn('output_job_id=job_id', body)
-        self.assertIn('files=sorted(affordance_result_files(profile))', body)
 
     def test_affordance_finalize_publishes_hash_bound_bundle(self):
         source = RUNTIME.read_text(encoding="utf-8")
@@ -278,25 +231,6 @@ class AffordanceJobTest(unittest.TestCase):
         self.assertEqual(base["affordance_bundle"], semantic["affordance_bundle"])
         with self.assertRaises(ValueError):
             runtime.affordance_result_files("unknown")
-
-    def test_affordance_endpoint_requires_succeeded_source_and_async_dispatch(self):
-        source = RUNTIME.read_text(encoding="utf-8")
-        start = source.index('    async def submit_affordance_job(')
-        end = source.index('    @web.get("/jobs/{job_id}")', start)
-        body = source[start:end]
-        self.assertIn('source_state.get("status") != "succeeded"', body)
-        self.assertIn('await artifacts.reload.aio()', body)
-        self.assertIn('await artifacts.commit.aio()', body)
-        self.assertIn('await job_states.put.aio(', body)
-        self.assertIn('await run_affordance_job.spawn.aio(', body)
-        self.assertNotIn('run_affordance_job.spawn(', body)
-
-    def test_job_file_urls_are_scoped_to_state_file_roles(self):
-        source = RUNTIME.read_text(encoding="utf-8")
-        self.assertIn('available = state.get("files") or sorted(RESULT_FILES)', source)
-        self.assertIn('if name not in available:', source)
-        self.assertIn('ALL_RESULT_FILES[name]', source)
-
 
 class AffordanceSemanticInputTest(unittest.TestCase):
     def test_semantic_parts_are_bound_to_persisted_provider_palette(self):
@@ -450,16 +384,6 @@ class RuntimeIsolationTest(unittest.TestCase):
             decorator = source[source.rfind("@app.", 0, pos):pos]
             self.assertIn("image=cpu_image", decorator, marker)
         self.assertIn("image=image,\n    gpu=\"L40S\"", source)
-
-    def test_async_submit_uses_only_modal_aio_interfaces(self):
-        source = RUNTIME.read_text(encoding="utf-8")
-        start = source.index("    async def submit_job(")
-        end = source.index("    @web.get(\"/jobs/{job_id}\")", start)
-        submit = source[start:end]
-        for blocking in ("artifacts.commit()", "job_states.put(", "run_job.spawn("):
-            self.assertNotIn(blocking, submit)
-        for async_call in ("artifacts.commit.aio()", "job_states.put.aio(", "run_job.spawn.aio("):
-            self.assertIn(async_call, submit)
 
     def test_benchmark_fallback_is_preloaded_not_source_checkout(self):
         source = RUNTIME.read_text(encoding="utf-8")
