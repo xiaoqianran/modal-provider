@@ -25,7 +25,7 @@ class Service:
     def cancel(self, job_id):
         return {"id": job_id, "status": "cancel_requested"}
 
-    def artifact(self, job_id):
+    def artifact(self, job_id, index=None):
         raise RuntimeError("not ready")
 
 
@@ -169,4 +169,26 @@ def test_artifact_route_exposes_immutable_identity_headers(tmp_path):
             assert response.headers["x-artifact-sha256"] == "a" * 64
             assert response.headers["content-type"].startswith("image/png")
 
+    run(scenario())
+
+
+def test_api_accepts_batch_seeds_as_one_job():
+    class BatchService(Service):
+        def __init__(self):
+            self.payload = None
+        def submit(self, payload, *, job_id=None):
+            self.payload = payload
+            return {"id": job_id or "job_batch", "status": "running", "model": payload["model"]}
+    service = BatchService()
+    async def scenario():
+        async with await client_for(create_app(service)) as client:
+            response = await client.post("/v1/jobs", json={
+                "prompt": "red apple",
+                "seeds": [42, 73, 104, 135],
+                "job_id": "job_batch",
+            })
+            assert response.status_code == 200
+            assert service.payload["seeds"] == [42, 73, 104, 135]
+            invalid = await client.post("/v1/jobs", json={"prompt": "x", "seed": 42, "seeds": [73]})
+            assert invalid.status_code == 422
     run(scenario())

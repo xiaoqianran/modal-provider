@@ -25,8 +25,8 @@ from modal.exception import ConnectionError as ModalConnectionError
 from modal.exception import TimeoutError as ModalTimeoutError
 
 from . import artifacts, capabilities
-from .constants import APP_NAME, SUBMIT_FUNCTION
-from .contracts import ContractError, normalize_request, validate_artifact
+from .constants import APP_NAME, BATCH_SUBMIT_FUNCTION, SUBMIT_FUNCTION
+from .contracts import ContractError, normalize_batch_request, normalize_request, validate_artifact
 from .modal_session import NotConnectedError, client
 from .storage import data_dir
 
@@ -222,7 +222,8 @@ class JobService:
         *,
         job_id: str | None = None,
     ) -> dict[str, object]:
-        request = normalize_request(payload)
+        is_batch = "seeds" in payload
+        request = normalize_batch_request(payload) if is_batch else normalize_request(payload)
         capabilities.ensure_model(str(request["model"]))
         local_job_id = job_id or f"job_{uuid.uuid4().hex}"
         if not _JOB_ID.fullmatch(local_job_id):
@@ -235,7 +236,9 @@ class JobService:
             raise ContractError("job_id already exists")
 
         # 先完成本地/认证 preflight，再持久化 intent，最后触发远端调用。
-        fn = modal.Function.from_name(APP_NAME, SUBMIT_FUNCTION, client=client())
+        fn = modal.Function.from_name(
+            APP_NAME, BATCH_SUBMIT_FUNCTION if is_batch else SUBMIT_FUNCTION, client=client()
+        )
         timestamp = _now()
         intent = Job(
             id=local_job_id,
@@ -342,6 +345,21 @@ class JobService:
 
         if not isinstance(value, dict) or value.get("model") != job.model:
             return self._set(job, "failed", error_code="remote.invalid_response", retryable=False)
+        if isinstance(value.get("artifacts"), list):
+            try:
+                artifacts_list = [validate_artifact(item) for item in value["artifacts"]]
+            except ContractError:
+                return self._set(
+                    job, "failed", error_code="artifact.invalid_descriptor", retryable=False
+                )
+            if not artifacts_list:
+                return self._set(
+                    job, "failed", error_code="remote.invalid_response", retryable=False
+                )
+            result = {"artifacts": artifacts_list}
+            if isinstance(value.get("timing"), dict):
+                result["timing"] = value["timing"]
+            return self._set(job, "succeeded", result=result, retryable=False)
         try:
             artifact = validate_artifact(value.get("artifact"))
         except ContractError:
@@ -371,11 +389,22 @@ class JobService:
             return self._set(job, "expired", error_code="remote.output_expired", retryable=False)
         return self._set(job, "cancel_requested", retryable=True)
 
-    def artifact(self, job_id: str) -> tuple[dict[str, object], Path]:
+    def artifact(self, job_id: str, index: int | None = None) -> tuple[dict[str, object], Path]:
         state = self.poll(job_id)
         if state["status"] != "succeeded" or not isinstance(state.get("result"), dict):
             raise RuntimeError("job artifact is not ready")
-        descriptor = state["result"]["artifact"]
+        result = state["result"]
+        if "artifacts" in result:
+            if index is None:
+                raise RuntimeError("batch job requires an artifact index")
+            items = result["artifacts"]
+            if not isinstance(items, list) or not 0 <= index < len(items):
+                raise IndexError(index)
+            descriptor = items[index]
+        else:
+            if index not in (None, 0):
+                raise IndexError(index)
+            descriptor = result["artifact"]
         return descriptor, artifacts.fetch(descriptor)
 
     def _set(

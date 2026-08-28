@@ -31,7 +31,8 @@ class GenerateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     prompt: str = Field(min_length=1, max_length=4000)
     model: str = "sana-sprint-1.6b"
-    seed: int = Field(default=42, ge=0, le=2**32 - 1)
+    seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
+    seeds: list[int] | None = Field(default=None, min_length=1, max_length=8)
     guidance: float | None = Field(default=None, ge=0, le=20)
     job_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,160}$")
 
@@ -102,10 +103,12 @@ def create_app(service: JobService | None = None) -> FastAPI:
     @app.post("/v1/jobs")
     def submit_job(body: GenerateBody):
         try:
-            return job_service().submit(
-                body.model_dump(exclude={"job_id"}, exclude_none=True),
-                job_id=body.job_id,
-            )
+            payload = body.model_dump(exclude={"job_id"}, exclude_none=True)
+            if body.seed is not None and body.seeds is not None:
+                raise ContractError("seed and seeds are mutually exclusive")
+            if body.seeds is not None and len(set(body.seeds)) != len(body.seeds):
+                raise ContractError("seeds must be unique")
+            return job_service().submit(payload, job_id=body.job_id)
         except modal_session.NotConnectedError as exc:
             raise HTTPException(status_code=409, detail="Modal connection required") from exc
         except ContractError as exc:
@@ -124,6 +127,28 @@ def create_app(service: JobService | None = None) -> FastAPI:
             return job_service().cancel(job_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Job not found") from exc
+
+    @app.get("/v1/jobs/{job_id}/artifacts/{index}")
+    def get_batch_artifact(job_id: str, index: int):
+        try:
+            descriptor, path = job_service().artifact(job_id, index=index)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Job not found") from exc
+        except IndexError as exc:
+            raise HTTPException(status_code=404, detail="Artifact index not found") from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail="Job artifact is not ready") from exc
+        except ContractError as exc:
+            raise HTTPException(status_code=502, detail="Artifact integrity check failed") from exc
+        return FileResponse(
+            path,
+            media_type="image/png",
+            headers={
+                "ETag": f'"{descriptor["sha256"]}"',
+                "X-Artifact-ID": str(descriptor["id"]),
+                "X-Artifact-SHA256": str(descriptor["sha256"]),
+            },
+        )
 
     @app.get("/v1/jobs/{job_id}/artifact")
     def get_artifact(job_id: str):

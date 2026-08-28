@@ -40,17 +40,18 @@ Sana Sprint Worker   Artifact Volume
 - `GET /v1/jobs/{id}`
 - `DELETE /v1/jobs/{id}`
 - `GET /v1/jobs/{id}/artifact`
+- `GET /v1/jobs/{id}/artifacts/{index}`
 
 ## 设计原则
 
 - Modal token 只驻留进程内存，不写 SQLite、不写日志、不进入 Job。
 - SQLite 只保存可恢复 Job 镜像和 `remote_call_id`。
-- 成功 Job 先返回远端 Artifact descriptor；PNG 只有被读取时才下载。
+- 成功 Job 先返回远端 Artifact descriptor；PNG 只有被读取时才下载。Batch Job 使用同一个 `remote_call_id` 保存 `artifacts[]`，不新增第二套 Job lifecycle。
 - Artifact 读取优先走 `modal-2d-artifacts` 命名 Volume；旧 `read_artifact` Function 只做 transport fallback。
 - Volume 数据按 chunk 写入临时文件，同时校验 PNG magic / bytes / SHA-256；验证成功后才原子进入内容寻址 cache。完整性失败不会 fallback 掩盖。
 - Client 独立校验云端 capability，不信任 Provider 返回。
 - SANA-Sprint 固定使用 2 steps；本地 API 不暴露无效的 steps 调节参数。
-- 没有 Project、Web Studio、ledger、batch scheduler 等 2D Provider 不需要的概念。
+- 支持一个逻辑 Job 携带 `seeds[]` 的 Provider batch capability，但没有 Project、Web Studio、ledger 或 batch scheduler。
 
 ## 本地运行
 
@@ -81,3 +82,18 @@ modal-2D
 ```
 
 `modal-gen-client` 不吸收本仓的 Provider-specific Job/Artifact implementation；它只通过本地 API 做安全 transport。这样本仓可以继续脱离 AgentScape 独立 smoke 和恢复测试。
+
+
+## Candidate Batch
+
+同一个 prompt 的多个 seed 应作为一个逻辑 Job 提交：
+
+```json
+{
+  "prompt": "a glossy red apple",
+  "model": "sana-sprint-1.6b",
+  "seeds": [42, 73, 104, 135]
+}
+```
+
+Sidecar 只创建一个本地 Job / 一个 Modal `FunctionCall`；Provider 返回 `artifacts[]` 后，可通过 `/v1/jobs/{id}/artifacts/{index}` 按索引验证并读取每个 PNG。取消、恢复、SQLite 镜像与单图 Job 共用同一套状态机。

@@ -10,9 +10,11 @@ from .constants import (
     ARTIFACT_MIME,
     ARTIFACT_ROLE,
     ARTIFACT_VOLUME,
+    BATCH_SUBMIT_FUNCTION,
     CONTRACT,
     DEFAULT_MODEL,
     JOB_TRANSPORT,
+    MAX_BATCH_SIZE,
     MAX_PROMPT_CHARS,
     MAX_SEED,
     OPERATION,
@@ -48,6 +50,10 @@ def validate_capabilities(value: Any) -> dict[str, object]:
         raise ContractError("incompatible modal-2D generation endpoint")
     if generation.get("artifact_volume") not in (None, ARTIFACT_VOLUME):
         raise ContractError("incompatible modal-2D artifact volume")
+    if generation.get("batch_submit_function") not in (None, BATCH_SUBMIT_FUNCTION):
+        raise ContractError("incompatible modal-2D batch endpoint")
+    if generation.get("batch_max_size") not in (None, MAX_BATCH_SIZE):
+        raise ContractError("incompatible modal-2D batch size")
     if generation.get("artifact_path_field") not in (None, "remote_path"):
         raise ContractError("incompatible modal-2D artifact path field")
     artifact = _mapping(doc.get("artifact"), "artifact")
@@ -109,6 +115,26 @@ def normalize_request(value: Any) -> dict[str, object]:
         result["guidance"] = float(guidance)
     return result
 
+
+
+def normalize_batch_request(value: Any) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ContractError("batch generation request must be an object")
+    allowed = {"prompt", "model", "seeds", "guidance"}
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise ContractError(f"unknown batch generation fields: {', '.join(unknown)}")
+    seeds = value.get("seeds")
+    if not isinstance(seeds, list) or not 1 <= len(seeds) <= MAX_BATCH_SIZE:
+        raise ContractError(f"seeds must contain between 1 and {MAX_BATCH_SIZE} integers")
+    normalized_seeds = [_integer(seed, "seed", 0, MAX_SEED) for seed in seeds]
+    if len(set(normalized_seeds)) != len(normalized_seeds):
+        raise ContractError("seeds must be unique")
+    single = normalize_request({
+        key: value[key] for key in ("prompt", "model", "guidance") if key in value
+    })
+    single.pop("seed")
+    return {**single, "seeds": normalized_seeds}
 
 def validate_artifact(value: Any) -> dict[str, object]:
     artifact = _mapping(value, "artifact")

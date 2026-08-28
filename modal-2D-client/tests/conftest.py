@@ -13,6 +13,8 @@ def capability_doc():
         "generation": {
             "app": "modal-2d",
             "submit_function": "submit",
+            "batch_submit_function": "submit_batch",
+            "batch_max_size": 8,
             "artifact_function": "read_artifact",
             "artifact_volume": "modal-2d-artifacts",
             "artifact_path_field": "remote_path",

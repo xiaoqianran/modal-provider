@@ -307,3 +307,54 @@ def test_cancel_requested_without_remote_id_stays_pending_without_resubmit(
     assert state["status"] == "cancel_requested"
     assert state["error_code"] is None
     assert state["retryable"] is True
+
+
+def test_batch_job_uses_batch_submit_and_persists_multiple_artifacts(
+    tmp_path: Path, monkeypatch, png_artifact
+):
+    _, descriptor = png_artifact
+    second = dict(descriptor, id="art_def", remote_path="generated/art_def.png")
+    submit = SubmitFunction()
+    poll = PollCall({
+        "model": "sana-sprint-1.6b",
+        "artifacts": [descriptor, second],
+        "timing": {"worker_load_ms": 5000.0, "batch_total_ms": 1200.0},
+    })
+    names = []
+    monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
+    monkeypatch.setattr(jobs, "client", lambda: object())
+    monkeypatch.setattr(
+        jobs.modal.Function,
+        "from_name",
+        lambda _app, name, **kwargs: names.append(name) or submit,
+    )
+    monkeypatch.setattr(jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: poll)
+    service = jobs.JobService(jobs.JobStore(tmp_path / "jobs.sqlite3"))
+    created = service.submit({"prompt": "apple", "seeds": [42, 73]})
+    assert names == ["submit_batch"]
+    assert submit.payload == {"prompt": "apple", "model": "sana-sprint-1.6b", "seeds": [42, 73]}
+    finished = service.poll(created["id"])
+    assert finished["status"] == "succeeded"
+    assert [item["id"] for item in finished["result"]["artifacts"]] == ["art_abc", "art_def"]
+    assert finished["result"]["timing"]["batch_total_ms"] == 1200.0
+
+
+def test_batch_artifact_fetch_requires_index(tmp_path: Path, monkeypatch, png_artifact):
+    _, descriptor = png_artifact
+    second = dict(descriptor, id="art_def", remote_path="generated/art_def.png")
+    store = jobs.JobStore(tmp_path / "jobs.sqlite3")
+    now = "2026-08-28T00:00:00+00:00"
+    store.save(jobs.Job(
+        id="job_batch", model="sana-sprint-1.6b", remote_call_id="fc-batch", status="succeeded",
+        created_at=now, updated_at=now, result={"artifacts": [descriptor, second]}, retryable=False,
+    ))
+    paths = {"art_abc": tmp_path / "a.png", "art_def": tmp_path / "b.png"}
+    for path in paths.values():
+        path.write_bytes(b"png")
+    monkeypatch.setattr(jobs.artifacts, "fetch", lambda value: paths[value["id"]])
+    service = jobs.JobService(store)
+    with pytest.raises(RuntimeError, match="requires an artifact index"):
+        service.artifact("job_batch")
+    returned, path = service.artifact("job_batch", index=1)
+    assert returned["id"] == "art_def"
+    assert path == paths["art_def"]
