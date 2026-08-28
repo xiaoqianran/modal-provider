@@ -17,6 +17,7 @@ ARTIFACT_VOLUME = "modal-2d-artifacts"
 IMAGE_SIZE = 1024
 MAX_PROMPT_CHARS = 4000
 MAX_SEED = 2**32 - 1
+MAX_BATCH_SIZE = 8
 _SAFE_ARTIFACT_ID = re.compile(r"^[A-Za-z0-9_-]{1,160}$")
 
 
@@ -87,6 +88,24 @@ def normalize_request(value: Any) -> dict[str, object]:
     }
 
 
+
+def normalize_batch_request(value: Any) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError("batch generation request must be an object")
+    allowed = {"prompt", "model", "seeds", "guidance"}
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise ValueError(f"unknown batch generation fields: {', '.join(unknown)}")
+    seeds = value.get("seeds")
+    if not isinstance(seeds, list) or not 1 <= len(seeds) <= MAX_BATCH_SIZE:
+        raise ValueError(f"seeds must contain between 1 and {MAX_BATCH_SIZE} integers")
+    if len(set(seeds)) != len(seeds):
+        raise ValueError("seeds must be unique")
+    base = {key: value[key] for key in ("prompt", "model", "guidance") if key in value}
+    requests = [normalize_request({**base, "seed": seed}) for seed in seeds]
+    model = str(requests[0]["model"])
+    return {"model": model, "requests": requests}
+
 def validate_normalized_request(value: Any) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError("normalized generation request must be an object")
@@ -132,6 +151,9 @@ def capabilities_document() -> dict[str, object]:
         "generation": {
             "app": APP_NAME,
             "submit_function": "submit",
+            "prefetch_function": "prefetch",
+            "batch_submit_function": "submit_batch",
+            "batch_max_size": MAX_BATCH_SIZE,
             "artifact_function": "read_artifact",
             "artifact_volume": ARTIFACT_VOLUME,
             "artifact_path_field": "remote_path",

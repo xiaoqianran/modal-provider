@@ -8,6 +8,7 @@ from modal_2d.contracts import (
     OPERATION,
     capabilities_document,
     model_spec,
+    normalize_batch_request,
     normalize_request,
     validate_artifact_id,
     validate_normalized_request,
@@ -59,6 +60,8 @@ def test_capability_is_stable_and_lossless():
     assert doc["inputSchema"]["required"] == ["prompt"]
     assert doc["outputs"] == [{"role": "primary-image", "mediaType": ARTIFACT_MIME}]
     assert doc["execution"] == {"mode": "async", "cancellable": True}
+    assert doc["generation"]["batch_submit_function"] == "submit_batch"
+    assert doc["generation"]["batch_max_size"] == 8
     assert doc["artifact"] == {
         "role": "primary-image",
         "mime": ARTIFACT_MIME,
@@ -85,3 +88,21 @@ def test_internal_normalized_request_is_separate_from_public_schema():
         validate_normalized_request({**normalized, "internal": True})
     with pytest.raises(ValueError, match="values are invalid"):
         validate_normalized_request({**normalized, "width": 512})
+
+
+def test_batch_request_normalizes_one_prompt_with_multiple_unique_seeds():
+    batch = normalize_batch_request({
+        "prompt": "mossy house",
+        "model": "sana-sprint-1.6b",
+        "seeds": [42, 73, 104, 135],
+    })
+    assert batch["model"] == "sana-sprint-1.6b"
+    assert [item["seed"] for item in batch["requests"]] == [42, 73, 104, 135]
+    assert all(item["prompt"] == "mossy house" for item in batch["requests"])
+
+
+def test_batch_request_rejects_duplicate_or_oversized_seeds():
+    with pytest.raises(ValueError, match="unique"):
+        normalize_batch_request({"prompt": "x", "seeds": [42, 42]})
+    with pytest.raises(ValueError, match="between 1 and 8"):
+        normalize_batch_request({"prompt": "x", "seeds": list(range(9))})

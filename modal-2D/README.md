@@ -3,10 +3,10 @@
 `modal-2D` 是一个刻意保持很小的 Modal 文生图 Provider。当前只支持 **SANA-Sprint 0.6B / 1.6B**，输出固定为 1024×1024 lossless PNG。
 
 ```text
-submit(request)
+submit(request) / submit_batch(requests)
    │
    ├─ 校验稳定 generation contract
-   ├─ CPU prefetch（已有完整 snapshot 就跳过）
+   ├─ 推理热路径不执行模型下载
    │
    ▼
 SanaSprintWorker(model_id)
@@ -29,7 +29,10 @@ primary-image PNG
 - Artifact 内容身份使用 `mediaType + bytes + sha256 digest`；`remote_path`/Modal Volume 仅是 Provider 私有位置，不进入 AgentScape 领域语义。
 - `read_artifact` 暂保留为兼容 fallback；Reference Sidecar 优先直接读取命名 Volume，避免大 bytes 再经过一次 Modal Function result。
 - 不包含 Web UI、SQLite、用户账号、Connector、业务编排。
-- `submit` 是稳定异步边界，客户端可直接对 Modal FunctionCall 做 poll/cancel。
+- `submit` / `submit_batch` 是稳定异步边界，客户端可直接对 Modal FunctionCall 做 poll/cancel。
+- `submit_batch` 把同 prompt 的多个 seed 放进同一个 `SanaSprintWorker`；一个 GPU/pipeline 顺序生成全部候选，避免 Modal 因并发 candidate 产生 cold-start overscaling。
+- `prefetch` 是显式模型准备 capability，不进入每次 generation hot path。
+- Worker `scaledown_window=300s`，让短时间连续生成复用已加载 pipeline。
 - 新模型通过 `ModelSpec` + 推理 adapter 扩展，不把模型分支散落到 HTTP/Job 层。
 
 ## 模型
@@ -47,4 +50,27 @@ uv run pytest -q
 uv run modal deploy -m modal_2d.app
 ```
 
-`modal-sana` 仅作为已验证的 SANA-Sprint / diffusers / L40S 运行参考；本仓没有继承它的 Web、ledger、batch、SQLModel 等应用层复杂度。
+`modal-sana` 仅作为已验证的 SANA-Sprint / diffusers / L40S 运行参考；本仓没有继承它的 Web、ledger、SQLModel 或 batch scheduler。这里的 batch 只是一个深 Provider capability：同一 worker 对多个 seed 顺序推理。
+
+
+## Verified Batch Baseline
+
+2026-08-28，`sana-sprint-1.6b` 在 L40S 上用 `seeds=[42,73,104,135]` 做连续 cold → warm 实测：
+
+```text
+old: 4 independent GPU jobs    ~54.2 s
+cold: one batch job             43.362 s
+warm: one batch job              9.075 s
+warm provider batch compute      6.782 s
+```
+
+Warm worker 内真实单图 inference：
+
+```text
+seed 42    1.352 s
+seed 73    1.353 s
+seed 104   1.240 s
+seed 135   2.428 s
+```
+
+Warm batch 返回 `worker_reused=true`、`worker_load_ms=null`；cold batch 单独记录本次 `worker_load_ms`。这样外层 Job wait 不再被误解为模型推理时间。

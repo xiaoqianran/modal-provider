@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import perf_counter
 
 import modal
 
@@ -7,6 +8,7 @@ from .contracts import (
     APP_NAME,
     capabilities_document,
     model_spec,
+    normalize_batch_request,
     normalize_request,
     validate_normalized_request,
 )
@@ -74,7 +76,7 @@ def prefetch(model_id: str) -> dict[str, object]:
     image=inference_image,
     gpu="L40S",
     timeout=15 * 60,
-    scaledown_window=30,
+    scaledown_window=300,
     retries=modal.Retries(max_retries=2, backoff_coefficient=2.0),
     volumes={str(MODEL_ROOT): models, str(ARTIFACT_ROOT): artifacts},
 )
@@ -83,8 +85,11 @@ class SanaSprintWorker:
 
     @modal.enter()
     def load(self) -> None:
+        started = perf_counter()
         models.reload()
         self.pipe = load_pipeline(self.model_id, MODEL_ROOT)
+        self.worker_load_ms = round((perf_counter() - started) * 1000, 3)
+        self.batch_calls = 0
 
     @modal.method()
     def generate(self, payload: dict[str, object]) -> dict[str, object]:
@@ -96,14 +101,60 @@ class SanaSprintWorker:
         artifacts.commit()
         return {"model": self.model_id, "artifact": descriptor}
 
+    @modal.method()
+    def generate_batch(self, payloads: list[dict[str, object]]) -> dict[str, object]:
+        if not payloads:
+            raise ValueError("batch must not be empty")
+        batch_started = perf_counter()
+        worker_reused = self.batch_calls > 0
+        descriptors: list[dict[str, object]] = []
+        item_timings: list[dict[str, object]] = []
+        for payload in payloads:
+            request = validate_normalized_request(payload)
+            if request["model"] != self.model_id:
+                raise ValueError("worker model does not match request model")
+            item_started = perf_counter()
+            inference_started = perf_counter()
+            data = generate_png(self.pipe, request)
+            inference_ms = round((perf_counter() - inference_started) * 1000, 3)
+            write_started = perf_counter()
+            descriptor = write_png(ARTIFACT_ROOT, data)
+            write_ms = round((perf_counter() - write_started) * 1000, 3)
+            descriptors.append(descriptor)
+            item_timings.append({
+                "seed": request["seed"],
+                "inference_ms": inference_ms,
+                "artifact_write_ms": write_ms,
+                "total_ms": round((perf_counter() - item_started) * 1000, 3),
+            })
+        artifacts.commit()
+        self.batch_calls += 1
+        return {
+            "model": self.model_id,
+            "artifacts": descriptors,
+            "timing": {
+                "worker_reused": worker_reused,
+                "worker_load_ms": None if worker_reused else getattr(self, "worker_load_ms", None),
+                "batch_total_ms": round((perf_counter() - batch_started) * 1000, 3),
+                "items": item_timings,
+            },
+        }
+
 
 @app.function(image=control_image, timeout=20 * 60)
 def submit(payload: dict[str, object]) -> dict[str, object]:
     request = normalize_request(payload)
     model_id = str(request["model"])
-    prefetch.remote(model_id)
     worker = SanaSprintWorker(model_id=model_id)
     return worker.generate.remote(request)
+
+
+@app.function(image=control_image, timeout=20 * 60)
+def submit_batch(payload: dict[str, object]) -> dict[str, object]:
+    batch = normalize_batch_request(payload)
+    model_id = str(batch["model"])
+    worker = SanaSprintWorker(model_id=model_id)
+    return worker.generate_batch.remote(batch["requests"])
 
 
 @app.function(image=control_image, volumes={str(ARTIFACT_ROOT): artifacts}, timeout=5 * 60)
