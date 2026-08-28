@@ -172,6 +172,160 @@ def test_artifact_route_exposes_immutable_identity_headers(tmp_path):
     run(scenario())
 
 
+def test_ui_is_served_without_session_token(monkeypatch):
+    """UI 是静态资源，带不上 session 头；启用 token 后仍必须可导航。"""
+    monkeypatch.setenv("MODAL_2D_AGENT_TOKEN", "session-secret")
+
+    async def scenario():
+        async with await client_for(create_app(Service())) as client:
+            # 根路径重定向到操作台：页面资源用相对路径引用，
+            # 直接在 `/` 渲染会让它们解析到 /app.js。
+            root = await client.get("/", follow_redirects=False)
+            assert root.status_code == 307
+            assert root.headers["location"].endswith("/ui/index.html")
+
+            page = await client.get("/ui/index.html")
+            assert page.status_code == 200
+            assert "modal-2D Agent" in page.text
+
+            for asset in ("/ui/app.js", "/ui/styles.css"):
+                response = await client.get(asset)
+                assert response.status_code == 200, asset
+
+            # XHR 仍然受保护。
+            assert (await client.get("/health")).status_code == 401
+
+    run(scenario())
+
+
+def test_ui_does_not_echo_session_token(monkeypatch):
+    monkeypatch.setenv("MODAL_2D_AGENT_TOKEN", "session-secret")
+
+    async def scenario():
+        async with await client_for(create_app(Service())) as client:
+            page = await client.get("/ui/index.html")
+            assert "session-secret" not in page.text
+            for asset in ("/ui/app.js", "/ui/styles.css"):
+                assert "session-secret" not in (await client.get(asset)).text
+
+    run(scenario())
+
+
+def test_ui_assets_are_not_python_source():
+    """UI 目录只应包含静态资源，避免 mount 暴露 .py。"""
+    from pathlib import Path
+
+    from modal_2d_client.app import UI_DIR
+
+    files = [path.name for path in Path(UI_DIR).iterdir() if path.is_file()]
+    assert files, "UI 资源缺失"
+    assert not any(name.endswith(".py") for name in files), files
+
+
+def test_cors_allows_any_origin_by_default(monkeypatch):
+    """默认允许任意来源，便于容器/局域网/反向代理访问。"""
+    monkeypatch.delenv("MODAL_2D_CORS_ORIGINS", raising=False)
+
+    async def scenario():
+        async with await client_for(create_app(Service())) as client:
+            response = await client.options(
+                "/health",
+                headers={
+                    "Origin": "http://example.test",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+            assert response.headers["access-control-allow-origin"] == "*"
+
+    run(scenario())
+
+
+def test_cors_preflight_allows_session_header(monkeypatch):
+    monkeypatch.delenv("MODAL_2D_CORS_ORIGINS", raising=False)
+
+    async def scenario():
+        async with await client_for(create_app(Service())) as client:
+            response = await client.options(
+                "/v1/jobs",
+                headers={
+                    "Origin": "http://example.test",
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "content-type,x-modal-2d-session",
+                },
+            )
+            assert response.headers["access-control-allow-origin"] == "*"
+            allowed = response.headers["access-control-allow-headers"].lower()
+            assert "x-modal-2d-session" in allowed
+
+    run(scenario())
+
+
+def test_cors_origins_can_be_restricted(monkeypatch):
+    monkeypatch.setenv("MODAL_2D_CORS_ORIGINS", "http://a.test, http://b.test")
+
+    async def scenario():
+        async with await client_for(create_app(Service())) as client:
+            allowed = await client.options(
+                "/health",
+                headers={
+                    "Origin": "http://a.test",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+            assert allowed.headers["access-control-allow-origin"] == "http://a.test"
+
+            denied = await client.options(
+                "/health",
+                headers={
+                    "Origin": "http://evil.test",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+            assert "access-control-allow-origin" not in denied.headers
+
+    run(scenario())
+
+
+def test_artifact_headers_are_exposed_cross_origin(tmp_path):
+    """跨域时前端必须能读到这三个头，否则 SHA-256 校验无法进行。"""
+    data = b"\x89PNG\r\n\x1a\nbody"
+    path = tmp_path / "image.png"
+    path.write_bytes(data)
+
+    class ArtifactService(Service):
+        def artifact(self, job_id):
+            return ({"id": "art_abc", "sha256": "a" * 64}, path)
+
+    async def scenario():
+        async with await client_for(create_app(ArtifactService())) as client:
+            response = await client.get(
+                "/v1/jobs/job_01/artifact",
+                headers={"Origin": "http://example.test"},
+            )
+            assert response.status_code == 200
+            exposed = response.headers["access-control-expose-headers"].lower()
+            assert "x-artifact-sha256" in exposed
+            assert "x-artifact-id" in exposed
+            assert "etag" in exposed
+
+    run(scenario())
+
+
+def test_ui_assets_are_declared_as_package_data():
+    """setuptools 默认不打非 .py 资源；漏配会让安装后 /ui 404。"""
+    import tomllib
+    from pathlib import Path
+
+    pyproject = tomllib.loads(
+        (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    package_data = pyproject.get("tool", {}).get("setuptools", {}).get("package-data", {})
+    patterns = package_data.get("modal_2d_client", [])
+    assert "ui/*.html" in patterns
+    assert "ui/*.css" in patterns
+    assert "ui/*.js" in patterns
+
+
 def test_api_accepts_batch_seeds_as_one_job():
     class BatchService(Service):
         def __init__(self):
