@@ -10,8 +10,9 @@ from modal_3d_client.contracts import ContractError
 
 
 class Call:
-    def __init__(self, value=None):
+    def __init__(self, value=None, object_id: str = "fc_1"):
         self.value = value
+        self.object_id = object_id
         self.cancelled = False
 
     def get(self, timeout=0):
@@ -22,8 +23,9 @@ class Call:
 
 
 class SequenceCall:
-    def __init__(self, outcomes):
+    def __init__(self, outcomes, object_id: str = "fc_1"):
         self.outcomes = iter(outcomes)
+        self.object_id = object_id
         self.cancelled = False
 
     def get(self, timeout=0):
@@ -40,20 +42,32 @@ def service(tmp_path: Path) -> jobs.JobService:
     return jobs.JobService(jobs.JobStore(tmp_path / "jobs.sqlite3"))
 
 
+def upload_stub(data: bytes, *, mask: bytes | None = None) -> dict[str, object]:
+    """Pretend the source was conditioned locally into a canonical input."""
+    sha = hashlib.sha256(data).hexdigest()
+    canonical_sha = hashlib.sha256(b"canonical:" + data).hexdigest()
+    return {
+        "path": f"client-inputs/{canonical_sha}.png",
+        "sha256": sha,
+        "bytes": len(data),
+        "conditioning": {
+            "strategy": "preserve-alpha",
+            "source_sha256": sha,
+            "canonical_sha256": canonical_sha,
+            "foreground_ratio": 0.28,
+        },
+    }
+
+
+def bind(svc: jobs.JobService, monkeypatch, *, submit=None) -> None:
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+    monkeypatch.setattr(artifacts, "upload_source", upload_stub)
+    monkeypatch.setattr(generation, "submit", submit or (lambda *args: Call()))
+
+
 def test_submit_is_idempotent_by_job_id(tmp_path, monkeypatch, source_png):
     svc = service(tmp_path)
-    sha = hashlib.sha256(source_png).hexdigest()
-    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
-    monkeypatch.setattr(
-        artifacts,
-        "upload_source",
-        lambda data: {"path": f"source-inputs/{sha}.png", "sha256": sha, "bytes": len(data)},
-    )
-    monkeypatch.setattr(
-        generation,
-        "submit",
-        lambda *args: {"model": "fastsam3d-plus-plus", "status": "running", "call_id": "fc_1"},
-    )
+    bind(svc, monkeypatch, submit=lambda *args: Call(object_id="fc_1"))
     first = svc.submit(
         source_png, model="fastsam3d-plus-plus", profile="recommended", job_id="req_1"
     )
@@ -64,24 +78,17 @@ def test_submit_is_idempotent_by_job_id(tmp_path, monkeypatch, source_png):
     assert first["status"] == second["status"] == "running"
 
 
-def test_unknown_submission_rebinds_same_gateway_request(tmp_path, monkeypatch, source_png):
+def test_unknown_submission_rebinds_same_worker_request(tmp_path, monkeypatch, source_png):
     svc = service(tmp_path)
-    sha = hashlib.sha256(source_png).hexdigest()
-    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
-    monkeypatch.setattr(
-        artifacts,
-        "upload_source",
-        lambda data: {"path": f"source-inputs/{sha}.png", "sha256": sha, "bytes": len(data)},
-    )
-    attempts = iter([jobs.ModalConnectionError("lost"), {"call_id": "fc_recovered"}])
+    attempts = iter([jobs.ModalConnectionError("lost"), Call(object_id="fc_recovered")])
 
     def submit(*args):
         value = next(attempts)
         if isinstance(value, Exception):
             raise value
-        return {"model": "fastsam3d-plus-plus", "status": "running", **value}
+        return value
 
-    monkeypatch.setattr(generation, "submit", submit)
+    bind(svc, monkeypatch, submit=submit)
     first = svc.submit(source_png, model="fastsam3d-plus-plus", job_id="req_recover")
     assert first["status"] == "connection_required"
     assert first["retryable"] is True
@@ -110,24 +117,12 @@ def test_unknown_submission_rebinds_same_gateway_request(tmp_path, monkeypatch, 
     monkeypatch.setattr(jobs, "client", lambda: object())
     recovered = svc.poll("req_recover")
     assert recovered["status"] == "succeeded"
-    stored = svc.store.get("req_recover")
-    assert stored.remote_call_id == "fc_recovered"
+    assert svc.store.get("req_recover").remote_call_id == "fc_recovered"
 
 
 def test_submit_rejects_same_id_for_different_input(tmp_path, monkeypatch, source_png):
     svc = service(tmp_path)
-    monkeypatch.setattr(models, "options_for", lambda *args: {})
-    sha = hashlib.sha256(source_png).hexdigest()
-    monkeypatch.setattr(
-        artifacts,
-        "upload_source",
-        lambda data: {"path": f"source-inputs/{sha}.png", "sha256": sha, "bytes": len(data)},
-    )
-    monkeypatch.setattr(
-        generation,
-        "submit",
-        lambda *args: {"model": "fastsam3d-plus-plus", "status": "running", "call_id": "fc_1"},
-    )
+    bind(svc, monkeypatch)
     svc.submit(source_png, model="fastsam3d-plus-plus", job_id="req_same")
     with pytest.raises(ContractError, match="already bound"):
         svc.submit(
@@ -138,39 +133,20 @@ def test_submit_rejects_same_id_for_different_input(tmp_path, monkeypatch, sourc
         )
 
 
-def test_success_preserves_public_conditioning_evidence_without_provider_path(
+def test_success_surfaces_locally_produced_conditioning_evidence(
     tmp_path, monkeypatch, source_png
 ):
+    """Conditioning is local now, so it is persisted with the job, not returned by the GPU."""
     svc = service(tmp_path)
+    bind(svc, monkeypatch)
     sha = hashlib.sha256(source_png).hexdigest()
-    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
-    monkeypatch.setattr(
-        artifacts,
-        "upload_source",
-        lambda data: {"path": f"source-inputs/{sha}.png", "sha256": sha, "bytes": len(data)},
-    )
-    monkeypatch.setattr(
-        generation,
-        "submit",
-        lambda *args: {"model": "fastsam3d-plus-plus", "status": "running", "call_id": "fc_1"},
-    )
     svc.submit(source_png, model="fastsam3d-plus-plus", job_id="req_evidence")
+
     monkeypatch.setattr(
         jobs.modal.FunctionCall,
         "from_id",
         lambda *args, **kwargs: Call(
-            {
-                "model": "fastsam3d-plus-plus",
-                "artifact": {"placeholder": True},
-                "conditioning": {
-                    "path": "conditioned-inputs/private.png",
-                    "strategy": "birefnet",
-                    "engine": "birefnet-general-lite",
-                    "source_sha256": sha,
-                    "canonical_sha256": "b" * 64,
-                    "foreground_ratio": 0.28,
-                },
-            }
+            {"model": "fastsam3d-plus-plus", "artifact": {"placeholder": True}}
         ),
     )
     monkeypatch.setattr(
@@ -191,33 +167,19 @@ def test_success_preserves_public_conditioning_evidence_without_provider_path(
 
     state = svc.poll("req_evidence")
     assert state["status"] == "succeeded"
-    evidence = state["result"]["conditioning"]
-    assert evidence["strategy"] == "birefnet"
-    assert evidence["engine"] == "birefnet-general-lite"
+    evidence = state["conditioning"]
+    assert evidence["strategy"] == "preserve-alpha"
     assert evidence["source_sha256"] == sha
     assert "path" not in evidence
+    # The GPU result no longer carries conditioning; only the local record does.
+    assert "conditioning" not in state["result"]
 
 
 def test_cancel_requested_survives_timeout_then_becomes_cancelled(
     tmp_path, monkeypatch, source_png
 ):
     svc = service(tmp_path)
-    sha = hashlib.sha256(source_png).hexdigest()
-    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
-    monkeypatch.setattr(
-        artifacts,
-        "upload_source",
-        lambda data: {"path": f"source-inputs/{sha}.png", "sha256": sha, "bytes": len(data)},
-    )
-    monkeypatch.setattr(
-        generation,
-        "submit",
-        lambda *args: {
-            "model": "fastsam3d-plus-plus",
-            "status": "running",
-            "call_id": "fc_cancel",
-        },
-    )
+    bind(svc, monkeypatch, submit=lambda *args: Call(object_id="fc_cancel"))
     state = svc.submit(source_png, model="fastsam3d-plus-plus", job_id="req_cancel")
     assert state["status"] == "running"
 
@@ -225,7 +187,8 @@ def test_cancel_requested_survives_timeout_then_becomes_cancelled(
         [
             jobs.ModalTimeoutError("still running"),
             jobs.RemoteError("remote call cancelled"),
-        ]
+        ],
+        object_id="fc_cancel",
     )
     monkeypatch.setattr(jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: call)
     monkeypatch.setattr(jobs, "client", lambda: object())
@@ -248,13 +211,6 @@ def test_cancel_before_remote_binding_preserves_intent_and_cancels_new_call(
     tmp_path, monkeypatch, source_png
 ):
     svc = service(tmp_path)
-    sha = hashlib.sha256(source_png).hexdigest()
-    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
-    monkeypatch.setattr(
-        artifacts,
-        "upload_source",
-        lambda data: {"path": f"source-inputs/{sha}.png", "sha256": sha, "bytes": len(data)},
-    )
     bound_call = Call()
     monkeypatch.setattr(jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: bound_call)
     monkeypatch.setattr(jobs, "client", lambda: object())
@@ -263,16 +219,10 @@ def test_cancel_before_remote_binding_preserves_intent_and_cancels_new_call(
         pending = svc.cancel("req_submit_cancel")
         assert pending["status"] == "cancel_requested"
         assert pending["error_code"] is None
-        return {
-            "model": "fastsam3d-plus-plus",
-            "status": "running",
-            "call_id": "fc_bound_after_cancel",
-        }
+        return Call(object_id="fc_bound_after_cancel")
 
-    monkeypatch.setattr(generation, "submit", submit)
-    state = svc.submit(
-        source_png, model="fastsam3d-plus-plus", job_id="req_submit_cancel"
-    )
+    bind(svc, monkeypatch, submit=submit)
+    state = svc.submit(source_png, model="fastsam3d-plus-plus", job_id="req_submit_cancel")
     assert state["status"] == "cancel_requested"
     assert svc.store.get("req_submit_cancel").remote_call_id == "fc_bound_after_cancel"
     assert bound_call.cancelled is True
@@ -290,7 +240,7 @@ def test_poll_cancel_requested_without_remote_call_waits_without_resubmitting(
             model="fastsam3d-plus-plus",
             profile="recommended",
             seed=42,
-            input_path=f"source-inputs/{sha}.png",
+            input_path=f"client-inputs/{sha}.png",
             input_sha256=sha,
             remote_call_id=None,
             status="cancel_requested",

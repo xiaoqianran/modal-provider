@@ -1,36 +1,31 @@
+"""Static capability document published by the modal-3D provider.
+
+`capabilities.json` is generated from the provider's worker manifests
+(`modal_3d/capabilities.py::capabilities_document`). There is no gateway and no
+remote registry to discover, so capabilities are local, offline-readable, and
+fail closed if the document is missing or incompatible.
+"""
+
 from __future__ import annotations
 
 import json
-import threading
-import time
 from pathlib import Path
-
-import modal
 
 from .constants import (
     ARTIFACTS_VOLUME,
-    CAPABILITIES_FUNCTION,
+    CANONICAL_SIZE,
     CAPABILITY_KIND,
+    CLIENT_INPUT_PREFIX,
     CONTRACT,
-    GATEWAY_APP,
-    GATEWAY_SUBMIT,
-    JOB_TRANSPORT,
     OPERATION,
     OUTPUT_MIME,
     OUTPUT_ROLE,
     SOURCE_MAX_BYTES,
     SOURCE_MEDIA_TYPES,
-    SOURCE_PATH_PREFIX,
     SOURCE_ROLE,
 )
-from .modal_session import client
-from .storage import data_dir
 
-_CACHE_TTL_SECONDS = 300
-_cache_lock = threading.RLock()
-_cache: dict[str, object] | None = None
-_cache_at = 0.0
-_refreshing = False
+_CAPABILITIES_PATH = Path(__file__).parent / "capabilities.json"
 
 
 class CapabilityError(RuntimeError):
@@ -43,10 +38,6 @@ class CapabilityUnavailable(CapabilityError):
 
 class IncompatibleCapability(CapabilityError):
     pass
-
-
-def _cache_path() -> Path:
-    return data_dir() / "capabilities.json"
 
 
 def _validate_document(value: object) -> dict[str, object]:
@@ -68,31 +59,42 @@ def _validate_document(value: object) -> dict[str, object]:
     generation = doc.get("generation")
     if not isinstance(generation, dict):
         raise IncompatibleCapability("modal-3D generation descriptor is missing")
-    expected = {
-        "app": GATEWAY_APP,
-        "submit_function": GATEWAY_SUBMIT,
-        "job_transport": JOB_TRANSPORT,
-    }
-    if any(generation.get(key) != item for key, item in expected.items()):
-        raise IncompatibleCapability("modal-3D gateway identity is incompatible")
+    # Direct GPU spawning: there is no submit function to advertise any more.
+    if generation.get("job_transport") != "modal.FunctionCall":
+        raise IncompatibleCapability("modal-3D job transport is incompatible")
+    if generation.get("entrypoint") != "direct_class_method":
+        raise IncompatibleCapability("modal-3D entrypoint is not direct class method")
+    if generation.get("input_path_prefix") != CLIENT_INPUT_PREFIX:
+        raise IncompatibleCapability("modal-3D input path prefix is incompatible")
     if generation.get("artifact_volume") not in (None, ARTIFACTS_VOLUME):
         raise IncompatibleCapability("modal-3D artifact volume is incompatible")
     if generation.get("artifact_path_field") not in (None, "path"):
         raise IncompatibleCapability("modal-3D artifact path field is incompatible")
 
-    public_input = generation.get("public_input_contract")
-    if not isinstance(public_input, dict):
-        raise IncompatibleCapability("modal-3D public input contract is missing")
+    input_contract = generation.get("input_contract")
+    if not isinstance(input_contract, dict):
+        raise IncompatibleCapability("modal-3D canonical input contract is missing")
     expected_input = {
-        "role": SOURCE_ROLE,
-        "mediaTypes": list(SOURCE_MEDIA_TYPES),
-        "maxBytes": SOURCE_MAX_BYTES,
-        "alpha": "optional",
-        "conditioning": "provider",
-        "pathPrefix": SOURCE_PATH_PREFIX,
+        "role": "canonical_rgba",
+        "mime": "image/png",
+        "mode": "RGBA",
+        "width": CANONICAL_SIZE,
+        "height": CANONICAL_SIZE,
+        "bit_depth": 8,
+        "layout": "letterbox",
+        "alpha": "channel_required",
     }
-    if public_input != expected_input:
-        raise IncompatibleCapability("modal-3D public input contract is incompatible")
+    if input_contract != expected_input:
+        raise IncompatibleCapability("modal-3D canonical input contract is incompatible")
+
+    source = doc.get("source_input_contract")
+    if source is not None:
+        if source.get("role") != SOURCE_ROLE:
+            raise IncompatibleCapability("modal-3D source role is incompatible")
+        if source.get("maxBytes") != SOURCE_MAX_BYTES:
+            raise IncompatibleCapability("modal-3D source max bytes is incompatible")
+        if tuple(source.get("mediaTypes") or ()) != tuple(SOURCE_MEDIA_TYPES):
+            raise IncompatibleCapability("modal-3D source media types are incompatible")
 
     models = doc.get("models")
     if not isinstance(models, list) or not models:
@@ -114,65 +116,22 @@ def _validate_document(value: object) -> dict[str, object]:
         profiles = item.get("profiles")
         if not isinstance(profiles, list) or not profiles:
             raise IncompatibleCapability("modal-3D model profiles are missing")
+        entrypoint = item.get("generation_entrypoint")
+        if not isinstance(entrypoint, dict) or entrypoint.get("method_name") != "generate_job":
+            raise IncompatibleCapability("modal-3D worker lacks a direct generate_job entrypoint")
         normalized.append(dict(item))
     doc["models"] = normalized
     return doc
 
 
-def _write_cache(document: dict[str, object]) -> None:
-    path = _cache_path()
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
-    temporary.replace(path)
-
-
-def _read_cache() -> dict[str, object] | None:
+def capabilities_document() -> dict[str, object]:
     try:
-        value = json.loads(_cache_path().read_text(encoding="utf-8"))
-        return _validate_document(value)
-    except (OSError, ValueError, json.JSONDecodeError, CapabilityError):
-        return None
-
-
-def refresh_capabilities() -> dict[str, object]:
-    fn = modal.Function.from_name(GATEWAY_APP, CAPABILITIES_FUNCTION, client=client())
-    try:
-        value = fn.remote()
-    except Exception as exc:
-        raise CapabilityUnavailable("modal-3D capability discovery failed") from exc
-    document = _validate_document(value)
-    global _cache, _cache_at
-    with _cache_lock:
-        _cache = document
-        _cache_at = time.monotonic()
-    _write_cache(document)
-    return document
-
-
-def _background_refresh() -> None:
-    global _refreshing
-    try:
-        refresh_capabilities()
-    except CapabilityError:
-        pass
-    finally:
-        with _cache_lock:
-            _refreshing = False
-
-
-def capabilities_document(*, refresh: bool = False) -> dict[str, object]:
-    global _cache, _refreshing
-    with _cache_lock:
-        if _cache is None:
-            _cache = _read_cache()
-        cached = _cache
-        fresh = cached is not None and (time.monotonic() - _cache_at) < _CACHE_TTL_SECONDS
-        if cached is not None and not refresh:
-            if not fresh and not _refreshing:
-                _refreshing = True
-                threading.Thread(target=_background_refresh, daemon=True).start()
-            return cached
-    return refresh_capabilities()
+        payload = json.loads(_CAPABILITIES_PATH.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise CapabilityUnavailable("modal-3D capability document is not installed") from exc
+    except json.JSONDecodeError as exc:
+        raise IncompatibleCapability("modal-3D capability document is not valid JSON") from exc
+    return _validate_document(payload)
 
 
 def public_models() -> list[dict[str, object]]:

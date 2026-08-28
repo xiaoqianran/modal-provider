@@ -25,6 +25,7 @@ from modal.exception import ConnectionError as ModalConnectionError
 from modal.exception import TimeoutError as ModalTimeoutError
 
 from . import artifacts, generation, models
+from .constants import CLIENT_INPUT_PREFIX
 from .contracts import ContractError
 from .modal_session import NotConnectedError, client
 from .storage import data_dir
@@ -41,27 +42,6 @@ _RECOVERABLE = (
     ServiceError,
     TimeoutError,
 )
-_CONDITIONING_EVIDENCE_FIELDS = frozenset(
-    {
-        "strategy",
-        "engine",
-        "source_sha256",
-        "canonical_sha256",
-        "source_format",
-        "source_size",
-        "foreground_bbox",
-        "foreground_ratio",
-        "canonical_size",
-        "bytes",
-        "mask_elapsed_ms",
-    }
-)
-
-
-def _public_conditioning(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
-        return None
-    return {key: item for key, item in value.items() if key in _CONDITIONING_EVIDENCE_FIELDS}
 
 
 def _now() -> str:
@@ -87,6 +67,7 @@ class Job:
     result: dict[str, object] | None = None
     error_code: str | None = None
     retryable: bool | None = None
+    conditioning: dict[str, object] | None = None
 
     def public(self) -> dict[str, object]:
         return {
@@ -100,6 +81,7 @@ class Job:
             "result": self.result,
             "error_code": self.error_code,
             "retryable": self.retryable,
+            "conditioning": self.conditioning,
         }
 
 
@@ -142,12 +124,17 @@ class JobStore:
                 )
                 """
             )
+            # Conditioning moved from the cloud to this process, so its evidence
+            # has to survive a restart like every other local job field.
+            columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)").fetchall()}
+            if "conditioning_json" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN conditioning_json TEXT")
 
     def _load(self) -> None:
         with self._connect() as db:
             rows = db.execute(
                 "SELECT id,model,profile,seed,input_path,input_sha256,remote_call_id,status,"
-                "created_at,updated_at,result_json,error_code,retryable FROM jobs"
+                "created_at,updated_at,result_json,error_code,retryable,conditioning_json FROM jobs"
             ).fetchall()
         with self._lock:
             self._jobs = {
@@ -165,6 +152,7 @@ class JobStore:
                     result=json.loads(row[10]) if row[10] else None,
                     error_code=row[11],
                     retryable=None if row[12] is None else bool(row[12]),
+                    conditioning=json.loads(row[13]) if row[13] else None,
                 )
                 for row in rows
             }
@@ -173,7 +161,7 @@ class JobStore:
         with self._connect() as db:
             db.execute(
                 """
-                INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                     model=excluded.model,
                     profile=excluded.profile,
@@ -185,7 +173,8 @@ class JobStore:
                     updated_at=excluded.updated_at,
                     result_json=excluded.result_json,
                     error_code=excluded.error_code,
-                    retryable=excluded.retryable
+                    retryable=excluded.retryable,
+                    conditioning_json=excluded.conditioning_json
                 """,
                 (
                     job.id,
@@ -201,6 +190,7 @@ class JobStore:
                     json.dumps(job.result, separators=(",", ":")) if job.result else None,
                     job.error_code,
                     None if job.retryable is None else int(job.retryable),
+                    json.dumps(job.conditioning, separators=(",", ":")) if job.conditioning else None,
                 ),
             )
         with self._lock:
@@ -231,6 +221,7 @@ class JobService:
         profile: str = "recommended",
         seed: int = 42,
         job_id: str | None = None,
+        mask: bytes | None = None,
     ) -> dict[str, object]:
         local_id = job_id or f"job_{uuid.uuid4().hex}"
         if not _JOB_ID.fullmatch(local_id):
@@ -248,20 +239,24 @@ class JobService:
                 raise ContractError("job_id is already bound to another request")
             return existing.public()
 
-        uploaded = artifacts.upload_source(source_image)
+        uploaded = artifacts.upload_source(source_image, mask=mask)
+        input_path = str(uploaded["path"])
+        if not input_path.startswith(CLIENT_INPUT_PREFIX):
+            raise ContractError(f"uploaded input must live under {CLIENT_INPUT_PREFIX}")
         timestamp = _now()
         intent = Job(
             id=local_id,
             model=model,
             profile=profile,
             seed=seed,
-            input_path=str(uploaded["path"]),
+            input_path=input_path,
             input_sha256=str(uploaded["sha256"]),
             remote_call_id=None,
             status="submitting",
             created_at=timestamp,
             updated_at=timestamp,
             retryable=True,
+            conditioning=dict(uploaded["conditioning"]),  # type: ignore[arg-type]
         )
         self.store.save(intent)
         return self._bind(intent).public()
@@ -270,7 +265,7 @@ class JobService:
         if job.status == "cancel_requested":
             return job
         try:
-            remote = generation.submit(job.model, job.input_path, job.profile, job.seed)
+            call = generation.submit(job.model, job.input_path, job.profile, job.seed)
         except _RECOVERABLE:
             latest = self.store.get(job.id)
             if latest.status == "cancel_requested":
@@ -281,7 +276,7 @@ class JobService:
                 error_code="remote.submission_unknown",
                 retryable=True,
             )
-        remote_id = str(remote["call_id"])
+        remote_id = str(call.object_id)
         latest = self.store.get(job.id)
         if latest.status in {"cancel_requested", "cancelled"}:
             try:
@@ -370,9 +365,6 @@ class JobService:
                 job, status="failed", error_code="artifact.invalid", retryable=False
             ).public()
         result: dict[str, object] = {"artifact": descriptor}
-        conditioning = _public_conditioning(value.get("conditioning"))
-        if conditioning:
-            result["conditioning"] = conditioning
         return self._save(
             job,
             status="succeeded",

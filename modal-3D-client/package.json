@@ -1,0 +1,10 @@
+{
+  "name": "modal-3d-client-dev",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Dev-only tooling for the bundled web UI review harness (Render -> Critique -> Fix).",
+  "type": "module",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
