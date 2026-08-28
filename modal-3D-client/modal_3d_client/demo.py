@@ -186,6 +186,7 @@ class DemoJobService:
         profile: str,
         seed: int,
         job_id: str | None = None,
+        mask: bytes | None = None,
     ) -> dict:
         local_id = job_id or f"job_{uuid.uuid4().hex}"
         sha = hashlib.sha256(source_image).hexdigest()

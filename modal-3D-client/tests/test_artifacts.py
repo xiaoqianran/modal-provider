@@ -8,7 +8,6 @@ import pytest
 from PIL import Image
 
 from modal_3d_client import artifacts
-from modal_3d_client.conditioning import BackgroundMaskRequired
 from modal_3d_client.contracts import ContractError
 
 
@@ -106,10 +105,38 @@ def test_upload_source_preserves_existing_alpha_without_a_mask(monkeypatch, sour
     assert volume.batch.files[result["path"]]
 
 
-def test_upload_source_requires_a_mask_for_opaque_sources(monkeypatch, source_jpeg):
-    monkeypatch.setattr(artifacts, "_volume", lambda: Volume())
-    with pytest.raises(BackgroundMaskRequired):
-        artifacts.upload_source(source_jpeg)
+def test_upload_source_auto_predicts_mask_for_opaque_sources(monkeypatch, source_jpeg, mask_png):
+    volume = Volume()
+    calls = []
+    monkeypatch.setattr(artifacts, "_volume", lambda: volume)
+    monkeypatch.setattr(
+        artifacts.background,
+        "predict_mask",
+        lambda data: calls.append(data) or {
+            "mask_bytes": mask_png,
+            "engine": "birefnet-general-lite",
+            "elapsed_ms": 12.5,
+        },
+    )
+    result = artifacts.upload_source(source_jpeg)
+    assert calls == [source_jpeg]
+    assert result["path"].startswith("client-inputs/")
+    assert result["conditioning"]["strategy"] == "birefnet"
+    assert result["conditioning"]["engine"] == "birefnet-general-lite"
+    assert result["conditioning"]["mask_elapsed_ms"] == 12.5
+
+
+def test_explicit_mask_bypasses_t4_prediction(monkeypatch, source_jpeg, mask_png):
+    volume = Volume()
+    monkeypatch.setattr(artifacts, "_volume", lambda: volume)
+    monkeypatch.setattr(
+        artifacts.background,
+        "predict_mask",
+        lambda _data: pytest.fail("explicit mask must bypass the T4 worker"),
+    )
+    result = artifacts.upload_source(source_jpeg, mask=mask_png)
+    assert result["conditioning"]["strategy"] == "birefnet"
+    assert result["path"].startswith("client-inputs/")
 
 
 def test_fetch_streams_verified_glb_to_content_cache(tmp_path: Path, monkeypatch, glb_bytes):

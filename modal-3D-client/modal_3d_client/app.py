@@ -123,9 +123,11 @@ def create_app(service: JobService | None = None) -> FastAPI:
         profile: Annotated[str, Form()] = "recommended",
         seed: Annotated[int, Form()] = 42,
         job_id: Annotated[str | None, Form()] = None,
+        mask: Annotated[UploadFile | None, File()] = None,
     ):
         try:
             data = await file.read()
+            mask_data = await mask.read() if mask is not None else None
             return await run_in_threadpool(
                 job_service().submit,
                 data,
@@ -133,6 +135,7 @@ def create_app(service: JobService | None = None) -> FastAPI:
                 profile=profile,
                 seed=seed,
                 job_id=job_id,
+                mask=mask_data,
             )
         except modal_session.NotConnectedError as exc:
             raise HTTPException(status_code=409, detail="Modal connection required") from exc
