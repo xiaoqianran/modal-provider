@@ -47,6 +47,10 @@ def test_request_is_minimal_and_rejects_unknown_fields():
     }
     with pytest.raises(ContractError, match="unknown"):
         normalize_request({"prompt": "x", "internal": "secret"})
+    with pytest.raises(ContractError, match="prompt must be a string"):
+        normalize_request({"prompt": 123})
+    with pytest.raises(ContractError, match="model must be a string"):
+        normalize_request({"prompt": "x", "model": 123})
 
 
 def test_artifact_descriptor_is_strict(png_artifact):

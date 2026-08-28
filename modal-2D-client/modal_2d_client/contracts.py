@@ -96,10 +96,16 @@ def normalize_request(value: Any) -> dict[str, object]:
     unknown = sorted(set(value) - allowed)
     if unknown:
         raise ContractError(f"unknown generation fields: {', '.join(unknown)}")
-    prompt = str(value.get("prompt") or "").strip()
+    raw_prompt = value.get("prompt")
+    if not isinstance(raw_prompt, str):
+        raise ContractError("prompt must be a string")
+    prompt = raw_prompt.strip()
     if not prompt or len(prompt) > MAX_PROMPT_CHARS:
         raise ContractError("prompt is empty or too long")
-    model = str(value.get("model") or DEFAULT_MODEL).strip()
+    raw_model = value.get("model", DEFAULT_MODEL)
+    if not isinstance(raw_model, str):
+        raise ContractError("model must be a string")
+    model = raw_model.strip()
     if not model:
         raise ContractError("model is required")
     seed = _integer(value.get("seed", 42), "seed", 0, MAX_SEED)

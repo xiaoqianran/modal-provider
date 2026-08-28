@@ -7,7 +7,7 @@ from modal.exception import AuthError, InternalError, PermissionDeniedError, Ser
 from modal.exception import ConnectionError as ModalConnectionError
 from modal.exception import TimeoutError as ModalTimeoutError
 
-from .constants import APP_NAME, CAPABILITIES_FUNCTION
+from .constants import APP_NAME, CAPABILITIES_FUNCTION, SUPPORTED_MODELS
 from .contracts import ContractError, validate_capabilities
 from .modal_session import NotConnectedError, client
 
@@ -64,6 +64,15 @@ def public_models() -> list[dict[str, object]]:
 
 
 def ensure_model(model_id: str) -> None:
-    doc = document()
-    if not any(model["id"] == model_id for model in doc["models"]):
+    # Generation hot path must stay local until the direct GPU Worker spawn.
+    # If capabilities were explicitly fetched earlier, use that cached document;
+    # otherwise validate against the client version's pinned model set. Never do
+    # a remote capabilities() call here.
+    with _lock:
+        cached = _cache
+    if cached is not None:
+        if any(model["id"] == model_id for model in cached["models"]):
+            return
+        raise ContractError(f"unsupported model: {model_id}")
+    if model_id not in SUPPORTED_MODELS:
         raise ContractError(f"unsupported model: {model_id}")

@@ -12,6 +12,7 @@ ARTIFACT_VOLUME = "modal-2d-artifacts"
 JOB_TRANSPORT = "modal-function-call"
 ARTIFACT_ROLE = "primary-image"
 ARTIFACT_MIME = "image/png"
+SUPPORTED_MODELS = ("sana-sprint-0.6b", "sana-sprint-1.6b")
 DEFAULT_MODEL = "sana-sprint-1.6b"
 MAX_PROMPT_CHARS = 4000
 MAX_SEED = 2**32 - 1
