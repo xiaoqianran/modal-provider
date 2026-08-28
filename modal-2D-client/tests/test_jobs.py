@@ -9,13 +9,45 @@ class SpawnCall:
     object_id = "fc-remote-01"
 
 
-class SubmitFunction:
-    def __init__(self):
-        self.payload = None
+class WorkerMethod:
+    def __init__(self, name, recorder):
+        self.name = name
+        self.recorder = recorder
 
     def spawn(self, payload):
-        self.payload = payload
+        self.recorder.calls.append((self.name, payload))
+        return self.recorder.spawn(self.name, payload)
+
+
+class WorkerInstance:
+    """`SanaSprintWorker(model_id=...)` 的替身。"""
+
+    def __init__(self, model_id, recorder):
+        self.generate = WorkerMethod("generate", recorder)
+        self.generate_batch = WorkerMethod("generate_batch", recorder)
+
+
+class WorkerClass:
+    """`modal.Cls.from_name(...)` 的替身：记录 model_id 与真正被 spawn 的方法。"""
+
+    def __init__(self):
+        self.model_ids = []
+        self.calls = []
+
+    def __call__(self, model_id=None, **_kwargs):
+        self.model_ids.append(model_id)
+        return WorkerInstance(model_id, self)
+
+    def spawn(self, name, payload):
         return SpawnCall()
+
+    @property
+    def method(self):
+        return self.calls[-1][0] if self.calls else None
+
+    @property
+    def payload(self):
+        return self.calls[-1][1] if self.calls else None
 
 
 class PollCall:
@@ -37,18 +69,20 @@ class FailingPollCall:
 
 def test_job_submit_poll_and_persistence(tmp_path: Path, monkeypatch, png_artifact):
     _, descriptor = png_artifact
-    submit = SubmitFunction()
+    worker = WorkerClass()
     poll = PollCall({"model": "sana-sprint-1.6b", "artifact": descriptor})
     monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
     monkeypatch.setattr(jobs, "client", lambda: object())
-    monkeypatch.setattr(jobs.modal.Function, "from_name", lambda *args, **kwargs: submit)
+    monkeypatch.setattr(jobs.modal.Cls, "from_name", lambda *args, **kwargs: worker)
     monkeypatch.setattr(jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: poll)
 
     store = jobs.JobStore(tmp_path / "jobs.sqlite3")
     service = jobs.JobService(store)
     created = service.submit({"prompt": "mossy house"})
     assert created["status"] == "running"
-    assert submit.payload == {"prompt": "mossy house", "model": "sana-sprint-1.6b", "seed": 42}
+    assert worker.method == "generate"
+    assert worker.model_ids == ["sana-sprint-1.6b"]
+    assert worker.payload == {"prompt": "mossy house", "model": "sana-sprint-1.6b", "seed": 42}
 
     finished = service.poll(created["id"])
     assert finished["status"] == "succeeded"
@@ -59,12 +93,28 @@ def test_job_submit_poll_and_persistence(tmp_path: Path, monkeypatch, png_artifa
     assert restored.status == "succeeded"
 
 
+def test_model_routing_selects_the_matching_gpu_worker(tmp_path: Path, monkeypatch):
+    worker = WorkerClass()
+    monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
+    monkeypatch.setattr(jobs, "client", lambda: object())
+    monkeypatch.setattr(jobs.modal.Cls, "from_name", lambda *args, **kwargs: worker)
+
+    created = jobs.JobService(jobs.JobStore(tmp_path / "jobs.sqlite3")).submit(
+        {"prompt": "mossy house", "model": "sana-sprint-0.6b"}
+    )
+
+    assert created["model"] == "sana-sprint-0.6b"
+    assert worker.model_ids == ["sana-sprint-0.6b"]
+    assert worker.method == "generate"
+    assert worker.payload["model"] == "sana-sprint-0.6b"
+
+
 def test_cancel_is_non_terminal_until_remote_ack(tmp_path: Path, monkeypatch):
-    submit = SubmitFunction()
+    worker = WorkerClass()
     poll = PollCall()
     monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
     monkeypatch.setattr(jobs, "client", lambda: object())
-    monkeypatch.setattr(jobs.modal.Function, "from_name", lambda *args, **kwargs: submit)
+    monkeypatch.setattr(jobs.modal.Cls, "from_name", lambda *args, **kwargs: worker)
     monkeypatch.setattr(jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: poll)
 
     service = jobs.JobService(jobs.JobStore(tmp_path / "jobs.sqlite3"))
@@ -102,10 +152,10 @@ def test_artifact_download_is_lazy(tmp_path: Path, monkeypatch, png_artifact):
 
 
 def test_remote_model_exception_is_execution_failed(tmp_path: Path, monkeypatch):
-    submit = SubmitFunction()
+    worker = WorkerClass()
     monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
     monkeypatch.setattr(jobs, "client", lambda: object())
-    monkeypatch.setattr(jobs.modal.Function, "from_name", lambda *args, **kwargs: submit)
+    monkeypatch.setattr(jobs.modal.Cls, "from_name", lambda *args, **kwargs: worker)
     monkeypatch.setattr(
         jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: FailingPollCall()
     )
@@ -120,10 +170,10 @@ def test_remote_model_exception_is_execution_failed(tmp_path: Path, monkeypatch)
 
 
 def test_explicit_job_id_is_durable_across_restart(tmp_path: Path, monkeypatch):
-    submit = SubmitFunction()
+    worker = WorkerClass()
     monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
     monkeypatch.setattr(jobs, "client", lambda: object())
-    monkeypatch.setattr(jobs.modal.Function, "from_name", lambda *args, **kwargs: submit)
+    monkeypatch.setattr(jobs.modal.Cls, "from_name", lambda *args, **kwargs: worker)
 
     db = tmp_path / "jobs.sqlite3"
     created = jobs.JobService(jobs.JobStore(db)).submit(
@@ -138,17 +188,14 @@ def test_explicit_job_id_is_durable_across_restart(tmp_path: Path, monkeypatch):
 
 
 def test_unknown_submission_is_durable_and_never_replayed(tmp_path: Path, monkeypatch):
-    class UncertainSubmit:
-        calls = 0
-
-        def spawn(self, payload):
-            self.calls += 1
+    class UncertainWorker(WorkerClass):
+        def spawn(self, name, payload):
             raise RuntimeError("response lost after remote submission")
 
-    submit = UncertainSubmit()
+    worker = UncertainWorker()
     monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
     monkeypatch.setattr(jobs, "client", lambda: object())
-    monkeypatch.setattr(jobs.modal.Function, "from_name", lambda *args, **kwargs: submit)
+    monkeypatch.setattr(jobs.modal.Cls, "from_name", lambda *args, **kwargs: worker)
 
     db = tmp_path / "jobs.sqlite3"
     service = jobs.JobService(jobs.JobStore(db))
@@ -157,14 +204,14 @@ def test_unknown_submission_is_durable_and_never_replayed(tmp_path: Path, monkey
     assert created["status"] == "connection_required"
     assert created["error_code"] == "remote.submission_unknown"
     assert created["retryable"] is False
-    assert submit.calls == 1
+    assert len(worker.calls) == 1
 
     restarted = jobs.JobService(jobs.JobStore(db))
     recovered = restarted.poll("job_connector_unknown")
     assert recovered == created
     with pytest.raises(jobs.ContractError, match="already exists"):
         restarted.submit({"prompt": "x"}, job_id="job_connector_unknown")
-    assert submit.calls == 1
+    assert len(worker.calls) == 1
 
 
 def test_submitting_placeholder_recovers_fail_closed_after_crash(tmp_path: Path):
@@ -254,8 +301,8 @@ def test_cancel_during_spawn_preserves_intent_and_cancels_bound_remote(
     poll = PollCall()
     service_holder = {}
 
-    class CancelDuringSpawn:
-        def spawn(self, payload):
+    class CancelDuringSpawn(WorkerClass):
+        def spawn(self, name, payload):
             pending = service_holder["service"].cancel("job_cancel_during_spawn")
             assert pending["status"] == "cancel_requested"
             assert pending["error_code"] is None
@@ -264,7 +311,7 @@ def test_cancel_during_spawn_preserves_intent_and_cancels_bound_remote(
     monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
     monkeypatch.setattr(jobs, "client", lambda: object())
     monkeypatch.setattr(
-        jobs.modal.Function, "from_name", lambda *args, **kwargs: CancelDuringSpawn()
+        jobs.modal.Cls, "from_name", lambda *args, **kwargs: CancelDuringSpawn()
     )
     monkeypatch.setattr(
         jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: poll
@@ -298,7 +345,7 @@ def test_cancel_requested_without_remote_id_stays_pending_without_resubmit(
         )
     )
     monkeypatch.setattr(
-        jobs.modal.Function,
+        jobs.modal.Cls,
         "from_name",
         lambda *args, **kwargs: pytest.fail("cancel_requested job must not resubmit"),
     )
@@ -309,30 +356,26 @@ def test_cancel_requested_without_remote_id_stays_pending_without_resubmit(
     assert state["retryable"] is True
 
 
-def test_batch_job_uses_batch_submit_and_persists_multiple_artifacts(
+def test_batch_job_spawns_gpu_worker_directly_and_persists_multiple_artifacts(
     tmp_path: Path, monkeypatch, png_artifact
 ):
     _, descriptor = png_artifact
     second = dict(descriptor, id="art_def", remote_path="generated/art_def.png")
-    submit = SubmitFunction()
+    worker = WorkerClass()
     poll = PollCall({
         "model": "sana-sprint-1.6b",
         "artifacts": [descriptor, second],
         "timing": {"worker_load_ms": 5000.0, "batch_total_ms": 1200.0},
     })
-    names = []
     monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
     monkeypatch.setattr(jobs, "client", lambda: object())
-    monkeypatch.setattr(
-        jobs.modal.Function,
-        "from_name",
-        lambda _app, name, **kwargs: names.append(name) or submit,
-    )
+    monkeypatch.setattr(jobs.modal.Cls, "from_name", lambda *args, **kwargs: worker)
     monkeypatch.setattr(jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: poll)
     service = jobs.JobService(jobs.JobStore(tmp_path / "jobs.sqlite3"))
     created = service.submit({"prompt": "apple", "seeds": [42, 73]})
-    assert names == ["submit_batch"]
-    assert submit.payload == {"prompt": "apple", "model": "sana-sprint-1.6b", "seeds": [42, 73]}
+    assert worker.method == "generate_batch"
+    assert worker.model_ids == ["sana-sprint-1.6b"]
+    assert worker.payload == {"prompt": "apple", "model": "sana-sprint-1.6b", "seeds": [42, 73]}
     finished = service.poll(created["id"])
     assert finished["status"] == "succeeded"
     assert [item["id"] for item in finished["result"]["artifacts"]] == ["art_abc", "art_def"]

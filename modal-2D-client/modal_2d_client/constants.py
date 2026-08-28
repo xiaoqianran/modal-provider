@@ -1,8 +1,10 @@
 APP_NAME = "modal-2d"
 CONTRACT = "modal-2d.generation.v1"
 OPERATION = "modal-2d.image.text_to_image.v1"
-SUBMIT_FUNCTION = "submit"
-BATCH_SUBMIT_FUNCTION = "submit_batch"
+# 生成热路径直接打到 GPU Worker，中间没有 CPU 中转 Function。
+WORKER_CLASS = "SanaSprintWorker"
+GENERATE_METHOD = "generate"
+BATCH_GENERATE_METHOD = "generate_batch"
 MAX_BATCH_SIZE = 8
 CAPABILITIES_FUNCTION = "capabilities"
 ARTIFACT_FUNCTION = "read_artifact"

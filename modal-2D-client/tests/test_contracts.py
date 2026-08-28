@@ -18,7 +18,9 @@ def test_capabilities_accept_stable_provider_contract(capability_doc):
     ("path", "value"),
     [
         (("contract",), "v2"),
-        (("generation", "submit_function"), "other"),
+        (("generation", "worker_class"), "LegacySubmitter"),
+        (("generation", "generate_method"), "submit"),
+        (("generation", "batch_generate_method"), "submit_batch"),
         (("generation", "artifact_volume"), "wrong-volume"),
         (("kind",), "other.kind"),
         (("artifact", "lossless"), False),

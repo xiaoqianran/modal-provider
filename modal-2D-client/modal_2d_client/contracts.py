@@ -10,15 +10,16 @@ from .constants import (
     ARTIFACT_MIME,
     ARTIFACT_ROLE,
     ARTIFACT_VOLUME,
-    BATCH_SUBMIT_FUNCTION,
+    BATCH_GENERATE_METHOD,
     CONTRACT,
     DEFAULT_MODEL,
+    GENERATE_METHOD,
     JOB_TRANSPORT,
     MAX_BATCH_SIZE,
     MAX_PROMPT_CHARS,
     MAX_SEED,
     OPERATION,
-    SUBMIT_FUNCTION,
+    WORKER_CLASS,
 )
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -42,7 +43,9 @@ def validate_capabilities(value: Any) -> dict[str, object]:
     generation = _mapping(doc.get("generation"), "generation")
     required_generation = {
         "app": APP_NAME,
-        "submit_function": SUBMIT_FUNCTION,
+        "worker_class": WORKER_CLASS,
+        "generate_method": GENERATE_METHOD,
+        "batch_generate_method": BATCH_GENERATE_METHOD,
         "artifact_function": ARTIFACT_FUNCTION,
         "job_transport": JOB_TRANSPORT,
     }
@@ -50,8 +53,6 @@ def validate_capabilities(value: Any) -> dict[str, object]:
         raise ContractError("incompatible modal-2D generation endpoint")
     if generation.get("artifact_volume") not in (None, ARTIFACT_VOLUME):
         raise ContractError("incompatible modal-2D artifact volume")
-    if generation.get("batch_submit_function") not in (None, BATCH_SUBMIT_FUNCTION):
-        raise ContractError("incompatible modal-2D batch endpoint")
     if generation.get("batch_max_size") not in (None, MAX_BATCH_SIZE):
         raise ContractError("incompatible modal-2D batch size")
     if generation.get("artifact_path_field") not in (None, "remote_path"):

@@ -25,7 +25,7 @@ from modal.exception import ConnectionError as ModalConnectionError
 from modal.exception import TimeoutError as ModalTimeoutError
 
 from . import artifacts, capabilities
-from .constants import APP_NAME, BATCH_SUBMIT_FUNCTION, SUBMIT_FUNCTION
+from .constants import APP_NAME, WORKER_CLASS
 from .contracts import ContractError, normalize_batch_request, normalize_request, validate_artifact
 from .modal_session import NotConnectedError, client
 from .storage import data_dir
@@ -43,6 +43,16 @@ _RECOVERABLE = (
     ModalTimeoutError,
     TimeoutError,
 )
+
+
+def _worker_method(model_id: str, is_batch: bool):
+    """按 model 直接实例化 GPU Worker 方法，不经过 CPU 中转 Function。
+
+    Modal 每多一层 Function 就多一次独立冷启动。生成热路径上唯一需要冷启动的
+    应该只有 GPU Worker 那一层，所以这里直接 lookup `SanaSprintWorker`。
+    """
+    worker = modal.Cls.from_name(APP_NAME, WORKER_CLASS, client=client())(model_id=model_id)
+    return worker.generate_batch if is_batch else worker.generate
 
 
 def default_db_path() -> Path:
@@ -224,7 +234,8 @@ class JobService:
     ) -> dict[str, object]:
         is_batch = "seeds" in payload
         request = normalize_batch_request(payload) if is_batch else normalize_request(payload)
-        capabilities.ensure_model(str(request["model"]))
+        model_id = str(request["model"])
+        capabilities.ensure_model(model_id)
         local_job_id = job_id or f"job_{uuid.uuid4().hex}"
         if not _JOB_ID.fullmatch(local_job_id):
             raise ContractError("job_id must be a URL-safe identifier")
@@ -236,13 +247,12 @@ class JobService:
             raise ContractError("job_id already exists")
 
         # 先完成本地/认证 preflight，再持久化 intent，最后触发远端调用。
-        fn = modal.Function.from_name(
-            APP_NAME, BATCH_SUBMIT_FUNCTION if is_batch else SUBMIT_FUNCTION, client=client()
-        )
+        # 直接 lookup GPU Worker：中间不再有 CPU 中转 Function，冷启动只有一层。
+        method = _worker_method(model_id, is_batch)
         timestamp = _now()
         intent = Job(
             id=local_job_id,
-            model=str(request["model"]),
+            model=model_id,
             remote_call_id=None,
             status="submitting",
             created_at=timestamp,
@@ -251,7 +261,7 @@ class JobService:
         )
         self.store.save(intent)
         try:
-            call = fn.spawn(request)
+            call = method.spawn(request)
         except Exception:
             latest = self.store.get(local_job_id)
             return self._set(

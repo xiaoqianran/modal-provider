@@ -12,8 +12,9 @@ def capability_doc():
         "operation": "modal-2d.image.text_to_image.v1",
         "generation": {
             "app": "modal-2d",
-            "submit_function": "submit",
-            "batch_submit_function": "submit_batch",
+            "worker_class": "SanaSprintWorker",
+            "generate_method": "generate",
+            "batch_generate_method": "generate_batch",
             "batch_max_size": 8,
             "artifact_function": "read_artifact",
             "artifact_volume": "modal-2d-artifacts",
