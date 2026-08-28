@@ -78,63 +78,21 @@ class BenchmarkGuardrailTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "options"):
             assert_deployed_matches(HUNYUAN, deployed)
 
-class SubmissionRecoveryTests(unittest.TestCase):
-    class DictStore:
-        def __init__(self, values=None):
-            self.values = dict(values or {})
-        def get(self, key, default=None):
-            return self.values.get(key, default)
-        def items(self):
-            return list(self.values.items())
+class InterruptedSubmissionTests(unittest.TestCase):
+    """A spawned-but-unpersisted call can no longer be re-found in the cloud."""
 
-    def test_recovers_indexed_task_id(self) -> None:
-        from modal_3d.gateway_routing import generation_job_key
-        from scripts.benchmark_runner import recover_task_id
+    def test_unresolved_intent_is_reported_instead_of_guessed(self) -> None:
+        from scripts.run_pages_benchmark import _recover_submission
 
-        options = {"seed": 42}
-        path = "client-inputs/" + "a" * 64 + ".png"
-        key = generation_job_key("test", path, options)
-        record = {"job_key": key, "submitted_at": 20.0}
-        task_id = recover_task_id(
-            "test", path, options,
-            self.DictStore({key: "fc-1"}),
-            self.DictStore({"fc-1": record}),
-            intent_at=19.0,
-        )
-        self.assertEqual(task_id, "fc-1")
+        with self.assertRaisesRegex(RuntimeError, "interrupted before its FunctionCall id"):
+            _recover_submission("pixal3d", {"status": "submitting", "intent_at": 1.0})
 
-    def test_recovers_completed_task_from_task_history(self) -> None:
-        from modal_3d.gateway_routing import generation_job_key
-        from scripts.benchmark_runner import recover_task_id
+    def test_resolved_states_are_not_treated_as_submissions(self) -> None:
+        from scripts.run_pages_benchmark import _recover_submission
 
-        options = {"seed": 42}
-        path = "client-inputs/" + "b" * 64 + ".png"
-        key = generation_job_key("test", path, options)
-        tasks = self.DictStore(
-            {
-                "fc-old": {"job_key": key, "submitted_at": 10.0},
-                "fc-new": {"job_key": key, "submitted_at": 21.0},
-            }
-        )
-        task_id = recover_task_id(
-            "test", path, options, self.DictStore(), tasks, intent_at=20.0
-        )
-        self.assertEqual(task_id, "fc-new")
+        self.assertFalse(_recover_submission("pixal3d", {"status": "submitted"}))
+        self.assertFalse(_recover_submission("pixal3d", {"status": "completed"}))
 
-    def test_does_not_adopt_task_older_than_intent(self) -> None:
-        from modal_3d.gateway_routing import generation_job_key
-        from scripts.benchmark_runner import recover_task_id
-
-        options = {"seed": 42}
-        path = "client-inputs/" + "c" * 64 + ".png"
-        key = generation_job_key("test", path, options)
-        task_id = recover_task_id(
-            "test", path, options,
-            self.DictStore(),
-            self.DictStore({"fc-old": {"job_key": key, "submitted_at": 5.0}}),
-            intent_at=20.0,
-        )
-        self.assertIsNone(task_id)
 
 class LowInformationOverrideTests(unittest.TestCase):
     def test_manifest_can_explicitly_allow_reviewed_black_subject(self) -> None:

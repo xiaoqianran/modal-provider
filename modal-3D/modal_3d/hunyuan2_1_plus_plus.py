@@ -10,7 +10,7 @@ from pathlib import Path
 
 import modal
 
-from .common import register_worker_entrypoint, worker_capability
+from .common import run_generation_job, worker_capability
 
 APP_NAME = "modal-3d-hunyuan"
 MODEL_ID = "tencent/Hunyuan3D-2.1"
@@ -87,6 +87,11 @@ CAPABILITY = worker_capability(
     warm_seconds=557.26,
     cold_start_seconds=52.88,
     priority=30,
+    generation_entrypoint={
+        "kind": "class_method",
+        "class_name": "Model",
+        "method_name": "generate_job",
+    },
 )
 
 download_image = modal.Image.debian_slim(python_version="3.10").uv_pip_install(
@@ -249,7 +254,7 @@ def sync_weights() -> dict:
     volumes={"/models": weights, "/artifacts": artifacts},
     min_containers=0,
     max_containers=1,
-    scaledown_window=60,
+    scaledown_window=120,
     timeout=30 * 60,
     startup_timeout=15 * 60,
 )
@@ -291,8 +296,7 @@ class Model:
     def warmup(self) -> dict:
         return {"model": CAPABILITY["id"], "load_s": self.load_s}
 
-    @modal.method()
-    def generate(
+    def _generate(
         self,
         image_bytes: bytes,
         seed: int = 42,
@@ -387,7 +391,11 @@ class Model:
             "paint_remesh": paint_remesh,
         }
 
+    @modal.method()
+    def generate_job(self, input_path: str, options: dict | None = None) -> dict:
+        """Direct GPU entrypoint: the local client spawns this method.
 
-generate, warmup, register = register_worker_entrypoint(
-    app, artifacts, Model, CAPABILITY, python_version="3.11"
-)
+        Input reading, canonical validation, GLB validation and result
+        normalization all happen here so no CPU adapter function is needed.
+        """
+        return run_generation_job(CAPABILITY["id"], artifacts, self._generate, input_path, options)

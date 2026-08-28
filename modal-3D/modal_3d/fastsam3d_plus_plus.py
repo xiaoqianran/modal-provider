@@ -8,14 +8,7 @@ from pathlib import Path, PurePosixPath
 
 import modal
 
-from .common import (
-    generation_result,
-    register_worker_entrypoint,
-    validate_canonical_input,
-    validate_canonical_png,
-    validate_glb,
-    worker_capability,
-)
+from .common import run_generation_job, worker_capability
 
 APP_NAME = "modal-3d-fastsam3d"
 GPU = "L40S"
@@ -457,55 +450,10 @@ class Model:
         }
 
     @modal.method()
-    def generate(
-        self,
-        image_bytes: bytes,
-        seed: int = 42,
-        dmd_interval: int = 1,
-        dmd_history: int = 5,
-    ) -> dict:
-        return self._generate(
-            image_bytes,
-            seed=seed,
-            dmd_interval=dmd_interval,
-            dmd_history=dmd_history,
-        )
-
-    @modal.method()
     def generate_job(self, input_path: str, options: dict | None = None) -> dict:
-        job_t0 = time.perf_counter()
-        rel = Path(input_path)
-        if rel.is_absolute() or ".." in rel.parts or not rel.parts or rel.parts[0] != "client-inputs":
-            raise ValueError("input_path must be under client-inputs/ and relative to /artifacts")
+        """Direct GPU entrypoint: the local client spawns this method.
 
-        input_path_obj = Path("/artifacts") / rel
-        if not input_path_obj.is_file():
-            artifacts.reload()
-        if not input_path_obj.is_file():
-            raise FileNotFoundError(input_path)
-
-        input_t0 = time.perf_counter()
-        validate_canonical_input(input_path_obj, input_path)
-        image_bytes = input_path_obj.read_bytes()
-        input_validation_s = time.perf_counter() - input_t0
-
-        value = self._generate(image_bytes, **dict(options or {}))
-        artifact_rel = Path(str(value.get("artifact", "")))
-        if not artifact_rel.parts or artifact_rel.is_absolute() or ".." in artifact_rel.parts:
-            raise ValueError("worker artifact path must be relative to /artifacts")
-        expected_size = value.get("glb_bytes")
-        if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size <= 0:
-            raise ValueError("worker result must contain a positive glb_bytes integer")
-
-        artifact_t0 = time.perf_counter()
-        metadata = validate_glb(Path("/artifacts") / artifact_rel, expected_size)
-        artifact_validation_s = time.perf_counter() - artifact_t0
-        metadata["path"] = artifact_rel.as_posix()
-        timings = value.setdefault("timings", {})
-        timings["job_input_validation_s"] = input_validation_s
-        timings["job_artifact_validation_s"] = artifact_validation_s
-        timings["job_total_s"] = time.perf_counter() - job_t0
-        return generation_result(CAPABILITY["id"], value, metadata)
-
-
-generate, warmup, register = register_worker_entrypoint(app, artifacts, Model, CAPABILITY)
+        Input reading, canonical validation, GLB validation and result
+        normalization all happen here so no CPU adapter function is needed.
+        """
+        return run_generation_job(CAPABILITY["id"], artifacts, self._generate, input_path, options)

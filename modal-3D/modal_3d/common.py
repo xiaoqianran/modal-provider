@@ -1,24 +1,21 @@
 from __future__ import annotations
 
 import hashlib
-import sys
 import time
 from copy import deepcopy
 from pathlib import Path
 
-import modal
-
 from .png import alpha_range as _png_rgba_alpha_range
 
-# Keep values captured by serialized Modal adapter functions platform-neutral.
-# A concrete Path created while deploying from Windows becomes WindowsPath in
-# cloudpickle and cannot be unpickled inside Modal's Linux containers.
+# Keep deployment-time constants platform-neutral. A concrete Path created on
+# Windows can be serialized into the Modal class definition and fail to unpickle
+# inside Linux containers.
 ARTIFACT_ROOT = "/artifacts"
-REGISTRY_NAME = "modal-3d-model-registry"
-# Every serialized adapter deployment must carry this revision into the registry.
-# Bump it whenever the closure/runtime contract changes so desktop deployment can
-# distinguish a merely-existing Worker from the Worker version it actually needs.
-WORKER_ADAPTER_REVISION = "modal-3d.worker-adapter.v3"
+# Clients upload finished canonical inputs here. Modal never preprocesses.
+CLIENT_INPUT_NAMESPACE = "client-inputs"
+# Historical capability field name: this is now the direct worker deployment
+# revision, not a CPU adapter revision. Keep the value/field stable for v3 clients.
+WORKER_ADAPTER_REVISION = "modal-3d.worker-adapter.v4"
 CANONICAL_INPUT = {
     "role": "canonical_rgba",
     "mime": "image/png",
@@ -171,105 +168,101 @@ def generation_result(model: str, value: dict, artifact: dict) -> dict:
     }
 
 
-def register_worker_entrypoint(
-    app: modal.App,
-    artifacts_volume: modal.Volume,
-    model_cls,
-    capability: dict,
+def read_canonical_input(
+    artifacts_volume,
+    input_path: str,
     *,
-    python_version: str = "3.11",
-):
-    """Attach the standard generate, warmup and registry functions to a worker app."""
-    from .capabilities import validate_capability
-
-    manifest = validate_capability(capability)
-    model_id = manifest["id"]
-    worker_app = manifest["worker_app"]
-    model_cls_name = model_cls.__name__
-    # serialized=True requires the adapter runtime to match the Python version
-    # that serialized the closure; it is independent from the GPU worker Python.
-    adapter_python = f"{sys.version_info.major}.{sys.version_info.minor}"
-    adapter_image = modal.Image.debian_slim(python_version=adapter_python).add_local_python_source(
-        "modal_3d", copy=True
-    )
-
-    def generate(input_path: str, options: dict | None = None) -> dict:
-        rel = Path(input_path)
-        if rel.is_absolute() or ".." in rel.parts:
-            raise ValueError("input_path must be relative to /artifacts")
-        path = Path(ARTIFACT_ROOT) / rel
-        if not path.is_file():
-            artifacts_volume.reload()
-        if not path.is_file():
-            raise FileNotFoundError(input_path)
-        validate_canonical_input(path, input_path)
-        remote_cls = modal.Cls.from_name(worker_app, model_cls_name)
-        value = remote_cls().generate.remote(path.read_bytes(), **dict(options or {}))
-        artifact_rel = Path(str(value.get("artifact", "")))
-        if not artifact_rel.parts or artifact_rel.is_absolute() or ".." in artifact_rel.parts:
-            raise ValueError("worker artifact path must be relative to /artifacts")
-        expected_size = value.get("glb_bytes")
-        if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size <= 0:
-            raise ValueError("worker result must contain a positive glb_bytes integer")
+    namespace: str = CLIENT_INPUT_NAMESPACE,
+) -> bytes:
+    """Read and validate a client-uploaded canonical input inside a GPU container."""
+    rel = Path(input_path)
+    if rel.is_absolute() or ".." in rel.parts or not rel.parts or rel.parts[0] != namespace:
+        raise ValueError(f"input_path must be under {namespace}/ and relative to {ARTIFACT_ROOT}")
+    path = Path(ARTIFACT_ROOT) / rel
+    if not path.is_file():
         artifacts_volume.reload()
-        artifact_path = Path(ARTIFACT_ROOT) / artifact_rel
-        metadata = validate_glb(artifact_path, expected_size)
-        metadata["path"] = artifact_rel.as_posix()
-        return generation_result(model_id, value, metadata)
+    if not path.is_file():
+        raise FileNotFoundError(input_path)
+    validate_canonical_input(path, input_path)
+    return path.read_bytes()
 
-    def warmup() -> dict:
-        remote_cls = modal.Cls.from_name(worker_app, model_cls_name)
-        return remote_cls().warmup.remote()
 
-    def health() -> dict:
-        return {
-            "ok": True,
-            "model": model_id,
-            "worker_app": worker_app,
-            "adapter_revision": WORKER_ADAPTER_REVISION,
-        }
 
-    def register() -> dict:
-        registry = modal.Dict.from_name(REGISTRY_NAME, create_if_missing=True)
-        registered = deepcopy(manifest)
-        registered_at = time.time()
-        registered["registration"] = {
-            "registered_at": registered_at,
-            "worker_app": worker_app,
-            "adapter_revision": WORKER_ADAPTER_REVISION,
-        }
-        registry.put(model_id, registered)
-        return {
-            "registered": model_id,
-            "worker_app": worker_app,
-            "registered_at": registered_at,
-            "adapter_revision": WORKER_ADAPTER_REVISION,
-        }
+def pinned_hf_snapshot(
+    cache_dir: str | Path,
+    repo_id: str,
+    revision: str,
+    *,
+    required_files: tuple[str, ...] = (),
+) -> Path:
+    """Return a pinned HF snapshot path and fail if required files are missing.
 
-    function_options = {
-        "image": adapter_image,
-        "serialized": True,
-        "timeout": 30 * 60,
-        "max_containers": 1,
-    }
-    generate_fn = app.function(
-        name="generate",
-        volumes={str(ARTIFACT_ROOT): artifacts_volume},
-        **function_options,
-    )(generate)
-    warmup_fn = app.function(name="warmup", **function_options)(warmup)
-    app.function(
-        name="health",
-        image=adapter_image,
-        serialized=True,
-        timeout=60,
-        max_containers=1,
-    )(health)
-    register_fn = app.function(
-        name="register",
-        image=adapter_image,
-        serialized=True,
-        timeout=60,
-        max_containers=1,
-    )(register)
-    return generate_fn, warmup_fn, register_fn
+    Runtime code should consume this local path directly instead of resolving a
+    repo id through Hugging Face cache refs. This keeps GPU startup deterministic
+    under HF_HUB_OFFLINE and independent of refs/main/cache-version behavior.
+    """
+    if not repo_id or "/" not in repo_id:
+        raise ValueError("repo_id must be an owner/name Hugging Face id")
+    forbidden = ("\\", "/", "\n", "\r")
+    if not revision or any(ch in revision for ch in forbidden):
+        raise ValueError("revision must be a simple cache revision")
+
+    snapshot = (
+        Path(cache_dir)
+        / f"models--{repo_id.replace('/', '--')}"
+        / "snapshots"
+        / revision
+    )
+    if not snapshot.is_dir():
+        raise FileNotFoundError(f"Hugging Face snapshot missing: {snapshot}")
+    missing = [name for name in required_files if not (snapshot / name).is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f"Hugging Face snapshot {repo_id}@{revision} is incomplete: {missing}"
+        )
+    return snapshot
+
+
+def run_generation_job(
+    model_id: str,
+    artifacts_volume,
+    generate_image,
+    input_path: str,
+    options: dict | None = None,
+    *,
+    namespace: str = CLIENT_INPUT_NAMESPACE,
+) -> dict:
+    """Run one GPU generation job end to end inside the model container.
+
+    Every worker exposes this same body as `Model.generate_job` so the local
+    client can spawn the GPU class method directly. Doing the input/artifact
+    validation here (instead of in a CPU adapter function) removes one Modal
+    container cold start from every submission.
+    """
+    job_t0 = time.perf_counter()
+
+    input_t0 = time.perf_counter()
+    image_bytes = read_canonical_input(artifacts_volume, input_path, namespace=namespace)
+    input_validation_s = time.perf_counter() - input_t0
+
+    value = generate_image(image_bytes, **dict(options or {}))
+    if not isinstance(value, dict):
+        raise TypeError("worker generation must return an object")
+
+    artifact_rel = Path(str(value.get("artifact", "")))
+    if not artifact_rel.parts or artifact_rel.is_absolute() or ".." in artifact_rel.parts:
+        raise ValueError("worker artifact path must be relative to /artifacts")
+    expected_size = value.get("glb_bytes")
+    if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size <= 0:
+        raise ValueError("worker result must contain a positive glb_bytes integer")
+
+    artifact_t0 = time.perf_counter()
+    metadata = validate_glb(Path(ARTIFACT_ROOT) / artifact_rel, expected_size)
+    artifact_validation_s = time.perf_counter() - artifact_t0
+    metadata["path"] = artifact_rel.as_posix()
+
+    timings = value.setdefault("timings", {})
+    timings["job_input_validation_s"] = input_validation_s
+    timings["job_artifact_validation_s"] = artifact_validation_s
+    timings["job_total_s"] = time.perf_counter() - job_t0
+    return generation_result(model_id, value, metadata)

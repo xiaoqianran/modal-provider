@@ -17,12 +17,9 @@ $module = [IO.Path]::ChangeExtension($relativePath, $null) -replace '[\\/]', '.'
 
 Push-Location $repoRoot
 try {
+    # There is no registry step. Deploy the selected worker module directly;
+    # the client resolves generation/mask workers from local static configuration.
     & modal deploy -m $module
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
-    }
-
-    & modal run -m "${module}::register"
     exit $LASTEXITCODE
 }
 finally {

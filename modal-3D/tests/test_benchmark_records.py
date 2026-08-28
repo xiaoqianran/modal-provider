@@ -62,7 +62,13 @@ class BenchmarkRecordTests(unittest.TestCase):
             self.assertEqual(record["status"], "passed")
             self.assertEqual(record["options"], recommended["options"])
             self.assertEqual(record["quality"], recommended["quality"])
-            self.assertEqual(record["deployment"], capability["deployment"])
+            # `adapter_revision` is a runtime-contract marker stamped into the
+            # manifest, not part of the physical deployment a benchmark ran
+            # against. Historical records keep the revision they were taken with.
+            self.assertEqual(
+                {k: v for k, v in record["deployment"].items() if k != "adapter_revision"},
+                {k: v for k, v in capability["deployment"].items() if k != "adapter_revision"},
+            )
             self.assertEqual(record["result"]["model"], model_id)
             self.assertEqual(record["result"]["artifact"]["glb_version"], 2)
             self.assertGreater(record["result"]["artifact"]["bytes"], 0)

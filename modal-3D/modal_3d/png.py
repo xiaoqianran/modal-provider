@@ -1,8 +1,8 @@
 """Small PNG helpers used by canonical-input validation and benchmarks.
 
 Only the canonical format is supported: 8-bit, non-interlaced RGBA PNG.
-Keeping this decoder dependency-free lets CPU gateway/benchmark checks run
-without Pillow while still validating the exact bytes sent to GPU workers.
+Keeping this decoder dependency-free lets local/benchmark checks run without
+Pillow while still validating the exact bytes sent to GPU workers.
 """
 
 from __future__ import annotations

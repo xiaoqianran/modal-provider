@@ -9,7 +9,6 @@ from pathlib import Path
 
 from modal_3d.common import validate_canonical_png
 from modal_3d.png import foreground_stats
-from modal_3d.gateway_routing import generation_job_key
 
 
 @dataclass(frozen=True)
@@ -155,31 +154,6 @@ def build_plan(capabilities: list[dict], scenes: list[Scene], model_ids: list[st
     }
 
 
-
-
-def recover_task_id(model_id: str, modal_path: str, options: dict, job_keys, tasks, *, intent_at: float) -> str | None:
-    """Recover a task spawned before local state persisted its FunctionCall ID.
-
-    The fast path uses the live job-key index. The task scan is only a crash
-    recovery fallback and therefore does not add overhead to normal submissions.
-    """
-    key = generation_job_key(model_id, modal_path, options)
-    indexed = job_keys.get(key)
-    if isinstance(indexed, str):
-        record = tasks.get(indexed)
-        if isinstance(record, dict) and record.get("job_key") == key:
-            return indexed
-
-    matches: list[tuple[float, str]] = []
-    for task_id, record in tasks.items():
-        if not isinstance(record, dict) or record.get("job_key") != key:
-            continue
-        submitted_at = record.get("submitted_at")
-        if isinstance(submitted_at, (int, float)) and submitted_at >= intent_at - 1:
-            matches.append((float(submitted_at), str(task_id)))
-    if not matches:
-        return None
-    return max(matches)[1]
 
 
 def validate_budget(plan: dict, *, max_calls: int, max_estimated_gpu_seconds: float) -> None:

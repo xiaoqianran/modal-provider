@@ -9,12 +9,13 @@ import sys
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from modal_3d.capabilities import assert_routable
+from modal_3d.router import resolve, spawn_generation
 from scripts.benchmark_runner import (
     assert_deployed_matches,
     build_plan,
     load_manifest,
     recommended_profile,
-    recover_task_id,
     validate_budget,
 )
 
@@ -81,17 +82,22 @@ def _verify_remote_inputs(scenes) -> None:
             raise ValueError(f"{scene.id}: Modal Volume input SHA256 does not match local canonical")
 
 
-def _deployed_capabilities(local_capabilities: list[dict], model_ids: list[str]) -> dict[str, dict]:
-    import modal
+def _verified_capabilities(local_capabilities: list[dict], model_ids: list[str]) -> dict[str, dict]:
+    """Validate local worker manifests before any paid GPU job is submitted.
 
-    gateway_caps = modal.Function.from_name("modal-3d-gateway", "capabilities").remote()
-    deployed_by_id = {item["id"]: item for item in gateway_caps["models"]}
+    There is no gateway and no remote registry to diff against. Drift is caught
+    the only way it can be: locally, by checking that every manifest agrees with
+    `router.WORKERS` (the table `spawn_generation` actually uses) and that the
+    benchmark plan profiles are the ones declared here.
+    """
+    assert_routable(local_capabilities)
     local_by_id = {item["id"]: item for item in local_capabilities}
     for model_id in model_ids:
-        deployed = deployed_by_id.get(model_id)
-        if deployed is None:
-            raise RuntimeError(f"{model_id}: not advertised by deployed gateway")
-        assert_deployed_matches(local_by_id[model_id], deployed)
+        capability = local_by_id.get(model_id)
+        if capability is None:
+            raise RuntimeError(f"{model_id}: no local worker manifest")
+        assert_deployed_matches(capability, capability)
+        recommended_profile(capability)
     return local_by_id
 
 
@@ -109,36 +115,27 @@ def _mark_submission_intent(model_state: dict, scene, options: dict) -> None:
 
 
 def _recover_submission(model_id: str, model_state: dict) -> bool:
-    import modal
+    """Report an interrupted submission instead of guessing.
 
+    The gateway used to keep `modal-3d-job-keys` / `modal-3d-tasks` in the cloud
+    so a spawned-but-unpersisted FunctionCall could be re-found. With direct GPU
+    spawning that index no longer exists, so an unresolved intent is a real
+    unknown: re-submitting could start a second paid GPU job.
+    """
     if model_state.get("status") != "submitting":
         return False
-    intent_at = model_state.get("intent_at")
-    if not isinstance(intent_at, (int, float)):
-        raise ValueError(f"{model_id}: submitting state is missing intent_at")
-    job_keys = modal.Dict.from_name("modal-3d-job-keys", create_if_missing=False)
-    tasks = modal.Dict.from_name("modal-3d-tasks", create_if_missing=False)
-    task_id = recover_task_id(
-        model_id,
-        model_state["modal_path"],
-        model_state["options"],
-        job_keys,
-        tasks,
-        intent_at=float(intent_at),
+    raise RuntimeError(
+        f"{model_id}: submission was interrupted before its FunctionCall id was persisted. "
+        "Resolve it in the Modal dashboard (cancel or record the call id), then edit this "
+        "entry to status=submitted with that task_id, or delete it to re-submit."
     )
-    if task_id is None:
-        return False
-    model_state["task_id"] = task_id
-    model_state["status"] = "submitted"
-    model_state["recovered"] = True
-    return True
 
 
-def _submit_one(submit, model_id: str, scene, options: dict, model_state: dict, state: dict, state_path: Path) -> None:
+def _submit_one(model_id: str, scene, options: dict, model_state: dict, state: dict, state_path: Path) -> None:
     _mark_submission_intent(model_state, scene, options)
     _save(state_path, state)
     try:
-        record = submit.remote(model_id, scene.modal_path, options)
+        call = spawn_generation(model_id, scene.modal_path, options)
     except Exception as exc:
         model_state["submit_error"] = {"type": type(exc).__name__, "message": str(exc)}
         _save(state_path, state)
@@ -148,9 +145,9 @@ def _submit_one(submit, model_id: str, scene, options: dict, model_state: dict, 
     model_state.update(
         {
             "status": "submitted",
-            "task_id": record["task_id"],
-            "submitted_at": record.get("submitted_at", time.time()),
-            "deduplicated": bool(record.get("deduplicated")),
+            "task_id": call.object_id,
+            "submitted_at": time.time(),
+            "worker": "-".join(resolve(model_id)),
         }
     )
     model_state.pop("submit_error", None)
@@ -159,10 +156,7 @@ def _submit_one(submit, model_id: str, scene, options: dict, model_state: dict, 
 
 def _submit_smoke(args, scenes, local_capabilities, model_ids, plan) -> None:
     """Submit at most one scene per model and persist each FunctionCall ID immediately."""
-    import modal
-
-    local_by_id = _deployed_capabilities(local_capabilities, model_ids)
-    submit = modal.Function.from_name("modal-3d-gateway", "submit")
+    local_by_id = _verified_capabilities(local_capabilities, model_ids)
     state = (
         _load_state(args.state, plan, "modal-3d.benchmark-smoke.v1")
         if args.state.exists()
@@ -178,7 +172,7 @@ def _submit_smoke(args, scenes, local_capabilities, model_ids, plan) -> None:
         options = dict(recommended_profile(local_by_id[model_id])["options"])
         model_state: dict = {}
         state["models"][model_id] = model_state
-        _submit_one(submit, model_id, scene, options, model_state, state, args.state)
+        _submit_one(model_id, scene, options, model_state, state, args.state)
 
     print(json.dumps(state, indent=2, ensure_ascii=False))
     print(f"SMOKE SUBMITTED: state persisted at {args.state}; use --resume to poll without submitting new jobs")
@@ -285,10 +279,7 @@ def _new_full_state(plan: dict, smoke: dict, scenes, model_ids) -> dict:
 
 
 def _submit_full_round(args, scenes, local_capabilities, model_ids, plan) -> None:
-    import modal
-
-    local_by_id = _deployed_capabilities(local_capabilities, model_ids)
-    submit = modal.Function.from_name("modal-3d-gateway", "submit")
+    local_by_id = _verified_capabilities(local_capabilities, model_ids)
     if args.state.exists():
         state = _load_state(args.state, plan, "modal-3d.benchmark-full.v1")
     else:
@@ -317,7 +308,7 @@ def _submit_full_round(args, scenes, local_capabilities, model_ids, plan) -> Non
             continue
         scene = scenes[index]
         options = dict(recommended_profile(local_by_id[model_id])["options"])
-        _submit_one(submit, model_id, scene, options, model_state, state, args.state)
+        _submit_one(model_id, scene, options, model_state, state, args.state)
         submitted += 1
     print(json.dumps(state, indent=2, ensure_ascii=False))
     print(f"FULL ROUND SUBMITTED: {submitted} jobs; poll with --resume --full before --advance --full")

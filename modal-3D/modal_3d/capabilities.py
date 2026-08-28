@@ -1,35 +1,20 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Protocol
 
-import modal
+from .common import CANONICAL_INPUT, WORKER_ADAPTER_REVISION
+from .router import WORKERS
 
-from .common import CANONICAL_INPUT, REGISTRY_NAME, WORKER_ADAPTER_REVISION
-
-CONTRACT = "modal-3d.capabilities.v2"
+# v3 drops the gateway: submissions are spawned directly against each worker's
+# GPU `Model.generate_job` class method using the local static routing table.
+CONTRACT = "modal-3d.capabilities.v3"
 PROFILE_RECOMMENDED = "recommended"
-PUBLIC_IMAGE_INPUT = {
-    "role": "source_image",
-    "mediaTypes": ["image/png", "image/jpeg", "image/webp"],
-    "maxBytes": 20 * 1024 * 1024,
-    "alpha": "optional",
-    "conditioning": "provider",
-    "pathPrefix": "source-inputs/",
-}
-
-
-class Registry(Protocol):
-    def get(self, key, default=None): ...
-
-    def items(self): ...
-
-
-def model_registry() -> modal.Dict:
-    return modal.Dict.from_name(REGISTRY_NAME, create_if_missing=True)
+# The client uploads a finished canonical input; Modal never preprocesses.
+CANONICAL_INPUT_PATH_PREFIX = "client-inputs/"
 
 
 def has_current_adapter_revision(capability: object) -> bool:
+    """Check the historical adapter_revision field used as worker deployment revision."""
     if not isinstance(capability, dict):
         return False
     deployment = capability.get("deployment")
@@ -71,7 +56,7 @@ def validate_capability(capability: dict) -> dict:
         raise ValueError("worker input contract must be canonical 1024x1024 RGBA PNG")
     if not has_current_adapter_revision(capability):
         raise ValueError(
-            f"worker adapter revision mismatch: expected {WORKER_ADAPTER_REVISION}"
+            f"worker deployment revision mismatch: expected {WORKER_ADAPTER_REVISION}"
         )
     profiles, options = capability["profiles"], capability["options"]
     if not isinstance(profiles, list) or not profiles or not isinstance(options, dict):
@@ -140,59 +125,89 @@ def validate_capability(capability: dict) -> dict:
     return deepcopy(capability)
 
 
-def _registered_models(registry: Registry | None = None) -> list[dict]:
-    source = registry if registry is not None else model_registry()
-    # Registry entries survive redeploys. Never advertise a Worker whose adapter
-    # revision predates the current serialized runtime contract. This turns a
-    # stale deployment into an explicit unavailable model instead of routing new
-    # paid work into a container-start retry loop.
-    models = [
-        validate_capability(value)
-        for _, value in source.items()
-        if has_current_adapter_revision(value)
-    ]
-    return sorted(models, key=lambda item: (item.get("priority", 1000), item["id"]))
+def assert_routable(models: list[dict]) -> None:
+    """Fail fast when a worker manifest disagrees with the local routing table.
+
+    `router.WORKERS` is what the client actually spawns against, so a mismatch
+    between it and a worker's declared `generation_entrypoint` must be caught at
+    build/test time rather than on a paid GPU call.
+    """
+    for item in models:
+        model_id = item.get("id")
+        entry = WORKERS.get(model_id)
+        if entry is None:
+            raise ValueError(f"model {model_id!r} has no entry in the local routing table")
+        app_name, class_name, method_name = entry
+        if item.get("worker_app") != app_name:
+            raise ValueError(
+                f"model {model_id!r} worker_app {item.get('worker_app')!r} != routing table {app_name!r}"
+            )
+        entrypoint = item.get("generation_entrypoint") or {}
+        if (
+            entrypoint.get("kind") != "class_method"
+            or entrypoint.get("class_name") != class_name
+            or entrypoint.get("method_name") != method_name
+        ):
+            raise ValueError(
+                f"model {model_id!r} generation_entrypoint does not match the routing table"
+            )
 
 
-def capabilities_document(registry: Registry | None = None) -> dict:
-    models = _registered_models(registry)
-    for model in models:
-        # Internal Modal routing metadata is intentionally not part of the
-        # client-facing capabilities contract.
-        model.pop("generation_entrypoint", None)
+def _registered_models(models: list[dict] | None = None) -> list[dict]:
+    if models is None:
+        return []
+    # Worker manifests are compiled into the client. Never advertise one whose
+    # adapter revision predates the current serialized runtime contract: that
+    # turns a stale manifest into an explicit unavailable model instead of
+    # routing paid work into a container that cannot satisfy the contract.
+    return sorted(
+        (
+            validate_capability(deepcopy(item))
+            for item in models
+            if has_current_adapter_revision(item)
+        ),
+        key=lambda item: (item.get("priority", 1000), item["id"]),
+    )
+
+
+def capabilities_document(models: list[dict] | None = None) -> dict:
+    """Build the client-facing capability document from local worker manifests.
+
+    `models` are the `CAPABILITY` dicts declared by each worker module. There is
+    no dynamic registry: routing metadata is published per model because the
+    client resolves every worker itself through `router.WORKERS`.
+    """
+    assert_routable(models or [])
     return {
         "contract": CONTRACT,
         "generation": {
-            "app": "modal-3d-gateway",
-            "submit_function": "submit",
             "job_transport": "modal.FunctionCall",
-            "public_input_contract": deepcopy(PUBLIC_IMAGE_INPUT),
-            # Legacy/internal worker contract kept during the strangler migration.
+            "entrypoint": "direct_class_method",
+            "input_path_prefix": CANONICAL_INPUT_PATH_PREFIX,
             "input_contract": deepcopy(CANONICAL_INPUT),
         },
-        "models": models,
+        "models": _registered_models(models),
     }
 
 
-def model_capability(model: str, registry: Registry | None = None) -> dict:
-    source = registry if registry is not None else model_registry()
-    capability = source.get(model)
-    if capability is None:
-        raise ValueError(f"unknown model: {model}")
-    if not has_current_adapter_revision(capability):
-        raise ValueError(
-            f"model {model} worker deployment is stale; redeploy required "
-            f"({WORKER_ADAPTER_REVISION})"
-        )
-    return validate_capability(capability)
+def model_capability(model: str, models: list[dict]) -> dict:
+    for item in models:
+        if item.get("id") == model:
+            if not has_current_adapter_revision(item):
+                raise ValueError(
+                    f"model {model} worker deployment is stale; redeploy required "
+                    f"({WORKER_ADAPTER_REVISION})"
+                )
+            return validate_capability(deepcopy(item))
+    raise ValueError(f"unknown model: {model}")
 
 
-def worker_app(model: str, registry: Registry | None = None) -> str:
-    return str(model_capability(model, registry)["worker_app"])
+def worker_app(model: str, models: list[dict]) -> str:
+    return str(model_capability(model, models)["worker_app"])
 
 
-def profile_options(model: str, profile_id: str, registry: Registry | None = None) -> dict:
-    capability = model_capability(model, registry)
+def profile_options(model: str, profile_id: str, models: list[dict]) -> dict:
+    capability = model_capability(model, models)
     profile = next((item for item in capability["profiles"] if item["id"] == profile_id), None)
     if profile is None:
         raise ValueError(f"model {capability['id']} does not support profile: {profile_id}")
@@ -248,5 +263,5 @@ def validate_options_for_capability(capability: dict, options: dict | None) -> d
     return validated
 
 
-def validate_options(model: str, options: dict | None, registry: Registry | None = None) -> dict:
-    return validate_options_for_capability(model_capability(model, registry), options)
+def validate_options(model: str, options: dict | None, models: list[dict]) -> dict:
+    return validate_options_for_capability(model_capability(model, models), options)

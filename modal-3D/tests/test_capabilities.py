@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 import unittest
 from copy import deepcopy
+from unittest.mock import patch
 
+from modal_3d import router
 from modal_3d.capabilities import (
     CONTRACT,
+    assert_routable,
     capabilities_document,
     has_current_adapter_revision,
     profile_options,
@@ -20,42 +23,24 @@ from modal_3d.hunyuan2_1_plus_plus import CAPABILITY as HUNYUAN
 from modal_3d.pixal3d import CAPABILITY as PIXAL3D
 
 
-class FakeRegistry:
-    def __init__(self, values):
-        self.values = {item["id"]: deepcopy(item) for item in values}
-
-    def get(self, key, default=None):
-        return deepcopy(self.values.get(key, default))
-
-    def items(self):
-        return [(key, deepcopy(value)) for key, value in self.values.items()]
-
-
 class CapabilityContractTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.registry = FakeRegistry([FASTSAM3D, TRELLIS2, HUNYUAN, PIXAL3D])
+        self.models = [FASTSAM3D, TRELLIS2, HUNYUAN, PIXAL3D]
 
     def test_contract_is_json_serializable(self) -> None:
-        encoded = json.dumps(capabilities_document(self.registry), sort_keys=True)
+        encoded = json.dumps(capabilities_document(self.models), sort_keys=True)
         self.assertIn(CONTRACT, encoded)
 
-    def test_generation_contract_exposes_public_source_and_internal_canonical_inputs(self) -> None:
-        document = capabilities_document(self.registry)
+    def test_generation_contract_requires_client_prepared_canonical_inputs(self) -> None:
+        document = capabilities_document(self.models)
         generation = document["generation"]
         self.assertNotIn("sam", document)
-        self.assertNotIn("pipeline_function", generation)
+        self.assertNotIn("app", generation)
+        self.assertNotIn("submit_function", generation)
         self.assertNotIn("http", generation)
-        self.assertEqual(
-            generation["public_input_contract"],
-            {
-                "role": "source_image",
-                "mediaTypes": ["image/png", "image/jpeg", "image/webp"],
-                "maxBytes": 20 * 1024 * 1024,
-                "alpha": "optional",
-                "conditioning": "provider",
-                "pathPrefix": "source-inputs/",
-            },
-        )
+        self.assertEqual(generation["job_transport"], "modal.FunctionCall")
+        self.assertEqual(generation["entrypoint"], "direct_class_method")
+        self.assertEqual(generation["input_path_prefix"], "client-inputs/")
         self.assertEqual(
             generation["input_contract"],
             {
@@ -72,7 +57,7 @@ class CapabilityContractTests(unittest.TestCase):
         self.assertTrue(all(model["input"] == generation["input_contract"] for model in document["models"]))
 
     def test_contract_has_exact_current_models(self) -> None:
-        document = capabilities_document(self.registry)
+        document = capabilities_document(self.models)
         self.assertEqual(document["contract"], CONTRACT)
         self.assertEqual(
             [model["id"] for model in document["models"]],
@@ -90,28 +75,53 @@ class CapabilityContractTests(unittest.TestCase):
         fifth.update(
             {"id": "new-model", "name": "New", "worker_app": "modal-3d-new", "priority": 50}
         )
-        registry = FakeRegistry([FASTSAM3D, fifth])
-        self.assertEqual(
-            [model["id"] for model in capabilities_document(registry)["models"]],
-            ["fastsam3d-plus-plus", "new-model"],
-        )
-        self.assertEqual(worker_app("new-model", registry), "modal-3d-new")
+        models = [FASTSAM3D, fifth]
+        # A new model needs a matching routing-table entry; nothing else changes
+        # because there is no gateway and no registry to teach about it.
+        with patch.dict(router.WORKERS, {"new-model": ("modal-3d-new", "Model", "generate_job")}):
+            self.assertEqual(
+                [model["id"] for model in capabilities_document(models)["models"]],
+                ["fastsam3d-plus-plus", "new-model"],
+            )
+            self.assertEqual(worker_app("new-model", models), "modal-3d-new")
+
+    def test_new_model_without_a_routing_entry_is_rejected(self) -> None:
+        orphan = deepcopy(FASTSAM3D)
+        orphan.update({"id": "new-model", "name": "New", "worker_app": "modal-3d-new"})
+        with self.assertRaisesRegex(ValueError, "routing table"):
+            assert_routable([FASTSAM3D, orphan])
+
+    def test_worker_app_mismatch_is_rejected(self) -> None:
+        drifted = deepcopy(PIXAL3D)
+        drifted["worker_app"] = "modal-3d-pixal3d-v2"
+        with self.assertRaisesRegex(ValueError, "routing table"):
+            assert_routable([drifted])
+
+    def test_entrypoint_mismatch_is_rejected(self) -> None:
+        drifted = deepcopy(PIXAL3D)
+        drifted["generation_entrypoint"] = {
+            "kind": "class_method",
+            "class_name": "Model",
+            "method_name": "generate",
+        }
+        with self.assertRaisesRegex(ValueError, "routing table"):
+            assert_routable([drifted])
 
     def test_recommended_profiles_match_verified_client_baseline(self) -> None:
         self.assertEqual(
-            profile_options("fastsam3d-plus-plus", "recommended", self.registry),
+            profile_options("fastsam3d-plus-plus", "recommended", self.models),
             {"dmd_interval": 1, "dmd_history": 5},
         )
         self.assertEqual(
-            profile_options("hermit-trellis2-plus-plus", "recommended", self.registry),
+            profile_options("hermit-trellis2-plus-plus", "recommended", self.models),
             {"pipeline_type": "1536_cascade", "acceleration": "base", "texture_size": 4096},
         )
         self.assertEqual(
-            profile_options("hunyuan2.1-plus-plus", "recommended", self.registry),
+            profile_options("hunyuan2.1-plus-plus", "recommended", self.models),
             {"acceleration": "base", "interval": 1, "history": 6, "num_inference_steps": 50, "paint_remesh": True},
         )
         self.assertEqual(
-            profile_options("pixal3d", "recommended", self.registry),
+            profile_options("pixal3d", "recommended", self.models),
             {
                 "fov": None,
                 "pipeline_type": "1536_cascade",
@@ -164,8 +174,8 @@ class CapabilityContractTests(unittest.TestCase):
         self.assertGreater(HUNYUAN["reference"]["warm_seconds"], 500)
 
     def test_worker_lookup_is_part_of_same_contract(self) -> None:
-        self.assertEqual(worker_app("fastsam3d-plus-plus", self.registry), "modal-3d-fastsam3d")
-        self.assertEqual(worker_app("pixal3d", self.registry), "modal-3d-pixal3d")
+        self.assertEqual(worker_app("fastsam3d-plus-plus", self.models), "modal-3d-fastsam3d")
+        self.assertEqual(worker_app("pixal3d", self.models), "modal-3d-pixal3d")
 
     def test_worker_manifest_carries_current_adapter_revision(self) -> None:
         for capability in (FASTSAM3D, TRELLIS2, HUNYUAN, PIXAL3D):
@@ -178,35 +188,33 @@ class CapabilityContractTests(unittest.TestCase):
     def test_stale_worker_is_not_advertised_or_routable(self) -> None:
         stale = deepcopy(HUNYUAN)
         stale["deployment"]["adapter_revision"] = "modal-3d.worker-adapter.v1"
-        registry = FakeRegistry([FASTSAM3D, stale])
+        models = [FASTSAM3D, stale]
         self.assertEqual(
-            [model["id"] for model in capabilities_document(registry)["models"]],
+            [model["id"] for model in capabilities_document(models)["models"]],
             ["fastsam3d-plus-plus"],
         )
         with self.assertRaisesRegex(ValueError, "stale; redeploy required"):
-            worker_app("hunyuan2.1-plus-plus", registry)
+            worker_app("hunyuan2.1-plus-plus", models)
 
     def test_capability_document_is_not_mutable_global_state(self) -> None:
-        first = capabilities_document(self.registry)
+        first = capabilities_document(self.models)
         first["models"][0]["name"] = "mutated"
-        self.assertNotEqual(capabilities_document(self.registry)["models"][0]["name"], "mutated")
+        self.assertNotEqual(capabilities_document(self.models)["models"][0]["name"], "mutated")
 
     def test_unknown_model_and_profile_are_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "unknown model"):
-            worker_app("missing", self.registry)
+            worker_app("missing", self.models)
         with self.assertRaisesRegex(ValueError, "does not support profile"):
-            profile_options("pixal3d", "quality", self.registry)
+            profile_options("pixal3d", "quality", self.models)
 
-    def test_internal_generation_entrypoint_is_not_exposed_to_clients(self) -> None:
-        document = capabilities_document(self.registry)
-        fastsam = next(model for model in document["models"] if model["id"] == "fastsam3d-plus-plus")
-        self.assertNotIn("generation_entrypoint", fastsam)
-
-    def test_fastsam_advertises_direct_generation_entrypoint(self) -> None:
-        self.assertEqual(
-            FASTSAM3D["generation_entrypoint"],
-            {"kind": "class_method", "class_name": "Model", "method_name": "generate_job"},
-        )
+    def test_routing_entrypoint_is_published_to_clients(self) -> None:
+        document = capabilities_document(self.models)
+        for model in document["models"]:
+            with self.subTest(model=model["id"]):
+                self.assertEqual(
+                    model["generation_entrypoint"],
+                    {"kind": "class_method", "class_name": "Model", "method_name": "generate_job"},
+                )
 
     def test_invalid_generation_entrypoint_is_rejected(self) -> None:
         invalid = deepcopy(FASTSAM3D)
@@ -220,40 +228,40 @@ class CapabilityContractTests(unittest.TestCase):
 
     def test_options_must_be_mapping(self) -> None:
         with self.assertRaisesRegex(TypeError, "options must be an object"):
-            validate_options("pixal3d", ["seed", 1], self.registry)  # type: ignore[arg-type]
+            validate_options("pixal3d", ["seed", 1], self.models)  # type: ignore[arg-type]
 
     def test_unknown_option_is_rejected_before_worker(self) -> None:
         with self.assertRaisesRegex(ValueError, "unknown options"):
-            validate_options("pixal3d", {"does_not_exist": 1}, self.registry)
+            validate_options("pixal3d", {"does_not_exist": 1}, self.models)
 
     def test_option_types_are_strict(self) -> None:
         with self.assertRaisesRegex(ValueError, "seed must be integer"):
-            validate_options("fastsam3d-plus-plus", {"seed": True}, self.registry)
+            validate_options("fastsam3d-plus-plus", {"seed": True}, self.models)
         with self.assertRaisesRegex(ValueError, "fov must be number"):
-            validate_options("pixal3d", {"fov": "35"}, self.registry)
+            validate_options("pixal3d", {"fov": "35"}, self.models)
         self.assertEqual(
-            validate_options("pixal3d", {"fov": None}, self.registry),
+            validate_options("pixal3d", {"fov": None}, self.models),
             {"fov": None},
         )
         with self.assertRaisesRegex(ValueError, "must be one of"):
-            validate_options("pixal3d", {"pipeline_type": "2048_cascade"}, self.registry)
+            validate_options("pixal3d", {"pipeline_type": "2048_cascade"}, self.models)
         with self.assertRaisesRegex(ValueError, "pipeline_type must be string"):
-            validate_options("pixal3d", {"pipeline_type": 1536}, self.registry)
+            validate_options("pixal3d", {"pipeline_type": 1536}, self.models)
 
     def test_existing_worker_ranges_are_enforced(self) -> None:
         with self.assertRaisesRegex(ValueError, "interval must be >= 1"):
-            validate_options("hunyuan2.1-plus-plus", {"interval": 0}, self.registry)
+            validate_options("hunyuan2.1-plus-plus", {"interval": 0}, self.models)
         with self.assertRaisesRegex(ValueError, "history must be >= 4"):
-            validate_options("hunyuan2.1-plus-plus", {"history": 3}, self.registry)
+            validate_options("hunyuan2.1-plus-plus", {"history": 3}, self.models)
         with self.assertRaisesRegex(ValueError, "num_inference_steps must be <= 100"):
-            validate_options("hunyuan2.1-plus-plus", {"num_inference_steps": 101}, self.registry)
+            validate_options("hunyuan2.1-plus-plus", {"num_inference_steps": 101}, self.models)
         with self.assertRaisesRegex(ValueError, "interval must be <= 12"):
-            validate_options("hunyuan2.1-plus-plus", {"interval": 13}, self.registry)
+            validate_options("hunyuan2.1-plus-plus", {"interval": 13}, self.models)
 
     def test_valid_options_are_preserved_without_inventing_defaults(self) -> None:
         options = {"seed": 7, "interval": 3, "history": 6, "num_inference_steps": 50}
-        self.assertEqual(validate_options("hunyuan2.1-plus-plus", options, self.registry), options)
-        self.assertEqual(validate_options("hermit-trellis2-plus-plus", None, self.registry), {})
+        self.assertEqual(validate_options("hunyuan2.1-plus-plus", options, self.models), options)
+        self.assertEqual(validate_options("hermit-trellis2-plus-plus", None, self.models), {})
 
 
 if __name__ == "__main__":

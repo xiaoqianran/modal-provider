@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import shutil
 import tempfile
 import time
@@ -9,7 +10,7 @@ from pathlib import Path
 
 import modal
 
-from .common import register_worker_entrypoint, worker_capability
+from .common import pinned_hf_snapshot, run_generation_job, worker_capability
 
 APP_NAME = "modal-3d-hermit-trellis2-plus-plus"
 MODEL_ID = "microsoft/TRELLIS.2-4B"
@@ -21,6 +22,7 @@ DINO_REVISION = "ea8dc2863c51be0a264bab82070e3e8836b02d51"
 MODEL_DIR = "/models/TRELLIS.2-4B"
 HF_CACHE = "/models/hf-cache"
 SRC_DIR = "/opt/hermit"
+PIPELINE_CONFIG = "pipeline.modal.json"
 GPU = "L40S"
 BUILD_TAG = "hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v2"
 WHEELS_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{BUILD_TAG}/{BUILD_TAG}.wheels.zip"
@@ -81,6 +83,11 @@ CAPABILITY = worker_capability(
     warm_seconds=297.25,
     cold_start_seconds=108.32,
     priority=20,
+    generation_entrypoint={
+        "kind": "class_method",
+        "class_name": "Model",
+        "method_name": "generate_job",
+    },
 )
 
 download_image = modal.Image.debian_slim(python_version="3.11").pip_install(
@@ -138,6 +145,42 @@ def sync_weights() -> dict:
     ):
         snapshot_download(repo, revision=revision, cache_dir=HF_CACHE)
 
+    trellis_image = pinned_hf_snapshot(
+        HF_CACHE,
+        TRELLIS_IMAGE_ID,
+        TRELLIS_IMAGE_REVISION,
+        required_files=(
+            "ckpts/ss_dec_conv3d_16l8_fp16.json",
+            "ckpts/ss_dec_conv3d_16l8_fp16.safetensors",
+        ),
+    )
+    dino = pinned_hf_snapshot(
+        HF_CACHE,
+        DINO_ID,
+        DINO_REVISION,
+        required_files=("config.json", "model.safetensors"),
+    )
+
+    pipeline_path = Path(MODEL_DIR) / "pipeline.json"
+    payload = json.loads(pipeline_path.read_text(encoding="utf-8"))
+    args = payload["args"]
+    external_decoder = args["models"].get("sparse_structure_decoder")
+    expected_decoder = "microsoft/TRELLIS-image-large/ckpts/ss_dec_conv3d_16l8_fp16"
+    if external_decoder != expected_decoder:
+        raise RuntimeError(
+            f"unexpected Hermit sparse_structure_decoder: {external_decoder!r}"
+        )
+    dino_name = args["image_cond_model"]["args"].get("model_name")
+    if dino_name != DINO_ID:
+        raise RuntimeError(f"unexpected Hermit DINO model: {dino_name!r}")
+    args["models"]["sparse_structure_decoder"] = str(
+        trellis_image / "ckpts/ss_dec_conv3d_16l8_fp16"
+    )
+    args["image_cond_model"]["args"]["model_name"] = str(dino)
+    (Path(MODEL_DIR) / PIPELINE_CONFIG).write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
     weights.commit()
     total = sum(p.stat().st_size for p in Path("/models").rglob("*") if p.is_file())
     return {"elapsed_s": time.perf_counter() - t0, "bytes": total}
@@ -149,7 +192,7 @@ def sync_weights() -> dict:
     volumes={"/models": weights, "/artifacts": artifacts},
     min_containers=0,
     max_containers=1,
-    scaledown_window=60,
+    scaledown_window=120,
     timeout=30 * 60,
     startup_timeout=15 * 60,
 )
@@ -179,7 +222,10 @@ class Model:
         rembg.BiRefNet = _NoopRemBg
         torch.cuda.reset_peak_memory_stats()
         t0 = time.perf_counter()
-        self.pipe = Trellis2ImageTo3DPipeline.from_pretrained(MODEL_DIR)
+        local_config = Path(MODEL_DIR) / PIPELINE_CONFIG
+        if not local_config.is_file():
+            raise FileNotFoundError(f"run sync_weights first: {local_config}")
+        self.pipe = Trellis2ImageTo3DPipeline.from_pretrained(MODEL_DIR, PIPELINE_CONFIG)
         self.pipe.to("cuda")
         # Production quality baseline: restore stock TRELLIS.2 samplers. The DMD
         # accelerated path remains opt-in per request instead of changing topology by default.
@@ -191,8 +237,7 @@ class Model:
     def warmup(self) -> dict:
         return {"model": CAPABILITY["id"], "load_s": self.load_s}
 
-    @modal.method()
-    def generate(
+    def _generate(
         self,
         image_bytes: bytes,
         seed: int = 42,
@@ -281,6 +326,11 @@ class Model:
             "pbr_channels": sorted(mesh.layout),
         }
 
+    @modal.method()
+    def generate_job(self, input_path: str, options: dict | None = None) -> dict:
+        """Direct GPU entrypoint: the local client spawns this method.
 
-
-generate, warmup, register = register_worker_entrypoint(app, artifacts, Model, CAPABILITY)
+        Input reading, canonical validation, GLB validation and result
+        normalization all happen here so no CPU adapter function is needed.
+        """
+        return run_generation_job(CAPABILITY["id"], artifacts, self._generate, input_path, options)

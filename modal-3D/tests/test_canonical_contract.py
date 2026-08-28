@@ -94,6 +94,33 @@ class CanonicalContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "valid PNG"):
             validate_canonical_png(self._write(b"not a png"))
 
+    def test_pinned_hf_snapshot_requires_declared_files(self):
+        from modal_3d.common import pinned_hf_snapshot
+
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root)
+            revision = "0123456789abcdef"
+            snapshot = cache / "models--owner--model" / "snapshots" / revision
+            snapshot.mkdir(parents=True)
+            (snapshot / "config.json").write_text("{}", encoding="utf-8")
+            result = pinned_hf_snapshot(
+                cache, "owner/model", revision, required_files=("config.json",)
+            )
+            self.assertEqual(result, snapshot)
+
+    def test_pinned_hf_snapshot_fails_on_incomplete_snapshot(self):
+        from modal_3d.common import pinned_hf_snapshot
+
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root)
+            revision = "deadbeef"
+            snapshot = cache / "models--owner--model" / "snapshots" / revision
+            snapshot.mkdir(parents=True)
+            with self.assertRaisesRegex(FileNotFoundError, "incomplete"):
+                pinned_hf_snapshot(
+                    cache, "owner/model", revision, required_files=("model.safetensors",)
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

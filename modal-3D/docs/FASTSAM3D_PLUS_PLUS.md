@@ -4,7 +4,7 @@ Production single-object geometry worker for `Archerkattri/fastsam3d-plus-plus`,
 
 Runtime policy: `min_containers=0`, `scaledown_window=120`. The capability reports warm wall time (`6.06s`) separately from a conservative production cold-start reference (`60s`). The mmap checkpoint loader has shown startup profiles between roughly 28s and 58s on L40S depending on cache state, without changing model weights, precision, or sampling steps.
 
-Gateway submissions for FastSAM3D++ are routed directly to `Model.generate_job`, which returns the same normalized generation-result contract as the legacy CPU adapter while avoiding an extra Modal function hop. The legacy adapter remains deployed for compatibility, health, warmup, and registration flows.
+Submissions are spawned directly on `Model.generate_job`, the same entrypoint every worker now exposes. It reads the uploaded canonical input, validates it, runs inference, validates the GLB, and returns the normalized generation-result contract — all inside the GPU container, so there is no CPU adapter hop and no gateway.
 
 - GPU: L40S / `sm_89`
 - CUDA: 12.1.1

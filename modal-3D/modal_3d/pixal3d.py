@@ -13,7 +13,7 @@ from pathlib import Path
 
 import modal
 
-from .common import register_worker_entrypoint, worker_capability
+from .common import pinned_hf_snapshot, run_generation_job, worker_capability
 
 APP_NAME = "modal-3d-pixal3d"
 GPU = "L40S"
@@ -84,6 +84,11 @@ CAPABILITY = worker_capability(
     warm_seconds=197.18,
     cold_start_seconds=99.08,
     priority=40,
+    generation_entrypoint={
+        "kind": "class_method",
+        "class_name": "Model",
+        "method_name": "generate_job",
+    },
 )
 
 download_image = modal.Image.debian_slim(python_version="3.10").uv_pip_install(
@@ -141,11 +146,25 @@ def sync_weights() -> dict:
     Path(MODEL_DIR).mkdir(parents=True, exist_ok=True)
     Path(HF_HOME).mkdir(parents=True, exist_ok=True)
     snapshot_download(MODEL_ID, revision=MODEL_REVISION, local_dir=MODEL_DIR)
+    cache_dir = f"{HF_HOME}/hub"
     for repo, revision in (
         (DINO_ID, DINO_REVISION),
         (MOGE_ID, MOGE_REVISION),
     ):
-        snapshot_download(repo, revision=revision, cache_dir=f"{HF_HOME}/hub")
+        snapshot_download(repo, revision=revision, cache_dir=cache_dir)
+
+    pinned_hf_snapshot(
+        cache_dir,
+        DINO_ID,
+        DINO_REVISION,
+        required_files=("config.json", "model.safetensors"),
+    )
+    pinned_hf_snapshot(
+        cache_dir,
+        MOGE_ID,
+        MOGE_REVISION,
+        required_files=("model.pt",),
+    )
 
     naf_ckpt = Path(TORCH_HOME) / "hub/checkpoints/naf_release.pth"
     naf_ckpt.parent.mkdir(parents=True, exist_ok=True)
@@ -191,7 +210,7 @@ class _Vram:
     volumes={"/models": weights, "/artifacts": artifacts},
     min_containers=0,
     max_containers=1,
-    scaledown_window=60,
+    scaledown_window=120,
     timeout=30 * 60,
     startup_timeout=15 * 60,
 )
@@ -222,16 +241,36 @@ class Model:
                 raise RuntimeError("Pixal3D worker requires a pre-matted RGBA input")
 
         rembg.BiRefNet = _NoopRemBg
+        cache_dir = f"{HF_HOME}/hub"
+        dino_dir = pinned_hf_snapshot(
+            cache_dir,
+            DINO_ID,
+            DINO_REVISION,
+            required_files=("config.json", "model.safetensors"),
+        )
+        moge_dir = pinned_hf_snapshot(
+            cache_dir,
+            MOGE_ID,
+            MOGE_REVISION,
+            required_files=("model.pt",),
+        )
+        image_cond_configs = {
+            name: {**config, "model_name": str(dino_dir)}
+            for name, config in IMAGE_COND_CONFIGS.items()
+        }
+
         t0 = time.perf_counter()
         self.pipe = Pixal3DImageTo3DPipeline.from_pretrained(MODEL_DIR)
-        self.pipe.image_cond_model_ss = build_image_cond_model(IMAGE_COND_CONFIGS["ss"])
+        self.pipe.image_cond_model_ss = build_image_cond_model(image_cond_configs["ss"])
         self.pipe.image_cond_model_shape_512 = build_image_cond_model(
-            IMAGE_COND_CONFIGS["shape_512"]
+            image_cond_configs["shape_512"]
         )
         self.pipe.image_cond_model_shape_1024 = build_image_cond_model(
-            IMAGE_COND_CONFIGS["shape_1024"]
+            image_cond_configs["shape_1024"]
         )
-        self.pipe.image_cond_model_tex_1024 = build_image_cond_model(IMAGE_COND_CONFIGS["tex_1024"])
+        self.pipe.image_cond_model_tex_1024 = build_image_cond_model(
+            image_cond_configs["tex_1024"]
+        )
         self.pipe.low_vram = False
         self.pipe.cuda()
         for name in (
@@ -243,7 +282,7 @@ class Model:
             model = getattr(self.pipe, name).cuda()
             if getattr(model, "use_naf_upsample", False):
                 model._load_naf()
-        self.moge = load_moge_model(device="cpu")
+        self.moge = load_moge_model(device="cpu", model_name=str(moge_dir / "model.pt"))
         torch.cuda.synchronize()
         self.load_s = time.perf_counter() - t0
 
@@ -251,8 +290,7 @@ class Model:
     def warmup(self) -> dict:
         return {"model": CAPABILITY["id"], "load_s": self.load_s}
 
-    @modal.method()
-    def generate(
+    def _generate(
         self,
         image_bytes: bytes,
         seed: int = 42,
@@ -363,7 +401,11 @@ class Model:
             "peak_vram_gb": peak_vram_gb,
         }
 
+    @modal.method()
+    def generate_job(self, input_path: str, options: dict | None = None) -> dict:
+        """Direct GPU entrypoint: the local client spawns this method.
 
-generate, warmup, register = register_worker_entrypoint(
-    app, artifacts, Model, CAPABILITY, python_version="3.10"
-)
+        Input reading, canonical validation, GLB validation and result
+        normalization all happen here so no CPU adapter function is needed.
+        """
+        return run_generation_job(CAPABILITY["id"], artifacts, self._generate, input_path, options)

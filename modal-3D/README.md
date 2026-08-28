@@ -1,41 +1,82 @@
 # modal-3D
 
-Minimal, decoupled Modal deployment layer for image-to-3D inference. All 2D preprocessing lives in `modal-3D-client`; this repository only consumes canonical 1024×1024 RGBA PNG inputs from the shared Modal Volume.
+Minimal Modal GPU workers for image-to-3D inference. The VPS/client owns
+routing, job state and canonicalization; Modal is used only for useful GPU
+compute.
 
 **Live benchmark:** https://xiaoqianran.github.io/modal-3D/
 
-Current workers:
+Current 3D workers:
 
 - FastSAM3D++
 - Hunyuan2.1++
 - Hermite-TRELLIS2++
 - Pixal3D
 
-Input contract:
+Optional preprocessing worker:
 
-- PNG, 1024×1024, 8-bit RGBA
-- object aspect ratio is preserved by the client
-- transparent letterbox padding is produced locally by `modal-3D-client`
-- cloud workers do not perform background removal, segmentation, cropping, or subject selection
+- BiRefNet `RemBgWorker` on T4, used only for opaque sources without an existing
+  alpha channel/caller mask.
 
-## Design
+## Production path
 
-`HTTP/Python client -> CPU gateway -> Modal spawn queue -> model-specific GPU worker -> persisted result`
-
-Each GPU model has its own image and weight volume. Weights are downloaded without reserving a GPU and are loaded from mounted Volumes only when a GPU container starts.
-
-Workers own their capability manifests and register them in `modal-3d-model-registry`. The Gateway reads that registry dynamically, so adding a model does not change `common.py`, `capabilities.py`, or `gateway.py`. Deploy and register a worker with one command:
-
-```powershell
-./scripts/deploy-worker.ps1 modal_3d/fastsam3d_plus_plus.py
+```text
+source
+  -> local validation
+  -> [opaque/no mask only] direct T4 RemBgWorker.process -> mask
+  -> local mask refine + crop/letterbox + canonical 1024x1024 RGBA PNG
+  -> upload client-inputs/<sha256>.png
+  -> direct selected L40S Model.generate_job
+  -> GLB
 ```
 
-Run the script once for every existing worker before the first registry-backed Gateway deployment. Then deploy the Gateway. The public HTTP surface is intentionally read-only and exposes only `/capabilities`; generation, task status, and artifact access use authenticated Modal Function calls from `modal-3D-client`.
+There is no `modal-3d-gateway`, no Modal CPU dispatch function and no worker CPU
+adapter. An already-matted source goes straight from the VPS to the selected
+L40S worker. An opaque source pays for the T4 only because that container does
+real mask inference.
 
-The live gallery shows four active workers. The retired SAM 3.1 preprocessing implementation and its experiment notes are preserved under `archive/sam3_1/`; they are not part of the live generation path. Historical benchmark evidence is preserved under `benchmarks/`.
+The four L40S workers are `max_containers=1` and intentionally have no
+`@modal.concurrent`; each warm model processes one generation at a time. The T4
+mask worker is also conservatively `max_containers=1` with no input-concurrency
+decorator until concurrent ONNX inference is separately benchmarked.
 
-See `docs/ARCHITECTURE.md` for the production boundaries, and `docs/PLAN.md` / `docs/PAGES_BENCHMARK.md` for planning and benchmark details.
+The 3D input contract is:
 
-## Status
+- PNG, 1024×1024, 8-bit RGBA;
+- transparent letterbox padding;
+- content-addressed path under `client-inputs/`;
+- meaningful foreground alpha.
 
-Four L40S image-to-3D workers are deployed and benchmarked. GitHub Pages is published through `.github/workflows/pages.yml`; full-output metrics and separately optimized browser previews are kept distinct.
+Each 3D worker exposes only the direct generation method:
+
+```python
+cls = modal.Cls.from_name("modal-3d-pixal3d", "Model")
+call = cls().generate_job.spawn("client-inputs/<sha256>.png", options)
+# persist call.object_id; restore with modal.FunctionCall.from_id(...)
+```
+
+The T4 mask worker is also called as a class method, not through a gateway:
+
+```python
+cls = modal.Cls.from_name("modal-3d-rembg", "RemBgWorker")
+mask = cls().process.remote(source_bytes)
+```
+
+Weights are prepared without reserving a GPU and loaded from mounted Volumes
+when the corresponding GPU container starts.
+
+Deploy modules directly; there is no registration step:
+
+```powershell
+./scripts/deploy-worker.ps1 modal_3d/rembg_worker.py
+./scripts/deploy-worker.ps1 modal_3d/fastsam3d_plus_plus.py
+./scripts/deploy-worker.ps1 modal_3d/hunyuan2_1_plus_plus.py
+./scripts/deploy-worker.ps1 modal_3d/hermit_trellis2_plus_plus.py
+./scripts/deploy-worker.ps1 modal_3d/pixal3d.py
+```
+
+Generation/task/artifact HTTP APIs live in `modal-3D-client`, not in this
+provider repository. Historical benchmark evidence is preserved under
+`benchmarks/`; retired experiments live under `archive/`.
+
+See `docs/ARCHITECTURE.md` for the production boundaries.
