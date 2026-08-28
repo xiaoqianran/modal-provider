@@ -73,13 +73,21 @@ def normalize_request(value: Any) -> dict[str, object]:
     if unknown:
         raise ValueError(f"unknown generation fields: {', '.join(unknown)}")
 
-    prompt = str(value.get("prompt") or "").strip()
+    raw_prompt = value.get("prompt")
+    if raw_prompt is None or raw_prompt == "":
+        raise ValueError("prompt is required")
+    if not isinstance(raw_prompt, str):
+        raise ValueError("prompt must be a string")
+    prompt = raw_prompt.strip()
     if not prompt:
         raise ValueError("prompt is required")
     if len(prompt) > MAX_PROMPT_CHARS:
         raise ValueError(f"prompt exceeds {MAX_PROMPT_CHARS} characters")
 
-    model = model_spec(str(value.get("model") or DEFAULT_MODEL))
+    raw_model = value.get("model", DEFAULT_MODEL)
+    if not isinstance(raw_model, str):
+        raise ValueError("model must be a string")
+    model = model_spec(raw_model)
     seed = _integer(value.get("seed", 42), "seed", 0, MAX_SEED)
     guidance = _number(value.get("guidance", model.guidance), "guidance", 0.0, 20.0)
     return {
@@ -105,10 +113,11 @@ def normalize_batch_request(value: Any) -> dict[str, object]:
     seeds = value.get("seeds")
     if not isinstance(seeds, list) or not 1 <= len(seeds) <= MAX_BATCH_SIZE:
         raise ValueError(f"seeds must contain between 1 and {MAX_BATCH_SIZE} integers")
-    if len(set(seeds)) != len(seeds):
+    validated_seeds = [_integer(seed, "seed", 0, MAX_SEED) for seed in seeds]
+    if len(set(validated_seeds)) != len(validated_seeds):
         raise ValueError("seeds must be unique")
     base = {key: value[key] for key in ("prompt", "model", "guidance") if key in value}
-    requests = [normalize_request({**base, "seed": seed}) for seed in seeds]
+    requests = [normalize_request({**base, "seed": seed}) for seed in validated_seeds]
     model = str(requests[0]["model"])
     return {"model": model, "requests": requests}
 

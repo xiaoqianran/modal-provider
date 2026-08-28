@@ -44,6 +44,9 @@ def test_request_normalization_is_small_and_deterministic():
         {"prompt": "x", "guidance": float("nan")},
         {"prompt": "x", "seed": True},
         {"prompt": "x", "extra": 1},
+        {"prompt": 123},
+        {"prompt": "x", "model": 123},
+        {"prompt": "x", "model": ""},
     ],
 )
 def test_request_rejects_invalid_or_unknown_input(payload):
@@ -116,3 +119,9 @@ def test_batch_request_rejects_duplicate_or_oversized_seeds():
         normalize_batch_request({"prompt": "x", "seeds": [42, 42]})
     with pytest.raises(ValueError, match="between 1 and 8"):
         normalize_batch_request({"prompt": "x", "seeds": list(range(9))})
+
+
+def test_batch_request_rejects_non_integer_seeds_without_type_error():
+    for seeds in ([{}], [[1]], [True], [1.5]):
+        with pytest.raises(ValueError, match="seed must be an integer"):
+            normalize_batch_request({"prompt": "x", "seeds": seeds})
