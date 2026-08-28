@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from time import perf_counter
 
@@ -21,7 +22,14 @@ ARTIFACTS_VOLUME = "modal-2d-artifacts"
 app = modal.App(APP_NAME)
 models = modal.Volume.from_name(MODELS_VOLUME, create_if_missing=True)
 artifacts = modal.Volume.from_name(ARTIFACTS_VOLUME, create_if_missing=True)
-huggingface = modal.Secret.from_name("huggingface")
+
+# SANA-Sprint checkpoints are public. A Hugging Face secret is optional and is
+# only attached when the deployer explicitly opts in with this environment variable.
+# Example: MODAL_2D_HF_SECRET=huggingface modal deploy modal_2d/app.py
+HUGGINGFACE_SECRET_NAME = os.environ.get("MODAL_2D_HF_SECRET", "").strip()
+PREFETCH_SECRETS = (
+    [modal.Secret.from_name(HUGGINGFACE_SECRET_NAME)] if HUGGINGFACE_SECRET_NAME else []
+)
 
 control_image = modal.Image.debian_slim(python_version="3.12").add_local_python_source("modal_2d")
 download_image = (
@@ -54,7 +62,7 @@ def capabilities() -> dict[str, object]:
 @app.function(
     image=download_image,
     volumes={str(MODEL_ROOT): models},
-    secrets=[huggingface],
+    secrets=PREFETCH_SECRETS,
     timeout=30 * 60,
 )
 def prefetch(model_id: str) -> dict[str, object]:
@@ -65,7 +73,11 @@ def prefetch(model_id: str) -> dict[str, object]:
     if model_snapshot_ready(destination):
         return {"model": spec.id, "status": "cached"}
     destination.mkdir(parents=True, exist_ok=True)
-    snapshot_download(repo_id=spec.hf_id, local_dir=destination)
+    snapshot_download(
+        repo_id=spec.hf_id,
+        local_dir=destination,
+        token=os.environ.get("HF_TOKEN") or None,
+    )
     (destination / ".complete").write_text(spec.hf_id, encoding="utf-8")
     models.commit()
     return {"model": spec.id, "status": "downloaded"}

@@ -34,6 +34,7 @@ primary-image PNG
 - Worker 自己完成最后一道服务端校验：客户端只传 public payload（`prompt` / `model` / `seed` | `seeds` / `guidance`），`steps`、`width`、`height`、`output` 由服务端 normalize 产生，不接受外部传入。
 - `generate_batch` 把同 prompt 的多个 seed 放进同一个 `SanaSprintWorker`；一个 GPU/pipeline 顺序生成全部候选，避免 Modal 因并发 candidate 产生 cold-start overscaling。
 - `prefetch` 是显式模型准备 capability，不进入每次 generation hot path。
+- SANA-Sprint 权重是公开模型，`prefetch` 默认不要求 Hugging Face secret；如需要认证下载，可在部署时设置 `MODAL_2D_HF_SECRET=huggingface`（该 secret 提供 `HF_TOKEN`）。
 - Worker `scaledown_window=300s`，让短时间连续生成复用已加载 pipeline。
 - 新模型通过 `ModelSpec` + 推理 adapter 扩展，不把模型分支散落到 HTTP/Job 层。
 

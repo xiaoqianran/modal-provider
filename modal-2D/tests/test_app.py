@@ -5,3 +5,5 @@ def test_modal_app_imports_and_exposes_stable_functions():
     assert app.capabilities_document()["operation"] == "modal-2d.image.text_to_image.v1"
     assert not hasattr(app, "submit")
     assert not hasattr(app, "submit_batch")
+    assert app.HUGGINGFACE_SECRET_NAME == ""
+    assert app.PREFETCH_SECRETS == []
