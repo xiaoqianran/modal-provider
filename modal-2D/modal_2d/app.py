@@ -18,6 +18,7 @@ MODEL_ROOT = Path("/models")
 ARTIFACT_ROOT = Path("/artifacts")
 MODELS_VOLUME = "modal-2d-models"
 ARTIFACTS_VOLUME = "modal-2d-artifacts"
+MAX_WORKER_CONTAINERS = 1
 
 app = modal.App(APP_NAME)
 models = modal.Volume.from_name(MODELS_VOLUME, create_if_missing=True)
@@ -87,6 +88,7 @@ def prefetch(model_id: str) -> dict[str, object]:
     image=inference_image,
     gpu="L40S",
     timeout=15 * 60,
+    max_containers=MAX_WORKER_CONTAINERS,
     scaledown_window=300,
     retries=modal.Retries(max_retries=2, backoff_coefficient=2.0),
     volumes={str(MODEL_ROOT): models, str(ARTIFACT_ROOT): artifacts},

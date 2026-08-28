@@ -35,6 +35,7 @@ primary-image PNG
 - `generate_batch` 把同 prompt 的多个 seed 放进同一个 `SanaSprintWorker`；一个 GPU/pipeline 顺序生成全部候选，避免 Modal 因并发 candidate 产生 cold-start overscaling。
 - `prefetch` 是显式模型准备 capability，不进入每次 generation hot path。
 - SANA-Sprint 权重是公开模型，`prefetch` 默认不要求 Hugging Face secret；如需要认证下载，可在部署时设置 `MODAL_2D_HF_SECRET=huggingface`（该 secret 提供 `HF_TOKEN`）。
+- 每个参数化模型 worker variant 都受 `max_containers=1` 限制，防止并发请求横向拉起多张 L40S；当前没有启用 `@modal.concurrent`，单个同步 Diffusers pipeline 保持串行处理。
 - Worker `scaledown_window=300s`，让短时间连续生成复用已加载 pipeline。
 - 新模型通过 `ModelSpec` + 推理 adapter 扩展，不把模型分支散落到 HTTP/Job 层。
 

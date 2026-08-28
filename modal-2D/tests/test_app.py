@@ -7,3 +7,4 @@ def test_modal_app_imports_and_exposes_stable_functions():
     assert not hasattr(app, "submit_batch")
     assert app.HUGGINGFACE_SECRET_NAME == ""
     assert app.PREFETCH_SECRETS == []
+    assert app.MAX_WORKER_CONTAINERS == 1
