@@ -43,6 +43,13 @@ def assert_client_input_path(input_path: str) -> str:
     return input_path
 
 
+def spawn_warmup(model: str):
+    """Start the selected GPU Model container without running inference."""
+    app_name, class_name, _method_name = resolve(model)
+    remote_cls = modal.Cls.from_name(app_name, class_name, client=client())
+    return remote_cls().warmup.spawn()
+
+
 def spawn_generation(model: str, input_path: str, options: dict | None = None):
     """Spawn `Model.generate_job` and return its `modal.FunctionCall`.
 

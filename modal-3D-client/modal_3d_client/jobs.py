@@ -212,8 +212,62 @@ class JobStore:
 class JobService:
     def __init__(self, store: JobStore | None = None) -> None:
         self.store = store or JobStore()
+        self._submit_locks_guard = threading.Lock()
+        self._submit_locks: dict[str, tuple[threading.Lock, int]] = {}
+
+    @contextmanager
+    def _submission_lock(self, job_id: str) -> Iterator[None]:
+        """Serialize only duplicate submissions for the same request id.
+
+        Different jobs still condition/warm in parallel. Reference counting lets
+        lock entries disappear once the last waiter leaves.
+        """
+        with self._submit_locks_guard:
+            entry = self._submit_locks.get(job_id)
+            if entry is None:
+                lock = threading.Lock()
+                refs = 0
+            else:
+                lock, refs = entry
+            self._submit_locks[job_id] = (lock, refs + 1)
+        lock.acquire()
+        try:
+            yield
+        finally:
+            lock.release()
+            with self._submit_locks_guard:
+                current_lock, refs = self._submit_locks[job_id]
+                if current_lock is not lock:
+                    raise RuntimeError("submission lock identity changed unexpectedly")
+                if refs == 1:
+                    del self._submit_locks[job_id]
+                else:
+                    self._submit_locks[job_id] = (lock, refs - 1)
 
     def submit(
+        self,
+        source_image: bytes,
+        *,
+        model: str,
+        profile: str = "recommended",
+        seed: int = 42,
+        job_id: str | None = None,
+        mask: bytes | None = None,
+    ) -> dict[str, object]:
+        local_id = job_id or f"job_{uuid.uuid4().hex}"
+        if not _JOB_ID.fullmatch(local_id):
+            raise ContractError("job_id must be a URL-safe identifier")
+        with self._submission_lock(local_id):
+            return self._submit_locked(
+                source_image,
+                model=model,
+                profile=profile,
+                seed=seed,
+                job_id=local_id,
+                mask=mask,
+            )
+
+    def _submit_locked(
         self,
         source_image: bytes,
         *,
@@ -238,6 +292,15 @@ class JobService:
             if actual != expected:
                 raise ContractError("job_id is already bound to another request")
             return existing.public()
+
+        # The model is already known at this point. Start its GPU container now so
+        # model loading overlaps T4 background removal/local canonicalization.
+        # Prefetch is only a latency optimization; the real generation submission
+        # below remains authoritative if this best-effort spawn cannot be sent.
+        try:
+            generation.prefetch(model)
+        except _RECOVERABLE:
+            pass
 
         uploaded = artifacts.upload_source(source_image, mask=mask)
         input_path = str(uploaded["path"])

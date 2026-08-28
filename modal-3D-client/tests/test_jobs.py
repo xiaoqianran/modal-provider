@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -62,7 +65,101 @@ def upload_stub(data: bytes, *, mask: bytes | None = None) -> dict[str, object]:
 def bind(svc: jobs.JobService, monkeypatch, *, submit=None) -> None:
     monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
     monkeypatch.setattr(artifacts, "upload_source", upload_stub)
+    monkeypatch.setattr(generation, "prefetch", lambda *args: Call(object_id="fc_warmup"))
     monkeypatch.setattr(generation, "submit", submit or (lambda *args: Call()))
+
+
+def test_submit_prefetches_model_before_conditioning_and_generation(tmp_path, monkeypatch, source_png):
+    svc = service(tmp_path)
+    events = []
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+    monkeypatch.setattr(generation, "prefetch", lambda model: events.append(("warmup", model)) or Call())
+    monkeypatch.setattr(
+        artifacts,
+        "upload_source",
+        lambda data, *, mask=None: events.append(("condition", mask)) or upload_stub(data, mask=mask),
+    )
+    monkeypatch.setattr(
+        generation,
+        "submit",
+        lambda *args: events.append(("generate", args[0])) or Call(object_id="fc_generate"),
+    )
+
+    state = svc.submit(source_png, model="fastsam3d-plus-plus", job_id="req_parallel_cold_start")
+
+    assert state["status"] == "running"
+    assert events == [
+        ("warmup", "fastsam3d-plus-plus"),
+        ("condition", None),
+        ("generate", "fastsam3d-plus-plus"),
+    ]
+
+
+def test_prefetch_connection_failure_is_only_a_latency_miss(tmp_path, monkeypatch, source_png):
+    svc = service(tmp_path)
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+    monkeypatch.setattr(
+        generation,
+        "prefetch",
+        lambda _model: (_ for _ in ()).throw(jobs.ModalConnectionError("warmup unavailable")),
+    )
+    monkeypatch.setattr(artifacts, "upload_source", upload_stub)
+    monkeypatch.setattr(generation, "submit", lambda *args: Call(object_id="fc_generate"))
+
+    state = svc.submit(source_png, model="fastsam3d-plus-plus", job_id="req_prefetch_best_effort")
+    assert state["status"] == "running"
+    assert svc.store.get("req_prefetch_best_effort").remote_call_id == "fc_generate"
+
+
+def test_concurrent_same_job_id_only_prefetches_and_submits_once(
+    tmp_path, monkeypatch, source_png
+):
+    svc = service(tmp_path)
+    entered = threading.Event()
+    release = threading.Event()
+    counts = {"warmup": 0, "upload": 0, "generate": 0}
+    count_lock = threading.Lock()
+
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+
+    def prefetch(_model):
+        with count_lock:
+            counts["warmup"] += 1
+        return Call(object_id="fc_warmup")
+
+    def upload(data, *, mask=None):
+        with count_lock:
+            counts["upload"] += 1
+        entered.set()
+        assert release.wait(timeout=2)
+        return upload_stub(data, mask=mask)
+
+    def submit(*_args):
+        with count_lock:
+            counts["generate"] += 1
+        return Call(object_id="fc_generate")
+
+    monkeypatch.setattr(generation, "prefetch", prefetch)
+    monkeypatch.setattr(artifacts, "upload_source", upload)
+    monkeypatch.setattr(generation, "submit", submit)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(
+            svc.submit, source_png, model="fastsam3d-plus-plus", job_id="req_race"
+        )
+        assert entered.wait(timeout=1)
+        second = pool.submit(
+            svc.submit, source_png, model="fastsam3d-plus-plus", job_id="req_race"
+        )
+        time.sleep(0.05)
+        release.set()
+        first_state = first.result(timeout=2)
+        second_state = second.result(timeout=2)
+
+    assert first_state["id"] == second_state["id"] == "req_race"
+    assert first_state["status"] == second_state["status"] == "running"
+    assert counts == {"warmup": 1, "upload": 1, "generate": 1}
+    assert svc._submit_locks == {}
 
 
 def test_submit_is_idempotent_by_job_id(tmp_path, monkeypatch, source_png):

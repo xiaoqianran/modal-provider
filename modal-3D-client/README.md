@@ -37,7 +37,7 @@ DELETE /v1/jobs/{id}
 GET    /v1/jobs/{id}/artifact
 ```
 
-`POST /v1/jobs` 接受 `PNG / JPEG / WebP` 原图。Sidecar 在本地完成 Input Conditioning：可信 alpha/mask 会直接保留；需要背景移除时也在本地处理；随后生成并校验 1024×1024 RGBA canonical PNG，以 SHA-256 内容地址上传到 `client-inputs/`。Modal Provider 不再接收 `source-inputs/`，也不再执行 rembg/crop/canonicalization；GPU Worker 只读取 canonical 输入并生成 GLB。Human/Agent 对“选择哪个物体”的语义决策仍属于 Caller。
+`POST /v1/jobs` 接受 `PNG / JPEG / WebP` 原图。模型在请求进入时已经确定，因此 Sidecar 会立即异步 `spawn Model.warmup()`，让目标 L40S 在输入处理期间并行冷启动。可信 alpha/caller mask 直接在本地做 conditioning；普通 opaque 图片会由 Sidecar 直接调用 T4 `RemBgWorker.process` 获取 mask，同时目标 L40S 已在加载。mask 返回后，crop/refine/letterbox/canonicalization 仍全部在本地完成，再上传 1024×1024 RGBA 到 `client-inputs/` 并提交 `Model.generate_job`。不存在 Modal Gateway/CPU 转发层。
 
 同一个 `job_id + source sha256 + model/profile/seed` 是稳定的本地 request identity。任务状态和 `FunctionCall.object_id` 持久化在本地 SQLite；客户端通过 `FunctionCall.from_id()` 轮询/取消。不存在 `modal-3d-gateway` 或远端 job-key registry。
 

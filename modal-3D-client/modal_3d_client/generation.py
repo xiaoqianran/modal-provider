@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from .models import options_for
-from .workers import spawn_generation
+from .workers import spawn_generation, spawn_warmup
+
+
+def prefetch(model: str):
+    """Asynchronously cold-start the selected GPU model before input conditioning finishes."""
+    return spawn_warmup(model)
 
 
 def submit(model: str, input_path: str, profile: str, seed: int):
