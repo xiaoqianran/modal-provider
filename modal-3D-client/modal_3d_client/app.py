@@ -5,6 +5,7 @@ import os
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, SecretStr
 
@@ -98,8 +99,13 @@ def create_app(service: JobService | None = None) -> FastAPI:
     ):
         try:
             data = await file.read()
-            return job_service().submit(
-                data, model=model, profile=profile, seed=seed, job_id=job_id
+            return await run_in_threadpool(
+                job_service().submit,
+                data,
+                model=model,
+                profile=profile,
+                seed=seed,
+                job_id=job_id,
             )
         except modal_session.NotConnectedError as exc:
             raise HTTPException(status_code=409, detail="Modal connection required") from exc
