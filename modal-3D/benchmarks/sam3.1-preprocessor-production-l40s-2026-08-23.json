@@ -1,0 +1,156 @@
+{
+  "date": "2026-08-23",
+  "purpose": "Production-shaped SAM 3.1 multi-object preprocessor validation before gateway integration.",
+  "branch": "feat/sam31-preprocessor",
+  "app": "modal-3d-sam31",
+  "gpu": "NVIDIA L40S",
+  "max_gpu_containers": 1,
+  "runtime": {
+    "python": "3.12",
+    "cuda": "12.8",
+    "torch": "2.10.0+cu128"
+  },
+  "pins": {
+    "sam3_code_repo": "facebookresearch/sam3",
+    "sam3_code_commit": "8f0b7f4d4e7eda2ed606ebde6702c93359ad01da",
+    "sam31_repo": "facebook/sam3.1",
+    "sam31_revision": "daa63191845a41281374e725f4c9e51c7a824460",
+    "checkpoint": "sam3.1_multiplex.pt",
+    "checkpoint_plus_config_bytes": 3502781787
+  },
+  "weights": {
+    "initial_sync_s": 39.865418035,
+    "cached_sync_s": 1.1765987750000002,
+    "bytes": 3502781787
+  },
+  "inputs": [
+    {
+      "id": "pinterest-a1",
+      "sha256": "55490257755b37abf65b3036baf5243b6fa2200f77f18e3397286e264899b993",
+      "width": 640,
+      "height": 855
+    },
+    {
+      "id": "pinterest-01",
+      "sha256": "74ffb9874957a60028aca6522598999ac0ee1e7087a523ac5da0a3cc8b613ec4",
+      "width": 928,
+      "height": 1232
+    }
+  ],
+  "storage_design": {
+    "scene": "raw input bytes in shared artifact Volume",
+    "candidate_masks": "single numpy.packbits masks.bin per selection plus result.json",
+    "materialization": "CPU-only selected mask -> mask.png + canonical RGBA PNG",
+    "scene_cache_size": 1
+  },
+  "metrics": {
+    "cold_cup_segment": {
+      "candidate_count": 2,
+      "model_load_s": 10.215153079,
+      "encode_s": 0.43891393300000203,
+      "prompt_s": 0.9223943800000001,
+      "client_wall_s": 26.84945508511737,
+      "peak_allocated_gib": 4.376822471618652,
+      "mask_storage_bytes": 285824
+    },
+    "warm_same_scene_cup_segment": {
+      "candidate_count": 2,
+      "encode_s": 0.0,
+      "scene_cache_hit": true,
+      "prompt_s": 0.05231899500000026,
+      "client_wall_s": 1.2020600382238626,
+      "mask_storage_bytes": 285824
+    },
+    "warm_16_candidate_plant_new_scene": {
+      "candidate_count": 16,
+      "encode_s": 0.047453704000005814,
+      "scene_cache_hit": false,
+      "prompt_s": 0.08244389700000454,
+      "client_wall_s": 3.79538147803396,
+      "mask_storage_bytes": 1094400
+    },
+    "warm_16_candidate_plant_cached_scene": {
+      "candidate_count": 16,
+      "encode_s": 0.0,
+      "scene_cache_hit": true,
+      "prompt_s": 0.05278881399999591,
+      "client_wall_s": 1.2968737720511854,
+      "mask_storage_bytes": 1094400
+    },
+    "warm_refine_exact_box": {
+      "candidate_count": 1,
+      "encode_s": 0.0,
+      "scene_cache_hit": true,
+      "text_prompt_s": 0.052937161000002675,
+      "box_prompt_s": [
+        0.06553815100000193
+      ],
+      "prompt_s": 0.1184753120000046,
+      "client_wall_s": 1.1412582751363516,
+      "peak_allocated_gib": 4.387965679168701
+    },
+    "cpu_materialize": {
+      "cold_client_wall_s": 4.2639792980626225,
+      "warm_client_wall_s": 0.7166267149150372,
+      "canonical_bytes": 777298,
+      "mask_bytes": 8923,
+      "canonical_size": [
+        1024,
+        1024
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "alpha_bbox": [
+        65,
+        118,
+        959,
+        906
+      ]
+    },
+    "evicted_scene_refine_recovery": {
+      "encode_s": 0.046798200999997874,
+      "scene_cache_hit": false,
+      "prompt_s": 0.14620572699999812,
+      "client_wall_s": 1.4914820939302444,
+      "candidate_count": 15
+    },
+    "positive_plus_negative_box_refine": {
+      "encode_s": 0.0,
+      "scene_cache_hit": true,
+      "prompt_s": 0.1954596199999976,
+      "client_wall_s": 1.232837000861764,
+      "candidate_count": 1,
+      "top_score": 0.98828125,
+      "top_bbox_xyxy_norm": [
+        0.44926182977084456,
+        0.5902706493030895,
+        0.853045627988618,
+        0.8578063172179383
+      ]
+    }
+  },
+  "fpn_adapter_validation": {
+    "reason": "HF SAM 3.1 config/checkpoint exposes three detector FPN levels. The generic image builder creates four then discards the fourth with scalp=1.",
+    "change": "construct on CPU; remove unused fourth conv before checkpoint load; set scalp=0; then load checkpoint and move to CUDA",
+    "missing_key_warning_after_change": false,
+    "cup_candidates_compared": 2,
+    "score_bbox_mask_pixels_mask_bbox_all_equal_to_pre_adapter": true
+  },
+  "validated_contract": {
+    "segment": "image bytes + text concept -> scene_id + selection_id + multiple bbox/score candidates + packed masks",
+    "refine": "scene_id + text concept + 1..16 normalized positive/negative boxes -> refined candidates",
+    "materialize": "scene_id + selection_id + candidate_id -> selected mask + canonical RGBA on CPU",
+    "point_prompt": "intentionally unsupported with sam3.1_multiplex.pt",
+    "gateway_integrated": false,
+    "existing_3d_workers_modified": false
+  },
+  "notes": [
+    "Cold wall time includes Modal container startup, Python imports, model construction, and first prompt-path warm-up; do not compare it directly to warm prompt latency.",
+    "The single-entry scene cache is an optimization only. Evicted scenes recover from raw bytes in the shared Volume and re-encode in about 47 ms once the model is warm.",
+    "Candidate masks are bit-packed to avoid eagerly encoding many PNG/RGBA artifacts before the user chooses an object.",
+    "The canonical output check verifies file structure and alpha range, not segmentation accuracy against human ground truth.",
+    "The static-image SAM 3.1 path uses the detector portion of a multiplex/video checkpoint; the feature branch remains isolated until downstream integration is explicitly chosen."
+  ]
+}

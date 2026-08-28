@@ -1,0 +1,367 @@
+{
+  "schema": "modal-3d.full-quality-smoke.v1",
+  "generated_at": "2026-08-28T00:55:00+08:00",
+  "purpose": "single-scene correctness smoke before any paid multi-scene matrix",
+  "scene": {
+    "id": "scene-biplane",
+    "label": "Vintage Biplane",
+    "prompt": "a vintage biplane with two wings, landing gear and propeller, three-quarter view",
+    "source": {
+      "repo": "microsoft/TRELLIS",
+      "path": "assets/example_image/typical_vehicle_biplane.png",
+      "commit": "442aa1e1afb9014e80681d3bf604e8d728a86ee7",
+      "url": "https://raw.githubusercontent.com/microsoft/TRELLIS/442aa1e1afb9014e80681d3bf604e8d728a86ee7/assets/example_image/typical_vehicle_biplane.png",
+      "sha256": "c73e98112eb603b4ba635b8965cad7807d0588f083811bc2faa0c7ab9668a65a"
+    },
+    "preprocess": {
+      "engine": "birefnet-general-lite",
+      "rembg_elapsed_ms": 798.58,
+      "builder": "scripts/build_canonical.py"
+    },
+    "canonical": {
+      "path": "benchmarks/inputs/full-quality-2026-08-28/scene-biplane.png",
+      "sha256": "d1a52d77df72bdb26e05c251a1db4ab4fe7512c5e9321f53834936d4564c17db",
+      "bytes": 907962,
+      "modal_path": "client-inputs/d1a52d77df72bdb26e05c251a1db4ab4fe7512c5e9321f53834936d4564c17db.png",
+      "contract": {
+        "width": 1024,
+        "height": 1024,
+        "mode": "RGBA"
+      },
+      "foreground_fraction": 0.44782352447509766,
+      "foreground_rgb_nonzero_fraction": 0.9927573113674648,
+      "foreground_bbox": [
+        8,
+        80,
+        1022,
+        889
+      ]
+    }
+  },
+  "models": {
+    "fastsam3d-plus-plus": {
+      "status": "passed",
+      "task_id": "fc-01M121YJ6CJP5ZVJCTNZQYNS7S",
+      "options": {
+        "dmd_interval": 1,
+        "dmd_history": 5
+      },
+      "quality": {
+        "tier": "accelerated",
+        "basis": "wlfeng0509/Fast-SAM3D official acceleration recipe",
+        "sampler": {
+          "runtime_ss_steps": 25,
+          "runtime_slat_steps": 25,
+          "generator_config_ss_steps": 2,
+          "generator_config_slat_steps": 12,
+          "ss_cache_stride": 3,
+          "slat_carving_ratio": 0.1
+        },
+        "verification": {
+          "status": "verified",
+          "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json"
+        }
+      },
+      "deployment": {
+        "source": "Archerkattri/fastsam3d-plus-plus",
+        "source_revision": "36191e491ca0bf9d51cda39aa7b6c91205eb82e3",
+        "sam_revision": "2e73555018d2741ccd486e56c24fac41155a1dc6",
+        "pytorch3d_revision": "75ebeeaea0908c5527e7b1e305fbc7681382db47",
+        "build_artifact": "fastsam3d-pytorch3d-py311-cu121-torch251-sm89-v1",
+        "adapter_revision": "modal-3d.worker-adapter.v3"
+      },
+      "reference": {
+        "warm_seconds": 6.06,
+        "cold_start_seconds": 60.0,
+        "status": "legacy",
+        "benchmark": "benchmarks/fastsam3d-plus-plus-l40s-2026-08-23.json",
+        "metric": "adapter_wall_s",
+        "profile_id": "recommended"
+      },
+      "result": {
+        "model": "fastsam3d-plus-plus",
+        "artifact": {
+          "bytes": 2738656,
+          "sha256": "3a231021c004aede463e16d6d5ce102aa21faf059e5529635a41c432a7bc9fdd",
+          "mime": "model/gltf-binary",
+          "glb_version": 2,
+          "path": "fastsam3d-plus-plus/9a993db2590a42e6b35d10c9524277bd.glb"
+        },
+        "timing": {
+          "load_s": 23.406520662,
+          "inference_s": 5.008304997000003
+        },
+        "metrics": {
+          "fork_commit": "36191e491ca0bf9d51cda39aa7b6c91205eb82e3",
+          "sam_revision": "2e73555018d2741ccd486e56c24fac41155a1dc6",
+          "moge_revision": "ad326bfb61facd6c52b5a825bc1e34d7c97d9672",
+          "gpu": "NVIDIA L40S",
+          "seed": 42,
+          "dmd_interval": 1,
+          "dmd_enabled": false,
+          "dmd_history": 5,
+          "hfer_2d": 0.6327788765753951,
+          "source_vertices": 68434,
+          "source_faces": 136892,
+          "startup_s": 25.837134675999998,
+          "load_profile": {
+            "imports_s": 2.37305563,
+            "cuda_check_s": 0.04052981099999986,
+            "config_s": 0.0170211130000002,
+            "model_load_s": 23.406520662,
+            "total_s": 25.837134675999998
+          },
+          "timings": {
+            "decode_s": 0.0312528919999977,
+            "hfer_s": 0.09012701099999987,
+            "inference_s": 5.008304997000003,
+            "glb_export_s": 0.009078911000003131,
+            "artifact_write_commit_s": 4.039342289000004,
+            "total_s": 9.178880816,
+            "job_input_validation_s": 3.762750382,
+            "job_artifact_validation_s": 0.00450732599999526,
+            "job_total_s": 12.947317923
+          },
+          "peak_vram_allocated_gb": 16.861297607421875,
+          "peak_vram_reserved_gb": 16.97265625
+        }
+      }
+    },
+    "hunyuan2.1-plus-plus": {
+      "status": "passed",
+      "task_id": "fc-01M121YKBCMHJK5Q8HAZ04CKAR",
+      "options": {
+        "acceleration": "base",
+        "interval": 1,
+        "history": 6,
+        "num_inference_steps": 50,
+        "paint_remesh": true
+      },
+      "quality": {
+        "tier": "full_quality",
+        "basis": "Tencent Hunyuan3D-2.1 official Shape + Paint defaults",
+        "verification": {
+          "status": "verified",
+          "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json"
+        }
+      },
+      "deployment": {
+        "source": "Archerkattri/hunyuan2.1-plus-plus",
+        "source_revision": "9efd760fbec8ab490e68b330225ea1fab10de7fd",
+        "base_model": "tencent/Hunyuan3D-2.1",
+        "base_model_revision": "0b94677654c57bb9a6b6845cd7b704ccf551d327",
+        "build_artifact": "hunyuan3d-2.1-paint-py311-cu124-torch251-sm89-v2",
+        "adapter_revision": "modal-3d.worker-adapter.v3"
+      },
+      "reference": {
+        "warm_seconds": 557.26,
+        "cold_start_seconds": 52.88,
+        "status": "stale",
+        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+        "metric": "worker_inference_s",
+        "profile_id": "recommended",
+        "note": "557.26s reference used paint_remesh=false; re-smoke required for remesh=true"
+      },
+      "result": {
+        "model": "hunyuan2.1-plus-plus",
+        "artifact": {
+          "bytes": 5077268,
+          "sha256": "758158315d2c2d1bf60da363bf2ad623900082eb941d358cc945c6443c931ce5",
+          "mime": "model/gltf-binary",
+          "glb_version": 2,
+          "path": "hunyuan21pp/85844ef85a9c4ce89a1239ab49363bbd.glb"
+        },
+        "timing": {
+          "load_s": 51.501454229000004,
+          "inference_s": 83.62725809
+        },
+        "metrics": {
+          "fork_commit": "9efd760fbec8ab490e68b330225ea1fab10de7fd",
+          "base_model_revision": "0b94677654c57bb9a6b6845cd7b704ccf551d327",
+          "gpu": "NVIDIA L40S",
+          "seed": 42,
+          "acceleration": "base",
+          "interval": 1,
+          "history": 6,
+          "num_inference_steps": 50,
+          "shape_s": 29.891031366999997,
+          "paint_s": 53.736226723,
+          "peak_vram_allocated_gb": 20.25267744064331,
+          "peak_vram_reserved_gb": 22.66015625,
+          "source_vertices": 336641,
+          "source_faces": 673336,
+          "paint_views": 6,
+          "paint_resolution": 512,
+          "texture_size": 2048,
+          "paint_remesh": true
+        }
+      }
+    },
+    "hermit-trellis2-plus-plus": {
+      "status": "passed",
+      "task_id": "fc-01M121YMBFSSAF2P9BWE8H7865",
+      "options": {
+        "pipeline_type": "1536_cascade",
+        "acceleration": "base",
+        "texture_size": 4096
+      },
+      "quality": {
+        "tier": "full_quality",
+        "basis": "microsoft/TRELLIS.2 1536 cascade + stock sampler + 4096 PBR export",
+        "verification": {
+          "status": "verified",
+          "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json"
+        }
+      },
+      "deployment": {
+        "source": "Archerkattri/hermit-trellis2-plus-plus",
+        "source_revision": "2c8402a92ea97c510c09e278fae557771aad774d",
+        "build_artifact": "hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v2",
+        "base_model": "microsoft/TRELLIS.2-4B",
+        "base_model_revision": "af44b45f2e35a493886929c6d786e563ec68364d",
+        "adapter_revision": "modal-3d.worker-adapter.v3"
+      },
+      "reference": {
+        "warm_seconds": 297.25,
+        "cold_start_seconds": 108.32,
+        "status": "verified",
+        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+        "metric": "worker_inference_s",
+        "profile_id": "recommended"
+      },
+      "result": {
+        "model": "hermit-trellis2-plus-plus",
+        "artifact": {
+          "bytes": 34662064,
+          "sha256": "92d282544075d301e4d238306634212d89d0db973f5a9e1db58b3743ff389c79",
+          "mime": "model/gltf-binary",
+          "glb_version": 2,
+          "path": "trellis2/5c109ff94eb249788a3391af42eb9484.glb"
+        },
+        "timing": {
+          "load_s": 91.141983725,
+          "inference_s": 228.819937616
+        },
+        "metrics": {
+          "generation_s": 133.378917515,
+          "postprocess_s": 95.44102010099999,
+          "peak_vram_allocated_gb": 6.3676228523254395,
+          "peak_vram_reserved_gb": 6.7265625,
+          "source_vertices": 4242488,
+          "source_faces": 8517598,
+          "resolution": 1536,
+          "pipeline_type": "1536_cascade",
+          "acceleration": "base",
+          "texture_size": 4096,
+          "pbr_channels": [
+            "alpha",
+            "base_color",
+            "metallic",
+            "roughness"
+          ]
+        }
+      }
+    },
+    "pixal3d": {
+      "status": "passed",
+      "task_id": "fc-01M121YNBV3AZJKS9K939NMWMM",
+      "options": {
+        "fov": null,
+        "pipeline_type": "1536_cascade",
+        "max_num_tokens": 49152,
+        "texture_size": 4096
+      },
+      "quality": {
+        "tier": "full_quality",
+        "basis": "TencentARC/Pixal3D standard 1536 cascade + 4096 PBR export",
+        "verification": {
+          "status": "verified",
+          "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json"
+        }
+      },
+      "deployment": {
+        "source": "TencentARC/Pixal3D",
+        "source_revision": "cdbb2bbffbf4e6f298b5f2af3d1d76a8d823d2af",
+        "build_artifact": "pixal3d-py310-cu124-torch260-sm89-v1",
+        "base_model": "TencentARC/Pixal3D",
+        "base_model_revision": "0b31f9160aa400719af409098bff7936a932f726",
+        "adapter_revision": "modal-3d.worker-adapter.v3"
+      },
+      "reference": {
+        "warm_seconds": 197.18,
+        "cold_start_seconds": 99.08,
+        "status": "verified",
+        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+        "metric": "worker_inference_s",
+        "profile_id": "recommended"
+      },
+      "result": {
+        "model": "pixal3d",
+        "artifact": {
+          "bytes": 36797528,
+          "sha256": "c20784692ee4cfd53d392c9605606cf028b6430a55137a0931e3c36d0a0f1acf",
+          "mime": "model/gltf-binary",
+          "glb_version": 2,
+          "path": "pixal3d/6dab919c2ba44552a45f2e0e60d62aa4.glb"
+        },
+        "timing": {
+          "load_s": 88.17566213399999,
+          "inference_s": 260.313358779
+        },
+        "metrics": {
+          "gpu": "L40S",
+          "resolution": 1536,
+          "pipeline_type": "1536_cascade",
+          "max_num_tokens": 49152,
+          "texture_size": 4096,
+          "fov": null,
+          "seed": 42,
+          "source_vertices": 6954090,
+          "source_faces": 13982696,
+          "peak_vram_gb": 39.6484375
+        }
+      }
+    }
+  },
+  "summary": {
+    "fastsam3d-plus-plus": {
+      "inference_s": 5.008304997000003,
+      "load_s": 23.406520662,
+      "artifact_bytes": 2738656,
+      "artifact_sha256": "3a231021c004aede463e16d6d5ce102aa21faf059e5529635a41c432a7bc9fdd",
+      "vertices": 68434,
+      "faces": 136892
+    },
+    "hunyuan2.1-plus-plus": {
+      "inference_s": 83.62725809,
+      "load_s": 51.501454229000004,
+      "artifact_bytes": 5077268,
+      "artifact_sha256": "758158315d2c2d1bf60da363bf2ad623900082eb941d358cc945c6443c931ce5",
+      "vertices": 336641,
+      "faces": 673336
+    },
+    "hermit-trellis2-plus-plus": {
+      "inference_s": 228.819937616,
+      "load_s": 91.141983725,
+      "artifact_bytes": 34662064,
+      "artifact_sha256": "92d282544075d301e4d238306634212d89d0db973f5a9e1db58b3743ff389c79",
+      "vertices": 4242488,
+      "faces": 8517598
+    },
+    "pixal3d": {
+      "inference_s": 260.313358779,
+      "load_s": 88.17566213399999,
+      "artifact_bytes": 36797528,
+      "artifact_sha256": "c20784692ee4cfd53d392c9605606cf028b6430a55137a0931e3c36d0a0f1acf",
+      "vertices": 6954090,
+      "faces": 13982696
+    }
+  },
+  "notes": [
+    "All four models consumed the exact same repaired 1024x1024 RGBA biplane canonical input.",
+    "This is a smoke correctness record, not a latency distribution; remaining scenes were intentionally not submitted.",
+    "Hunyuan used full-quality paint_remesh=true and completed Shape + PBR Paint successfully.",
+    "FastSAM runtime logs confirm pipeline overrides of 25 SS and 25 SLaT inference steps; generator YAML defaults remain 2 and 12.",
+    "FastSAM acceleration remains the upstream Fast-SAM3D stride/cache + token-carving recipe with DMD disabled."
+  ]
+}

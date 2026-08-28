@@ -1,0 +1,969 @@
+{
+  "date": "2026-08-23",
+  "purpose": "Independent SAM 3.1 preprocessing experiment for multi-object image-to-3D selection.",
+  "app": "modal-3d-sam31-experiment",
+  "gpu": "NVIDIA L40S",
+  "runtime": {
+    "python": "3.12",
+    "cuda": "12.8",
+    "torch": "2.10.0+cu128"
+  },
+  "sam3_code": {
+    "repo": "facebookresearch/sam3",
+    "commit": "8f0b7f4d4e7eda2ed606ebde6702c93359ad01da"
+  },
+  "sam31": {
+    "repo": "facebook/sam3.1",
+    "revision": "daa63191845a41281374e725f4c9e51c7a824460",
+    "checkpoint": "sam3.1_multiplex.pt",
+    "checkpoint_plus_config_bytes": 3502781787,
+    "enable_inst_interactivity": false,
+    "runs": [
+      {
+        "input": "pinterest-a1",
+        "model_load_s": 10.353946743,
+        "load_peak_allocated_gib": 3.3254013061523438,
+        "load_peak_reserved_gib": 3.333984375,
+        "encode_s": 0.462268899999998,
+        "peak_allocated_gib": 4.938063621520996,
+        "peak_reserved_gib": 5.013671875,
+        "selected_text_prompt": "person",
+        "selected_text_score": 0.9375,
+        "selected_text_mask": {
+          "pixels": 2703,
+          "fraction": 0.004939692982456141,
+          "bbox_xyxy": [
+            452,
+            676,
+            530,
+            763
+          ]
+        },
+        "text_results": [
+          {
+            "prompt": "person",
+            "latency_s": 0.9633285039999997,
+            "instances": 1,
+            "scores": [
+              0.9375
+            ],
+            "boxes_xyxy": [
+              [
+                452.4505310058594,
+                675.1356201171875,
+                532.4315185546875,
+                763.8087768554688
+              ]
+            ]
+          },
+          {
+            "prompt": "chair",
+            "latency_s": 0.055125262000000674,
+            "instances": 1,
+            "scores": [
+              0.6640625
+            ],
+            "boxes_xyxy": [
+              [
+                421.4170837402344,
+                704.1151733398438,
+                479.8858642578125,
+                761.557373046875
+              ]
+            ]
+          },
+          {
+            "prompt": "table",
+            "latency_s": 0.05479449399999936,
+            "instances": 1,
+            "scores": [
+              0.51171875
+            ],
+            "boxes_xyxy": [
+              [
+                414.06182861328125,
+                689.9800415039062,
+                449.18701171875,
+                726.170654296875
+              ]
+            ]
+          },
+          {
+            "prompt": "cup",
+            "latency_s": 0.05407249599999986,
+            "instances": 0,
+            "scores": [],
+            "boxes_xyxy": []
+          },
+          {
+            "prompt": "bottle",
+            "latency_s": 0.05350060299999981,
+            "instances": 2,
+            "scores": [
+              0.51953125,
+              0.69921875
+            ],
+            "boxes_xyxy": [
+              [
+                100.74906921386719,
+                624.5857543945312,
+                108.9749755859375,
+                644.2030639648438
+              ],
+              [
+                106.01508331298828,
+                741.14501953125,
+                117.82093811035156,
+                761.2356567382812
+              ]
+            ]
+          },
+          {
+            "prompt": "bag",
+            "latency_s": 0.053316708999997076,
+            "instances": 2,
+            "scores": [
+              0.66796875,
+              0.73046875
+            ],
+            "boxes_xyxy": [
+              [
+                479.8929443359375,
+                738.0389404296875,
+                500.6654357910156,
+                765.5958251953125
+              ],
+              [
+                459.1207275390625,
+                747.4826049804688,
+                484.29986572265625,
+                766.0224609375
+              ]
+            ]
+          },
+          {
+            "prompt": "shoe",
+            "latency_s": 0.05344447199999891,
+            "instances": 1,
+            "scores": [
+              0.8046875
+            ],
+            "boxes_xyxy": [
+              [
+                504.5712585449219,
+                753.7833862304688,
+                532.6302490234375,
+                763.8365478515625
+              ]
+            ]
+          },
+          {
+            "prompt": "plant",
+            "latency_s": 0.05295561999999876,
+            "instances": 16,
+            "scores": [
+              0.56640625,
+              0.6875,
+              0.54296875,
+              0.546875,
+              0.65234375,
+              0.58203125,
+              0.53515625,
+              0.56640625
+            ],
+            "boxes_xyxy": [
+              [
+                48.915924072265625,
+                381.66229248046875,
+                83.55842590332031,
+                437.0759582519531
+              ],
+              [
+                -0.20494699478149414,
+                382.33740234375,
+                48.15704345703125,
+                453.284912109375
+              ],
+              [
+                175.60972595214844,
+                620.1951904296875,
+                196.40089416503906,
+                634.9754028320312
+              ],
+              [
+                191.30557250976562,
+                632.6973266601562,
+                239.07650756835938,
+                733.0610961914062
+              ],
+              [
+                248.05477905273438,
+                769.1597290039062,
+                277.135009765625,
+                791.788818359375
+              ],
+              [
+                -0.843355655670166,
+                573.2198486328125,
+                50.85747528076172,
+                760.184814453125
+              ],
+              [
+                221.75741577148438,
+                262.55096435546875,
+                260.8128662109375,
+                328.0034484863281
+              ],
+              [
+                218.91554260253906,
+                112.2488784790039,
+                242.44065856933594,
+                142.18618774414062
+              ]
+            ]
+          },
+          {
+            "prompt": "lamp",
+            "latency_s": 0.05111396599999907,
+            "instances": 9,
+            "scores": [
+              0.66796875,
+              0.6171875,
+              0.53515625,
+              0.703125,
+              0.53515625,
+              0.52734375,
+              0.6015625,
+              0.72265625
+            ],
+            "boxes_xyxy": [
+              [
+                410.8814697265625,
+                504.1784973144531,
+                444.92633056640625,
+                622.6917724609375
+              ],
+              [
+                410.37896728515625,
+                503.9376525878906,
+                443.7506103515625,
+                539.2161865234375
+              ],
+              [
+                195.27035522460938,
+                563.1956787109375,
+                209.3622589111328,
+                596.0655517578125
+              ],
+              [
+                89.84559631347656,
+                311.624755859375,
+                113.16847229003906,
+                345.3198547363281
+              ],
+              [
+                154.21568298339844,
+                563.0090942382812,
+                163.6901092529297,
+                580.8588256835938
+              ],
+              [
+                389.1534118652344,
+                515.4880981445312,
+                405.2193908691406,
+                565.2545776367188
+              ],
+              [
+                388.96014404296875,
+                513.9498291015625,
+                405.43017578125,
+                586.7019653320312
+              ],
+              [
+                324.37939453125,
+                445.08392333984375,
+                344.5956726074219,
+                469.9281921386719
+              ]
+            ]
+          },
+          {
+            "prompt": "car",
+            "latency_s": 0.0513016300000011,
+            "instances": 0,
+            "scores": [],
+            "boxes_xyxy": []
+          }
+        ],
+        "native_box_s": 0.0805074459999986,
+        "native_box_best_score": 0.97265625,
+        "native_box_best_iou_to_text": 0.9831068674256335,
+        "native_box_mask": {
+          "pixels": 2697,
+          "fraction": 0.004928728070175439,
+          "bbox_xyxy": [
+            452,
+            676,
+            531,
+            763
+          ]
+        },
+        "native_box_robustness": [
+          {
+            "variant": "exact",
+            "box_cxcywh_norm": [
+              0.7694391012191772,
+              0.8414879514459979,
+              0.12497029304504395,
+              0.1037112944307383
+            ],
+            "latency_s": 0.0805074459999986,
+            "instances": 1,
+            "best_score": 0.97265625,
+            "best_iou_to_text": 0.9831068674256335
+          },
+          {
+            "variant": "expand_20pct",
+            "box_cxcywh_norm": [
+              0.7694391012191772,
+              0.8414879514459979,
+              0.14996435165405272,
+              0.12445355331688596
+            ],
+            "latency_s": 0.0575448190000003,
+            "instances": 1,
+            "best_score": 0.91796875,
+            "best_iou_to_text": 0.6454154727793696
+          },
+          {
+            "variant": "shrink_15pct",
+            "box_cxcywh_norm": [
+              0.7694391012191772,
+              0.8414879514459979,
+              0.10622474908828736,
+              0.08815460026612755
+            ],
+            "latency_s": 0.05450783699999917,
+            "instances": 1,
+            "best_score": 0.94140625,
+            "best_iou_to_text": 0.7513812154696132
+          },
+          {
+            "variant": "shift_x_10pct",
+            "box_cxcywh_norm": [
+              0.7819361305236816,
+              0.8414879514459979,
+              0.12497029304504395,
+              0.1037112944307383
+            ],
+            "latency_s": 0.05525407500000057,
+            "instances": 1,
+            "best_score": 0.94921875,
+            "best_iou_to_text": 0.9369992716678806
+          },
+          {
+            "variant": "shift_y_10pct",
+            "box_cxcywh_norm": [
+              0.7694391012191772,
+              0.8518590808890717,
+              0.12497029304504395,
+              0.1037112944307383
+            ],
+            "latency_s": 0.054774212999998184,
+            "instances": 1,
+            "best_score": 0.9375,
+            "best_iou_to_text": 0.8161523309258043
+          }
+        ],
+        "text_box_robustness": [
+          {
+            "variant": "exact",
+            "box_cxcywh_norm": [
+              0.7694391012191772,
+              0.8414879514459979,
+              0.12497029304504395,
+              0.1037112944307383
+            ],
+            "text_latency_s": 0.05195236599999831,
+            "box_latency_s": 0.04196349900000129,
+            "total_prompt_latency_s": 0.0939158649999996,
+            "instances": 1,
+            "best_score": 0.97265625,
+            "best_iou_to_text": 0.9860856829000366
+          },
+          {
+            "variant": "expand_20pct",
+            "box_cxcywh_norm": [
+              0.7694391012191772,
+              0.8414879514459979,
+              0.14996435165405272,
+              0.12445355331688596
+            ],
+            "text_latency_s": 0.05437534300000024,
+            "box_latency_s": 0.043254318999998986,
+            "total_prompt_latency_s": 0.09762966199999923,
+            "instances": 1,
+            "best_score": 0.921875,
+            "best_iou_to_text": 0.6777833500501504
+          },
+          {
+            "variant": "shrink_15pct",
+            "box_cxcywh_norm": [
+              0.7694391012191772,
+              0.8414879514459979,
+              0.10622474908828736,
+              0.08815460026612755
+            ],
+            "text_latency_s": 0.053538913999997106,
+            "box_latency_s": 0.04348906499999927,
+            "total_prompt_latency_s": 0.09702797899999638,
+            "instances": 1,
+            "best_score": 0.9375,
+            "best_iou_to_text": 0.7873203096203465
+          },
+          {
+            "variant": "shift_x_10pct",
+            "box_cxcywh_norm": [
+              0.7819361305236816,
+              0.8414879514459979,
+              0.12497029304504395,
+              0.1037112944307383
+            ],
+            "text_latency_s": 0.05396208400000191,
+            "box_latency_s": 0.043711019999999934,
+            "total_prompt_latency_s": 0.09767310400000184,
+            "instances": 1,
+            "best_score": 0.953125,
+            "best_iou_to_text": 0.9393389030148929
+          },
+          {
+            "variant": "shift_y_10pct",
+            "box_cxcywh_norm": [
+              0.7694391012191772,
+              0.8518590808890717,
+              0.12497029304504395,
+              0.1037112944307383
+            ],
+            "text_latency_s": 0.053624555999999046,
+            "box_latency_s": 0.04257402300000024,
+            "total_prompt_latency_s": 0.09619857899999928,
+            "instances": 1,
+            "best_score": 0.9453125,
+            "best_iou_to_text": 0.8182695400450306
+          }
+        ],
+        "artifacts": {
+          "text": {
+            "mask": "sam31-experiment/019feb1e0d0346bd8ce7c3cfd937693f/text-person-mask.png",
+            "rgba": "sam31-experiment/019feb1e0d0346bd8ce7c3cfd937693f/text-person-rgba.png",
+            "overlay": "sam31-experiment/019feb1e0d0346bd8ce7c3cfd937693f/text-person-overlay.png"
+          },
+          "native_box": {
+            "mask": "sam31-experiment/019feb1e0d0346bd8ce7c3cfd937693f/native-box-mask.png",
+            "rgba": "sam31-experiment/019feb1e0d0346bd8ce7c3cfd937693f/native-box-rgba.png",
+            "overlay": "sam31-experiment/019feb1e0d0346bd8ce7c3cfd937693f/native-box-overlay.png"
+          }
+        },
+        "client_wall_s": 49.099255548324436
+      },
+      {
+        "input": "pinterest-01",
+        "model_load_s": 10.353946743,
+        "load_peak_allocated_gib": 3.3254013061523438,
+        "load_peak_reserved_gib": 3.333984375,
+        "encode_s": 0.046571129000000155,
+        "peak_allocated_gib": 4.946163177490234,
+        "peak_reserved_gib": 5.033203125,
+        "selected_text_prompt": "cup",
+        "selected_text_score": 0.90234375,
+        "selected_text_mask": {
+          "pixels": 60741,
+          "fraction": 0.05312797385803851,
+          "bbox_xyxy": [
+            418,
+            728,
+            789,
+            1056
+          ]
+        },
+        "text_results": [
+          {
+            "prompt": "person",
+            "latency_s": 0.057054339000000454,
+            "instances": 0,
+            "scores": [],
+            "boxes_xyxy": []
+          },
+          {
+            "prompt": "chair",
+            "latency_s": 0.052941229999998285,
+            "instances": 0,
+            "scores": [],
+            "boxes_xyxy": []
+          },
+          {
+            "prompt": "table",
+            "latency_s": 0.05237084699999883,
+            "instances": 1,
+            "scores": [
+              0.8984375
+            ],
+            "boxes_xyxy": [
+              [
+                2.611691474914551,
+                2.56156063079834,
+                926.822021484375,
+                1228.4154052734375
+              ]
+            ]
+          },
+          {
+            "prompt": "cup",
+            "latency_s": 0.0530658939999995,
+            "instances": 2,
+            "scores": [
+              0.55859375,
+              0.90234375
+            ],
+            "boxes_xyxy": [
+              [
+                648.64208984375,
+                375.5496520996094,
+                890.4522094726562,
+                806.8272094726562
+              ],
+              [
+                416.5671081542969,
+                727.3621826171875,
+                790.9464111328125,
+                1057.574462890625
+              ]
+            ]
+          },
+          {
+            "prompt": "bottle",
+            "latency_s": 0.052503970000000066,
+            "instances": 0,
+            "scores": [],
+            "boxes_xyxy": []
+          },
+          {
+            "prompt": "bag",
+            "latency_s": 0.05300079199999885,
+            "instances": 0,
+            "scores": [],
+            "boxes_xyxy": []
+          },
+          {
+            "prompt": "shoe",
+            "latency_s": 0.05293094099999962,
+            "instances": 0,
+            "scores": [],
+            "boxes_xyxy": []
+          },
+          {
+            "prompt": "plant",
+            "latency_s": 0.052775737000001044,
+            "instances": 2,
+            "scores": [
+              0.66015625,
+              0.640625
+            ],
+            "boxes_xyxy": [
+              [
+                11.124282836914062,
+                7.9576873779296875,
+                430.925537109375,
+                355.5630798339844
+              ],
+              [
+                667.964111328125,
+                24.57817268371582,
+                916.9614868164062,
+                178.9482879638672
+              ]
+            ]
+          },
+          {
+            "prompt": "lamp",
+            "latency_s": 0.05287989900000056,
+            "instances": 0,
+            "scores": [],
+            "boxes_xyxy": []
+          },
+          {
+            "prompt": "car",
+            "latency_s": 0.05267423400000126,
+            "instances": 0,
+            "scores": [],
+            "boxes_xyxy": []
+          }
+        ],
+        "native_box_s": 0.053321780000000985,
+        "native_box_best_score": 0.984375,
+        "native_box_best_iou_to_text": 0.9845665301018477,
+        "native_box_mask": {
+          "pixels": 59875,
+          "fraction": 0.05237051472234662,
+          "bbox_xyxy": [
+            418,
+            728,
+            789,
+            1054
+          ]
+        },
+        "native_box_robustness": [
+          {
+            "variant": "exact",
+            "box_cxcywh_norm": [
+              0.6505999565124512,
+              0.7244061061314174,
+              0.4034259730371936,
+              0.2680294482738941
+            ],
+            "latency_s": 0.053321780000000985,
+            "instances": 1,
+            "best_score": 0.984375,
+            "best_iou_to_text": 0.9845665301018477
+          },
+          {
+            "variant": "expand_20pct",
+            "box_cxcywh_norm": [
+              0.6505999565124512,
+              0.7244061061314174,
+              0.48411116764463225,
+              0.3216353379286729
+            ],
+            "latency_s": 0.05418566000000169,
+            "instances": 1,
+            "best_score": 0.9296875,
+            "best_iou_to_text": 0.7399817240328967
+          },
+          {
+            "variant": "shrink_15pct",
+            "box_cxcywh_norm": [
+              0.6505999565124512,
+              0.7244061061314174,
+              0.34291207708161453,
+              0.22782503103280996
+            ],
+            "latency_s": 0.05424439199999753,
+            "instances": 1,
+            "best_score": 0.9296875,
+            "best_iou_to_text": 0.04199026945146921
+          },
+          {
+            "variant": "shift_x_10pct",
+            "box_cxcywh_norm": [
+              0.6909425538161705,
+              0.7244061061314174,
+              0.4034259730371936,
+              0.2680294482738941
+            ],
+            "latency_s": 0.05316519499999828,
+            "instances": 2,
+            "best_score": 0.92578125,
+            "best_iou_to_text": 0.11897517236914511
+          },
+          {
+            "variant": "shift_y_10pct",
+            "box_cxcywh_norm": [
+              0.6505999565124512,
+              0.7512090509588069,
+              0.4034259730371936,
+              0.2680294482738941
+            ],
+            "latency_s": 0.053106213999999596,
+            "instances": 2,
+            "best_score": 0.921875,
+            "best_iou_to_text": 0.0979222601903832
+          }
+        ],
+        "text_box_robustness": [
+          {
+            "variant": "exact",
+            "box_cxcywh_norm": [
+              0.6505999565124512,
+              0.7244061061314174,
+              0.4034259730371936,
+              0.2680294482738941
+            ],
+            "text_latency_s": 0.05270581499999949,
+            "box_latency_s": 0.042994674000002675,
+            "total_prompt_latency_s": 0.09570048900000216,
+            "instances": 1,
+            "best_score": 0.98828125,
+            "best_iou_to_text": 0.9888381115202525
+          },
+          {
+            "variant": "expand_20pct",
+            "box_cxcywh_norm": [
+              0.6505999565124512,
+              0.7244061061314174,
+              0.48411116764463225,
+              0.3216353379286729
+            ],
+            "text_latency_s": 0.05274475599999917,
+            "box_latency_s": 0.04250907300000151,
+            "total_prompt_latency_s": 0.09525382900000068,
+            "instances": 1,
+            "best_score": 0.921875,
+            "best_iou_to_text": 0.822567102732862
+          },
+          {
+            "variant": "shrink_15pct",
+            "box_cxcywh_norm": [
+              0.6505999565124512,
+              0.7244061061314174,
+              0.34291207708161453,
+              0.22782503103280996
+            ],
+            "text_latency_s": 0.05311413300000112,
+            "box_latency_s": 0.04256742200000119,
+            "total_prompt_latency_s": 0.0956815550000023,
+            "instances": 3,
+            "best_score": 0.58984375,
+            "best_iou_to_text": 0.9706921536382435
+          },
+          {
+            "variant": "shift_x_10pct",
+            "box_cxcywh_norm": [
+              0.6909425538161705,
+              0.7244061061314174,
+              0.4034259730371936,
+              0.2680294482738941
+            ],
+            "text_latency_s": 0.051266768999997936,
+            "box_latency_s": 0.04188977599999788,
+            "total_prompt_latency_s": 0.09315654499999582,
+            "instances": 2,
+            "best_score": 0.8515625,
+            "best_iou_to_text": 0.0611886101115657
+          },
+          {
+            "variant": "shift_y_10pct",
+            "box_cxcywh_norm": [
+              0.6505999565124512,
+              0.7512090509588069,
+              0.4034259730371936,
+              0.2680294482738941
+            ],
+            "text_latency_s": 0.05140798300000071,
+            "box_latency_s": 0.04220445400000017,
+            "total_prompt_latency_s": 0.09361243700000088,
+            "instances": 2,
+            "best_score": 0.9609375,
+            "best_iou_to_text": 0.9109408509732659
+          }
+        ],
+        "artifacts": {
+          "text": {
+            "mask": "sam31-experiment/b155f4bc02704bbe97ce992e8bbe3f95/text-cup-mask.png",
+            "rgba": "sam31-experiment/b155f4bc02704bbe97ce992e8bbe3f95/text-cup-rgba.png",
+            "overlay": "sam31-experiment/b155f4bc02704bbe97ce992e8bbe3f95/text-cup-overlay.png"
+          },
+          "native_box": {
+            "mask": "sam31-experiment/b155f4bc02704bbe97ce992e8bbe3f95/native-box-mask.png",
+            "rgba": "sam31-experiment/b155f4bc02704bbe97ce992e8bbe3f95/native-box-rgba.png",
+            "overlay": "sam31-experiment/b155f4bc02704bbe97ce992e8bbe3f95/native-box-overlay.png"
+          }
+        },
+        "client_wall_s": 5.337887081783265
+      }
+    ]
+  },
+  "sam3_base_control": {
+    "repo": "facebook/sam3",
+    "revision": "3c879f39826c281e95690f02c7821c4de09afae7",
+    "checkpoint": "sam3.pt",
+    "checkpoint_bytes": 3450062241,
+    "enable_inst_interactivity": true,
+    "runs": [
+      {
+        "input": "pinterest-a1",
+        "load_s": 11.432133564,
+        "load_peak_gib": 3.4841442108154297,
+        "encode_s": 0.4387176349999997,
+        "peak_gib": 5.170631408691406,
+        "selected_prompt": "person",
+        "selected_score": 0.9453125,
+        "text_results": [
+          {
+            "prompt": "person",
+            "instances": 1,
+            "latency_s": 0.8809013639999996
+          },
+          {
+            "prompt": "chair",
+            "instances": 1,
+            "latency_s": 0.052567458999998706
+          },
+          {
+            "prompt": "table",
+            "instances": 1,
+            "latency_s": 0.05069342199999838
+          },
+          {
+            "prompt": "cup",
+            "instances": 0,
+            "latency_s": 0.049678595999999686
+          },
+          {
+            "prompt": "bottle",
+            "instances": 2,
+            "latency_s": 0.05048499600000156
+          },
+          {
+            "prompt": "bag",
+            "instances": 2,
+            "latency_s": 0.05127274699999873
+          },
+          {
+            "prompt": "shoe",
+            "instances": 1,
+            "latency_s": 0.050804563999999885
+          },
+          {
+            "prompt": "plant",
+            "instances": 14,
+            "latency_s": 0.05031496200000163
+          },
+          {
+            "prompt": "lamp",
+            "instances": 9,
+            "latency_s": 0.05227184199999968
+          },
+          {
+            "prompt": "car",
+            "instances": 0,
+            "latency_s": 0.05234548399999994
+          }
+        ],
+        "text_fraction": 0.004910453216374269,
+        "point_s": 3.537533331999999,
+        "point_score": 0.59375,
+        "point_fraction": 0.004742324561403509,
+        "point_iou_to_text": 0.9376375641966251,
+        "box_s": 0.15149840200000142,
+        "box_score": 0.8671875,
+        "box_fraction": 0.004777046783625731,
+        "box_iou_to_text": 0.9438943894389439,
+        "wall_s": 126.02190833864734
+      },
+      {
+        "input": "pinterest-01",
+        "load_s": 11.432133564,
+        "load_peak_gib": 3.4841442108154297,
+        "encode_s": 0.04683903500000142,
+        "peak_gib": 5.178431987762451,
+        "selected_prompt": "cup",
+        "selected_score": 0.9140625,
+        "text_results": [
+          {
+            "prompt": "person",
+            "instances": 0,
+            "latency_s": 0.051619106000000414
+          },
+          {
+            "prompt": "chair",
+            "instances": 0,
+            "latency_s": 0.05059828100000274
+          },
+          {
+            "prompt": "table",
+            "instances": 1,
+            "latency_s": 0.05060054100000144
+          },
+          {
+            "prompt": "cup",
+            "instances": 2,
+            "latency_s": 0.050731924000000816
+          },
+          {
+            "prompt": "bottle",
+            "instances": 0,
+            "latency_s": 0.05181366100000062
+          },
+          {
+            "prompt": "bag",
+            "instances": 0,
+            "latency_s": 0.05095790000000022
+          },
+          {
+            "prompt": "shoe",
+            "instances": 0,
+            "latency_s": 0.050199219999999656
+          },
+          {
+            "prompt": "plant",
+            "instances": 2,
+            "latency_s": 0.05044639700000175
+          },
+          {
+            "prompt": "lamp",
+            "instances": 0,
+            "latency_s": 0.05017580999999893
+          },
+          {
+            "prompt": "car",
+            "instances": 0,
+            "latency_s": 0.050618311999997445
+          }
+        ],
+        "text_fraction": 0.053004646215853116,
+        "point_s": 0.010987800999998854,
+        "point_score": 0.765625,
+        "point_fraction": 0.057668355351545006,
+        "point_iou_to_text": 0.8636423889829884,
+        "box_s": 0.009552103000000756,
+        "box_score": 0.953125,
+        "box_fraction": 0.06852643584863412,
+        "box_iou_to_text": 0.7630727454986106,
+        "wall_s": 1.161866830661893
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "id": "pinterest-a1",
+      "url": "https://i.pinimg.com/736x/a1/d4/aa/a1d4aafc23c7591e4b84b3b1320577bf.jpg",
+      "sha256": "55490257755b37abf65b3036baf5243b6fa2200f77f18e3397286e264899b993",
+      "width": 640,
+      "height": 855,
+      "mode": "RGB"
+    },
+    {
+      "id": "pinterest-01",
+      "url": "https://i.pinimg.com/1200x/01/9a/b7/019ab75e6655c5a8d2a657a27743f09e.jpg",
+      "sha256": "74ffb9874957a60028aca6522598999ac0ee1e7087a523ac5da0a3cc8b613ec4",
+      "width": 928,
+      "height": 1232,
+      "mode": "RGB"
+    }
+  ],
+  "prompt_set": [
+    "person",
+    "chair",
+    "table",
+    "cup",
+    "bottle",
+    "bag",
+    "shoe",
+    "plant",
+    "lamp",
+    "car"
+  ],
+  "methodology_notes": [
+    "Each model class was kept resident so the second image is a warm encode/prompt measurement.",
+    "SAM 3.1 native geometric prompts use add_geometric_prompt with normalized cx,cy,w,h boxes.",
+    "Box robustness variants are derived from the selected text result bbox and are not human-drawn boxes.",
+    "IoU values are self-consistency against the selected text mask, not IoU against human ground truth.",
+    "selected_text_prompt is the highest-scoring detection among the fixed ten-prompt set, not general scene understanding.",
+    "SAM 3.1 multiplex checkpoint does not contain the legacy inst_interactive_predictor weights; the production-oriented SAM 3.1 experiment therefore disables that head."
+  ],
+  "conclusion": {
+    "recommended_v1_interaction": "concept text -> candidate instance masks -> click existing mask -> text + native box refinement when ambiguous",
+    "do_not_use": "legacy predict_inst point/box path with sam3.1_multiplex.pt",
+    "why": "The multiplex checkpoint lacks the legacy interactive-head weights; native text/geometric prompting is fast and consistent on the tested multi-object images."
+  }
+}

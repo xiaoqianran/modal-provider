@@ -1,0 +1,53 @@
+{
+  "model": "pwilkin/trellis.cpp",
+  "commit": "16f3109e82f3922033bfa62b83c42899678b7b6f",
+  "mode": "geometry",
+  "resolution": 1024,
+  "precision": "F16 GGUF",
+  "gpu": "L40S",
+  "runtime": "C++17/GGML_CUDA",
+  "python_runtime": "3.11 wrapper only",
+  "cuda": "12.9.1",
+  "torch": null,
+  "bundle_release": "trellis.cpp-pynone-cu129-torchnone-sm89-v2",
+  "bundle_bytes": 169987499,
+  "max_containers": 1,
+  "input": {
+    "kind": "synthetic pre-matted RGBA single object",
+    "sha256": "a1d79ae86f849587e2acff26b34acc749a0d2900febb57748c9d87193394fc82",
+    "size": [512, 512],
+    "seed": 42
+  },
+  "weights": {
+    "files": 6,
+    "bytes": 9462658720,
+    "gib": 8.812787681818008
+  },
+  "first_successful_run": {
+    "wall_s": 130.63409356493503,
+    "server_start_s": 0.3162259890000001,
+    "inference_s": 117.015309173,
+    "estimated_wall_cost_usd_at_0.000542_per_s": 0.07080367871219478
+  },
+  "warm_runs": [
+    {"wall_s": 120.81833816273138, "inference_s": 115.26083981599999},
+    {"wall_s": 117.91491934796795, "inference_s": 112.73020903199998},
+    {"wall_s": 120.66845603380352, "inference_s": 113.14056303000001}
+  ],
+  "warm_median": {
+    "wall_s": 120.66845603380352,
+    "inference_s": 113.14056303000001,
+    "estimated_wall_cost_usd_at_0.000542_per_s": 0.0654023031703215,
+    "estimated_inference_cost_usd_at_0.000542_per_s": 0.06132218516226
+  },
+  "representative_artifact": {
+    "local_path": "benchmarks/artifacts/first-trellis.cpp.glb",
+    "bytes": 276743212,
+    "validated_as": "glTF binary v2"
+  },
+  "notes": [
+    "The first failed/cancelled attempt was externally stopped from the Modal dashboard; it was not a CUDA/OOM/segfault failure.",
+    "The upstream server stage-loads GGUF models per request, so a warm resident server does not make 1024 geometry inference close to the Python Hermite path.",
+    "No texture models and no BiRefNet are present in this geometry-only Volume."
+  ]
+}

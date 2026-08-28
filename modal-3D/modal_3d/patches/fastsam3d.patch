@@ -1,0 +1,257 @@
+diff --git a/fft/fft3d.py b/fft/fft3d.py
+index b83c9cd..008230a 100644
+--- a/fft/fft3d.py
++++ b/fft/fft3d.py
+@@ -1,6 +1,5 @@
+ import numpy as np
+ import torch
+-import plotly.graph_objects as go
+ import os
+ 
+ 
+@@ -333,4 +332,4 @@ def plot_coords_scores_to_html(
+ 
+ 
+     fig.write_html(filename)
+-    # print(f"Saved {filename}")
+\ No newline at end of file
++    # print(f"Saved {filename}")
+diff --git a/sam3d_objects/data/dataset/tdfy/img_and_mask_transforms.py b/sam3d_objects/data/dataset/tdfy/img_and_mask_transforms.py
+index 91b8b12..60226df 100644
+--- a/sam3d_objects/data/dataset/tdfy/img_and_mask_transforms.py
++++ b/sam3d_objects/data/dataset/tdfy/img_and_mask_transforms.py
+@@ -4,7 +4,7 @@ import random
+ from typing import Optional, Dict
+ 
+ import numpy as np
+-import matplotlib.pyplot as plt
++from PIL import Image
+ import torchvision.transforms.functional
+ from sam3d_objects.data.dataset.tdfy.img_processing import pad_to_square_centered
+ from sam3d_objects.model.backbone.dit.embedder.point_remapper import PointRemapper
+@@ -98,7 +98,7 @@ def load_rgb(fpath: str) -> torch.Tensor:
+     """
+     Load a RGB(A) image from a file path.
+     """
+-    image = plt.imread(fpath)  # Why use matplotlib?
++    image = np.asarray(Image.open(fpath))
+     if image.dtype == "uint8":
+         image = image / 255
+         image = image.astype(np.float32)
+diff --git a/sam3d_objects/model/backbone/dit/embedder/dino.py b/sam3d_objects/model/backbone/dit/embedder/dino.py
+index d0c0f1c..ed2a160 100644
+--- a/sam3d_objects/model/backbone/dit/embedder/dino.py
++++ b/sam3d_objects/model/backbone/dit/embedder/dino.py
+@@ -40,6 +40,7 @@ class Dino(torch.nn.Module):
+                 model=dino_model,
+                 source=source,
+                 verbose=False,
++                pretrained=False,
+                 **backbone_kwargs,
+             )
+ 
+diff --git a/sam3d_objects/model/backbone/generator/shortcut/model.py b/sam3d_objects/model/backbone/generator/shortcut/model.py
+index 0222a40..3de5b3d 100644
+--- a/sam3d_objects/model/backbone/generator/shortcut/model.py
++++ b/sam3d_objects/model/backbone/generator/shortcut/model.py
+@@ -16,14 +16,7 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
+ import copy
+ import os
+ 
+-import seaborn as sns
+-import plotly.graph_objects as go
+-import matplotlib.pyplot as plt
+-
+-
+ from sklearn.decomposition import PCA
+-import matplotlib.pyplot as plt
+-import matplotlib.ticker as ticker
+ import numpy as np
+ import os
+ 
+diff --git a/sam3d_objects/model/backbone/tdfy_dit/representations/mesh/flexicubes/flexicubes.py b/sam3d_objects/model/backbone/tdfy_dit/representations/mesh/flexicubes/flexicubes.py
+index 583b5e3..60aa79f 100644
+--- a/sam3d_objects/model/backbone/tdfy_dit/representations/mesh/flexicubes/flexicubes.py
++++ b/sam3d_objects/model/backbone/tdfy_dit/representations/mesh/flexicubes/flexicubes.py
+@@ -15,7 +15,15 @@
+ # limitations under the License.
+ import torch
+ from .tables import *
+-from kaolin.utils.testing import check_tensor
++
++
++def check_tensor(x, shape, throw=True):
++    ok = x.ndim == len(shape) and all(
++        expected is None or x.shape[i] == expected for i, expected in enumerate(shape)
++    )
++    if throw and not ok:
++        raise ValueError(f"unexpected tensor shape {tuple(x.shape)}; expected {shape}")
++    return ok
+ 
+ __all__ = [
+     'FlexiCubes'
+@@ -388,4 +396,4 @@ class FlexiCubes:
+             vd = torch.cat([vd, vd_center])
+             faces = quad_vd_idx[:, self.quad_split_train].reshape(-1, 4, 2)
+             faces = torch.cat([faces, vd_center_idx.reshape(-1, 1, 1).repeat(1, 4, 1)], -1).reshape(-1, 3)
+-        return vd, faces, s_edges, edge_indices, vd_color
+\ No newline at end of file
++        return vd, faces, s_edges, edge_indices, vd_color
+diff --git a/sam3d_objects/model/backbone/tdfy_dit/utils/postprocessing_utils.py b/sam3d_objects/model/backbone/tdfy_dit/utils/postprocessing_utils.py
+index de7a4da..f577aa7 100644
+--- a/sam3d_objects/model/backbone/tdfy_dit/utils/postprocessing_utils.py
++++ b/sam3d_objects/model/backbone/tdfy_dit/utils/postprocessing_utils.py
+@@ -7,15 +7,9 @@ from PIL import Image
+ from tqdm import tqdm
+ import trimesh
+ import trimesh.visual
+-import xatlas
+-import pyvista as pv
+-from pymeshfix import _meshfix
+-import igraph
+ import cv2
+ from PIL import Image
+ from .random_utils import sphere_hammersley_sequence
+-from .render_utils import render_multiview
+-from ..renderers import GaussianRenderer
+ from ..representations import Strivec, Gaussian, MeshExtractResult
+ from loguru import logger
+ 
+diff --git a/sam3d_objects/model/io.py b/sam3d_objects/model/io.py
+index 9d05de6..10f7115 100644
+--- a/sam3d_objects/model/io.py
++++ b/sam3d_objects/model/io.py
+@@ -1,15 +1,10 @@
+ # Copyright (c) Meta Platforms, Inc. and affiliates.
+ from typing import Any, Callable, Dict, List, Optional, Union, Iterable
+-import lightning.pytorch as pl
+ import torch
+ from pathlib import Path
+ import os
+ import re
+ from loguru import logger
+-from lightning.pytorch.utilities.consolidate_checkpoint import (
+-    _format_checkpoint,
+-    _load_distributed_checkpoint,
+-)
+ from glob import glob
+ 
+ from sam3d_objects.data.utils import get_child, set_child
+@@ -133,18 +128,12 @@ def get_last_checkpoint(path: str):
+     return sorted_checkpoints[-1][2]
+ 
+ 
+-def load_sharded_checkpoint(path: str, device: Optional[str]):
+-    if device != "cpu":
+-        raise RuntimeError(
+-            f'loading sharded weights on device "{device}" is not available, please use the "cpu" device instead'
+-        )
+-    checkpoint = _load_distributed_checkpoint(Path(path))
+-    checkpoint = _format_checkpoint(checkpoint)
+-    return checkpoint
++def load_sharded_checkpoint(path: str, device):
++    raise RuntimeError("sharded Lightning checkpoints are not supported in inference")
+ 
+ 
+ def load_model_from_checkpoint(
+-    model: Union[pl.LightningModule, torch.nn.Module],
++    model: torch.nn.Module,
+     checkpoint_path: str,
+     strict: bool = True,
+     device: Optional[str] = None,
+@@ -161,13 +150,14 @@ def load_model_from_checkpoint(
+             checkpoint_path,
+             map_location=device,
+             weights_only=False,
++            mmap=True,
+         )
+     elif os.path.isdir(checkpoint_path):  # sharded
+         checkpoint = load_sharded_checkpoint(checkpoint_path, device=device)
+     else:  # if neither a file nor a directory, path does not exist
+         raise FileNotFoundError(checkpoint_path)
+ 
+-    if isinstance(model, pl.LightningModule):
++    if hasattr(model, 'on_load_checkpoint'):
+         model.on_load_checkpoint(checkpoint)
+ 
+     # get state dictionary
+diff --git a/sam3d_objects/pipeline/inference_pipeline.py b/sam3d_objects/pipeline/inference_pipeline.py
+index 5b2b1e9..12f88db 100644
+--- a/sam3d_objects/pipeline/inference_pipeline.py
++++ b/sam3d_objects/pipeline/inference_pipeline.py
+@@ -15,6 +15,7 @@ from fft.fft2d import calculate_slope_robust,calculate_hfer_robust, preprocess_f
+ from fft.fft3d import get_coords_value,analyze_voxel_frequency, plot_spatial_heatmap, plot_freq_domain,process_and_visualize, plot_coords_scores_to_html
+ 
+ def set_attention_backend():
++    gpu_name = ""
+     if torch.cuda.is_available():
+         gpu_name = torch.cuda.get_device_name(0)
+ 
+@@ -766,7 +767,7 @@ class InferencePipeline:
+         
+                 coords_raw = torch.argwhere(ss > 0)[:, [0, 2, 3, 4]].int()
+                 coords_value = get_coords_value(ss) 
+-                coords_scores ,hfer_3d = process_and_visualize(coords_value, output_dir="./visualization", filter_radius=8 , draw_spatial = True, draw_freq = False)
++                coords_scores ,hfer_3d = process_and_visualize(coords_value, output_dir="./visualization", filter_radius=8, draw_spatial=False, draw_freq=False)
+                 # print(coords_scores.shape,hfer_3d)
+ 
+                 # downsample output
+diff --git a/sam3d_objects/pipeline/inference_utils.py b/sam3d_objects/pipeline/inference_utils.py
+index d1b627f..f4e8e7d 100644
+--- a/sam3d_objects/pipeline/inference_utils.py
++++ b/sam3d_objects/pipeline/inference_utils.py
+@@ -1,26 +1,12 @@
+ # Copyright (c) Meta Platforms, Inc. and affiliates.
+ import torch
+ import numpy as np
+-import open3d as o3d
+ import trimesh
+ from pytorch3d.structures import Meshes
+ from pytorch3d.transforms import quaternion_to_matrix, Transform3d, matrix_to_quaternion
+ from sam3d_objects.data.dataset.tdfy.transforms_3d import compose_transform, decompose_transform
+ from sam3d_objects.data.dataset.tdfy.pose_target import PoseTargetConverter
+ from loguru import logger
+-from sam3d_objects.pipeline.layout_post_optimization_utils import (
+-    run_ICP,
+-    compute_iou,
+-    set_seed,
+-    apply_transform,
+-    get_mesh,
+-    get_mask_renderer,
+-    run_alignment,
+-    run_render_compare,
+-    check_occlusion,
+-)
+-
+-
+ SLAT_STD = torch.tensor(
+     [
+         2.377650737762451,
+@@ -81,6 +67,11 @@ def layout_post_optimization(
+     device=None,
+ ):
+ 
++    from sam3d_objects.pipeline.layout_post_optimization_utils import (
++        run_ICP, compute_iou, set_seed, apply_transform, get_mesh,
++        get_mask_renderer, run_alignment, run_render_compare, check_occlusion,
++    )
++
+     set_seed(100)
+     if device is None:
+         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+@@ -678,6 +669,8 @@ def json_to_halo_payloads(target_data):
+ 
+ 
+ def o3d_plane_estimation(points):
++    import open3d as o3d
++
+     pcd = o3d.geometry.PointCloud()
+     pcd.points = o3d.utility.Vector3dVector(points)
+     plane_model, inliers = pcd.segment_plane(0.02, 3, 1000)
+@@ -881,4 +874,4 @@ def estimate_plane_area(mask):
+     bbox_area = bbox_height * bbox_width
+ 
+     # Return ratio of bounding box area to total image area
+-    return bbox_area / total_area
+\ No newline at end of file
++    return bbox_area / total_area

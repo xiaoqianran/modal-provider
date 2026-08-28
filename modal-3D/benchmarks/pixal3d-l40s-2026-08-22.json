@@ -1,0 +1,62 @@
+{
+  "model": "TencentARC/Pixal3D",
+  "commit": "cdbb2bbffbf4e6f298b5f2af3d1d76a8d823d2af",
+  "gpu": "L40S",
+  "resolution": 1024,
+  "mode": "full_textured_glb",
+  "python": "3.10",
+  "cuda": "12.4.1",
+  "torch": "2.6.0+cu124",
+  "torchvision": "0.21.0+cu124",
+  "triton": "3.2.0",
+  "attention": "sdpa+natten-0.21.0",
+  "wheel_release": "pixal3d-py310-cu124-torch260-sm89-v1",
+  "max_containers": 1,
+  "input": {
+    "kind": "synthetic pre-matted RGBA single object",
+    "sha256": "a1d79ae86f849587e2acff26b34acc749a0d2900febb57748c9d87193394fc82",
+    "size": [512, 512],
+    "seed": 42,
+    "fixed_fov_deg": 35.0
+  },
+  "clean_cold": {
+    "wall_s": 288.3077847370878,
+    "load_s": 76.88848008800001,
+    "inference_s": 189.23140479,
+    "peak_vram_gib": 31.365234375,
+    "glb_bytes": 34492596,
+    "estimated_wall_cost_usd_at_0.000542_per_s": 0.15626281932750158
+  },
+  "warm_runs": [
+    {"wall_s": 108.91712229792029, "inference_s": 102.71352199300003, "peak_vram_gib": 30.48828125, "glb_bytes": 34939188},
+    {"wall_s": 111.30850754724815, "inference_s": 99.390936737, "peak_vram_gib": 30.48828125, "glb_bytes": 33724804},
+    {"wall_s": 104.80977968685329, "inference_s": 97.296933873, "peak_vram_gib": 30.48828125, "glb_bytes": 33789572}
+  ],
+  "warm_median": {
+    "wall_s": 108.91712229792029,
+    "inference_s": 99.390936737,
+    "peak_vram_gib": 30.48828125,
+    "estimated_wall_cost_usd_at_0.000542_per_s": 0.05903308028547279,
+    "estimated_inference_cost_usd_at_0.000542_per_s": 0.053869887711454
+  },
+  "automatic_fov_moge_validation": {
+    "status": "passed",
+    "wall_s": 294.81309692095965,
+    "load_s": 86.305868826,
+    "inference_s": 187.146702975,
+    "peak_vram_gib": 31.2509765625,
+    "glb_bytes": 36338124,
+    "note": "Executed on a fresh container and includes first-run autotuning; validation only, not a warm-performance datapoint."
+  },
+  "representative_artifact": {
+    "local_path": "benchmarks/artifacts/first-pixal3d.glb",
+    "bytes": 33789572,
+    "validated_as": "glTF binary v2"
+  },
+  "notes": [
+    "Pixal3D pipeline and image condition models are loaded once in @modal.enter().",
+    "L40S uses low_vram=False; full resident mode fit with ~31.4 GiB observed board-level peak VRAM.",
+    "GPU background removal is intentionally removed; production input is pre-matted RGBA.",
+    "Cold inference includes first-run FlexGEMM/Triton autotuning; warm runs reuse the same container and tuned kernels."
+  ]
+}
