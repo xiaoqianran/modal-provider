@@ -246,3 +246,64 @@ def test_incompatible_or_future_database_is_rejected(tmp_path: Path):
         db.execute("PRAGMA user_version = 99")
     with pytest.raises(RuntimeError, match="newer than supported"):
         jobs.JobStore(future)
+
+
+def test_cancel_during_spawn_preserves_intent_and_cancels_bound_remote(
+    tmp_path: Path, monkeypatch
+):
+    poll = PollCall()
+    service_holder = {}
+
+    class CancelDuringSpawn:
+        def spawn(self, payload):
+            pending = service_holder["service"].cancel("job_cancel_during_spawn")
+            assert pending["status"] == "cancel_requested"
+            assert pending["error_code"] is None
+            return SpawnCall()
+
+    monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
+    monkeypatch.setattr(jobs, "client", lambda: object())
+    monkeypatch.setattr(
+        jobs.modal.Function, "from_name", lambda *args, **kwargs: CancelDuringSpawn()
+    )
+    monkeypatch.setattr(
+        jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: poll
+    )
+
+    service = jobs.JobService(jobs.JobStore(tmp_path / "jobs.sqlite3"))
+    service_holder["service"] = service
+    state = service.submit({"prompt": "x"}, job_id="job_cancel_during_spawn")
+
+    assert state["status"] == "cancel_requested"
+    assert state["error_code"] is None
+    assert poll.cancelled is True
+    stored = service.store.get("job_cancel_during_spawn")
+    assert stored.remote_call_id == "fc-remote-01"
+
+
+def test_cancel_requested_without_remote_id_stays_pending_without_resubmit(
+    tmp_path: Path, monkeypatch
+):
+    store = jobs.JobStore(tmp_path / "jobs.sqlite3")
+    now = "2026-08-28T00:00:00+00:00"
+    store.save(
+        jobs.Job(
+            id="job_pending_cancel",
+            model="sana-sprint-1.6b",
+            remote_call_id=None,
+            status="cancel_requested",
+            created_at=now,
+            updated_at=now,
+            retryable=True,
+        )
+    )
+    monkeypatch.setattr(
+        jobs.modal.Function,
+        "from_name",
+        lambda *args, **kwargs: pytest.fail("cancel_requested job must not resubmit"),
+    )
+
+    state = jobs.JobService(store).poll("job_pending_cancel")
+    assert state["status"] == "cancel_requested"
+    assert state["error_code"] is None
+    assert state["retryable"] is True

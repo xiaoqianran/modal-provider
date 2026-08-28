@@ -250,15 +250,51 @@ class JobService:
         try:
             call = fn.spawn(request)
         except Exception:
+            latest = self.store.get(local_job_id)
             return self._set(
-                intent,
+                latest,
                 "connection_required",
                 error_code="remote.submission_unknown",
                 retryable=False,
             )
 
+        latest = self.store.get(local_job_id)
+        if latest.status == "cancel_requested":
+            try:
+                modal.FunctionCall.from_id(call.object_id, client=client()).cancel()
+            except _RECOVERABLE:
+                cancelled = replace(
+                    latest,
+                    remote_call_id=call.object_id,
+                    updated_at=_now(),
+                    error_code="modal.connection_required",
+                    retryable=True,
+                )
+                self.store.save(cancelled)
+                return cancelled.public()
+            except (OutputExpiredError, NotFoundError):
+                expired = replace(
+                    latest,
+                    remote_call_id=call.object_id,
+                    status="expired",
+                    updated_at=_now(),
+                    error_code="remote.output_expired",
+                    retryable=False,
+                )
+                self.store.save(expired)
+                return expired.public()
+            cancelled = replace(
+                latest,
+                remote_call_id=call.object_id,
+                updated_at=_now(),
+                error_code=None,
+                retryable=True,
+            )
+            self.store.save(cancelled)
+            return cancelled.public()
+
         running = replace(
-            intent,
+            latest,
             remote_call_id=call.object_id,
             status="running",
             updated_at=_now(),
@@ -272,6 +308,8 @@ class JobService:
         if job.status in TERMINAL:
             return job.public()
         if not job.remote_call_id:
+            if job.status == "cancel_requested":
+                return job.public()
             if job.status == "submitting":
                 return self._set(
                     job,
@@ -295,7 +333,9 @@ class JobService:
             )
         except RemoteError:
             if job.status == "cancel_requested":
-                return self._set(job, "cancelled", retryable=False)
+                return self._set(
+                    job, "cancelled", error_code="remote.cancelled", retryable=False
+                )
             return self._set(job, "failed", error_code="remote.execution_failed", retryable=False)
         except Exception:
             return self._set(job, "failed", error_code="remote.execution_failed", retryable=False)
@@ -317,9 +357,9 @@ class JobService:
         if not job.remote_call_id:
             return self._set(
                 job,
-                "connection_required",
-                error_code="remote.submission_unknown",
-                retryable=False,
+                "cancel_requested",
+                error_code=None,
+                retryable=True,
             )
         try:
             modal.FunctionCall.from_id(job.remote_call_id, client=client()).cancel()
