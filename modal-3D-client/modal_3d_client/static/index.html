@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>modal-3D Client · 工作台</title>
+  <link rel="stylesheet" href="/ui/styles.css" />
+  <link rel="icon" href="data:," />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">3D</span>
+        <div class="brand-text">
+          <span class="brand-name">modal-3D</span>
+          <span class="brand-sub">Client 工作台</span>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav" aria-label="主导航">
+        <a class="nav-item is-active" href="#workspace" data-section="workspace">
+          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v16M2 10h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <span>工作台</span>
+          <span class="nav-note">生成资产</span>
+        </a>
+        <a class="nav-item" href="#jobs" data-section="jobs">
+          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h12M6 3v3M14 3v3M4 6h12v11H4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          <span>任务</span>
+          <span class="nav-note">/v1/jobs</span>
+        </a>
+        <a class="nav-item" href="#models" data-section="models">
+          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l6 3v8l-6 3-6-3V6z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M10 6v8M4 6l6 3 6-3" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+          <span>模型</span>
+          <span class="nav-note">/v1/models</span>
+        </a>
+        <a class="nav-item" href="#connection" data-section="connection">
+          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 6L3 3M14 6l3-3M6 14l-3 3M14 14l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span>连接</span>
+          <span class="nav-note">Modal 凭据</span>
+        </a>
+        <a class="nav-item" href="#api" data-section="api">
+          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span>API 参考</span>
+          <span class="nav-note">curl 接口</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="conn-pill" id="conn-pill" data-state="unknown">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="conn-pill-text">检测连接中…</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 id="page-title">工作台</h1>
+          <p id="page-subtitle" class="muted">上传图片，选择一个模型生成 GLB 资产</p>
+        </div>
+        <div class="topbar-actions" id="topbar-actions"></div>
+      </header>
+
+      <div class="content" id="content">
+        <!-- sections rendered by app.js -->
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-region" id="toasts" aria-live="polite"></div>
+  <div class="modal-backdrop" id="modal-backdrop" hidden></div>
+
+  <template id="spinner">
+    <span class="spinner" role="status" aria-label="加载中"></span>
+  </template>
+
+  <script src="/ui/app.js" type="module"></script>
+</body>
+</html>

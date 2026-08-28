@@ -1,0 +1,402 @@
+{
+  "contract": "modal-3d.capabilities.v3",
+  "generation": {
+    "job_transport": "modal.FunctionCall",
+    "entrypoint": "direct_class_method",
+    "input_path_prefix": "client-inputs/",
+    "input_contract": {
+      "role": "canonical_rgba",
+      "mime": "image/png",
+      "mode": "RGBA",
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "layout": "letterbox",
+      "alpha": "channel_required"
+    }
+  },
+  "models": [
+    {
+      "id": "fastsam3d-plus-plus",
+      "name": "FastSAM3D++",
+      "description": "最快的彩色资产生成；vertex-color GLB",
+      "status": "enabled",
+      "worker_app": "modal-3d-fastsam3d",
+      "output": "textured",
+      "artifact": {
+        "mime": "model/gltf-binary",
+        "extension": ".glb"
+      },
+      "input": {
+        "role": "canonical_rgba",
+        "mime": "image/png",
+        "mode": "RGBA",
+        "width": 1024,
+        "height": 1024,
+        "bit_depth": 8,
+        "layout": "letterbox",
+        "alpha": "channel_required"
+      },
+      "profiles": [
+        {
+          "id": "recommended",
+          "name": "推荐 · Fast-SAM3D 加速",
+          "options": {
+            "dmd_interval": 1,
+            "dmd_history": 5
+          },
+          "quality": {
+            "tier": "accelerated",
+            "basis": "wlfeng0509/Fast-SAM3D official acceleration recipe",
+            "sampler": {
+              "runtime_ss_steps": 25,
+              "runtime_slat_steps": 25,
+              "generator_config_ss_steps": 2,
+              "generator_config_slat_steps": 12,
+              "ss_cache_stride": 3,
+              "slat_carving_ratio": 0.1
+            },
+            "verification": {
+              "status": "verified",
+              "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json"
+            }
+          }
+        }
+      ],
+      "options": {
+        "seed": {
+          "type": "integer",
+          "default": 42,
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "dmd_interval": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 12
+        },
+        "dmd_history": {
+          "type": "integer",
+          "default": 5,
+          "minimum": 4,
+          "maximum": 25
+        }
+      },
+      "priority": 10,
+      "reference": {
+        "warm_seconds": 6.06,
+        "cold_start_seconds": 60.0,
+        "status": "legacy",
+        "benchmark": "benchmarks/fastsam3d-plus-plus-l40s-2026-08-23.json",
+        "metric": "adapter_wall_s",
+        "profile_id": "recommended"
+      },
+      "generation_entrypoint": {
+        "kind": "class_method",
+        "class_name": "Model",
+        "method_name": "generate_job"
+      },
+      "deployment": {
+        "source": "Archerkattri/fastsam3d-plus-plus",
+        "source_revision": "36191e491ca0bf9d51cda39aa7b6c91205eb82e3",
+        "sam_revision": "2e73555018d2741ccd486e56c24fac41155a1dc6",
+        "pytorch3d_revision": "75ebeeaea0908c5527e7b1e305fbc7681382db47",
+        "build_artifact": "fastsam3d-pytorch3d-py311-cu121-torch251-sm89-v1",
+        "adapter_revision": "modal-3d.worker-adapter.v4"
+      }
+    },
+    {
+      "id": "hermit-trellis2-plus-plus",
+      "name": "Hermite-TRELLIS2++",
+      "description": "PBR 纹理 GLB；官方 remesh/to_glb；质量模式禁用近似采样",
+      "status": "enabled",
+      "worker_app": "modal-3d-hermit-trellis2-plus-plus",
+      "output": "textured",
+      "artifact": {
+        "mime": "model/gltf-binary",
+        "extension": ".glb"
+      },
+      "input": {
+        "role": "canonical_rgba",
+        "mime": "image/png",
+        "mode": "RGBA",
+        "width": 1024,
+        "height": 1024,
+        "bit_depth": 8,
+        "layout": "letterbox",
+        "alpha": "channel_required"
+      },
+      "profiles": [
+        {
+          "id": "recommended",
+          "name": "推荐 · 官方高质量",
+          "options": {
+            "pipeline_type": "1536_cascade",
+            "acceleration": "base",
+            "texture_size": 4096
+          },
+          "quality": {
+            "tier": "full_quality",
+            "basis": "microsoft/TRELLIS.2 1536 cascade + stock sampler + 4096 PBR export",
+            "verification": {
+              "status": "verified",
+              "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json"
+            }
+          }
+        }
+      ],
+      "options": {
+        "seed": {
+          "type": "integer",
+          "default": 42
+        },
+        "pipeline_type": {
+          "type": "string",
+          "default": "1536_cascade",
+          "enum": [
+            "1024_cascade",
+            "1536_cascade"
+          ]
+        },
+        "acceleration": {
+          "type": "string",
+          "default": "base",
+          "enum": [
+            "base",
+            "dmd"
+          ]
+        },
+        "texture_size": {
+          "type": "integer",
+          "default": 4096,
+          "enum": [
+            2048,
+            4096
+          ]
+        }
+      },
+      "priority": 20,
+      "reference": {
+        "warm_seconds": 297.25,
+        "cold_start_seconds": 108.32,
+        "status": "verified",
+        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+        "metric": "worker_inference_s",
+        "profile_id": "recommended"
+      },
+      "generation_entrypoint": {
+        "kind": "class_method",
+        "class_name": "Model",
+        "method_name": "generate_job"
+      },
+      "deployment": {
+        "source": "Archerkattri/hermit-trellis2-plus-plus",
+        "source_revision": "2c8402a92ea97c510c09e278fae557771aad774d",
+        "build_artifact": "hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v2",
+        "base_model": "microsoft/TRELLIS.2-4B",
+        "base_model_revision": "af44b45f2e35a493886929c6d786e563ec68364d",
+        "adapter_revision": "modal-3d.worker-adapter.v4"
+      }
+    },
+    {
+      "id": "hunyuan2.1-plus-plus",
+      "name": "Hunyuan2.1++",
+      "description": "完整 Shape + Hunyuan3D-Paint 2.1 PBR；推荐模式使用原生采样",
+      "status": "enabled",
+      "worker_app": "modal-3d-hunyuan",
+      "output": "textured",
+      "artifact": {
+        "mime": "model/gltf-binary",
+        "extension": ".glb"
+      },
+      "input": {
+        "role": "canonical_rgba",
+        "mime": "image/png",
+        "mode": "RGBA",
+        "width": 1024,
+        "height": 1024,
+        "bit_depth": 8,
+        "layout": "letterbox",
+        "alpha": "channel_required"
+      },
+      "profiles": [
+        {
+          "id": "recommended",
+          "name": "推荐 · 官方完整 PBR",
+          "options": {
+            "acceleration": "base",
+            "interval": 1,
+            "history": 6,
+            "num_inference_steps": 50,
+            "paint_remesh": true
+          },
+          "quality": {
+            "tier": "full_quality",
+            "basis": "Tencent Hunyuan3D-2.1 official Shape + Paint defaults",
+            "verification": {
+              "status": "verified",
+              "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json"
+            }
+          }
+        }
+      ],
+      "options": {
+        "seed": {
+          "type": "integer",
+          "default": 42
+        },
+        "acceleration": {
+          "type": "string",
+          "default": "base",
+          "enum": [
+            "base",
+            "dmd"
+          ]
+        },
+        "interval": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 12
+        },
+        "history": {
+          "type": "integer",
+          "default": 6,
+          "minimum": 4,
+          "maximum": 32
+        },
+        "num_inference_steps": {
+          "type": "integer",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 100
+        },
+        "paint_remesh": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "priority": 30,
+      "reference": {
+        "warm_seconds": 557.26,
+        "cold_start_seconds": 52.88,
+        "status": "stale",
+        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+        "metric": "worker_inference_s",
+        "profile_id": "recommended",
+        "note": "557.26s reference used paint_remesh=false; re-smoke required for remesh=true"
+      },
+      "generation_entrypoint": {
+        "kind": "class_method",
+        "class_name": "Model",
+        "method_name": "generate_job"
+      },
+      "deployment": {
+        "source": "Archerkattri/hunyuan2.1-plus-plus",
+        "source_revision": "9efd760fbec8ab490e68b330225ea1fab10de7fd",
+        "base_model": "tencent/Hunyuan3D-2.1",
+        "base_model_revision": "0b94677654c57bb9a6b6845cd7b704ccf551d327",
+        "build_artifact": "hunyuan3d-2.1-paint-py311-cu124-torch251-sm89-v2",
+        "adapter_revision": "modal-3d.worker-adapter.v4"
+      }
+    },
+    {
+      "id": "pixal3d",
+      "name": "Pixal3D",
+      "description": "完整 PBR 纹理 GLB；1536 cascade + 4096 texture",
+      "status": "enabled",
+      "worker_app": "modal-3d-pixal3d",
+      "output": "textured",
+      "artifact": {
+        "mime": "model/gltf-binary",
+        "extension": ".glb"
+      },
+      "input": {
+        "role": "canonical_rgba",
+        "mime": "image/png",
+        "mode": "RGBA",
+        "width": 1024,
+        "height": 1024,
+        "bit_depth": 8,
+        "layout": "letterbox",
+        "alpha": "channel_required"
+      },
+      "profiles": [
+        {
+          "id": "recommended",
+          "name": "推荐 · 官方标准高质量",
+          "options": {
+            "fov": null,
+            "pipeline_type": "1536_cascade",
+            "max_num_tokens": 49152,
+            "texture_size": 4096
+          },
+          "quality": {
+            "tier": "full_quality",
+            "basis": "TencentARC/Pixal3D standard 1536 cascade + 4096 PBR export",
+            "verification": {
+              "status": "verified",
+              "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json"
+            }
+          }
+        }
+      ],
+      "options": {
+        "seed": {
+          "type": "integer",
+          "default": 42
+        },
+        "fov": {
+          "type": "number",
+          "default": null,
+          "nullable": true
+        },
+        "pipeline_type": {
+          "type": "string",
+          "default": "1536_cascade",
+          "enum": [
+            "1024_cascade",
+            "1536_cascade"
+          ]
+        },
+        "max_num_tokens": {
+          "type": "integer",
+          "default": 49152,
+          "minimum": 32768,
+          "maximum": 65536
+        },
+        "texture_size": {
+          "type": "integer",
+          "default": 4096,
+          "enum": [
+            2048,
+            4096
+          ]
+        }
+      },
+      "priority": 40,
+      "reference": {
+        "warm_seconds": 197.18,
+        "cold_start_seconds": 99.08,
+        "status": "verified",
+        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
+        "metric": "worker_inference_s",
+        "profile_id": "recommended"
+      },
+      "generation_entrypoint": {
+        "kind": "class_method",
+        "class_name": "Model",
+        "method_name": "generate_job"
+      },
+      "deployment": {
+        "source": "TencentARC/Pixal3D",
+        "source_revision": "cdbb2bbffbf4e6f298b5f2af3d1d76a8d823d2af",
+        "build_artifact": "pixal3d-py310-cu124-torch260-sm89-v1",
+        "base_model": "TencentARC/Pixal3D",
+        "base_model_revision": "0b31f9160aa400719af409098bff7936a932f726",
+        "adapter_revision": "modal-3d.worker-adapter.v4"
+      }
+    }
+  ]
+}
