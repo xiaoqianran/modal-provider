@@ -75,13 +75,68 @@ def test_validate_source_image_enforces_byte_limit(monkeypatch, source_png):
         artifacts.validate_source_image(source_png)
 
 
-def test_upload_source_is_content_addressed_and_byte_exact(monkeypatch, source_jpeg):
+def test_upload_source_uploads_locally_conditioned_canonical(monkeypatch, source_jpeg, mask_png):
     volume = Volume()
     monkeypatch.setattr(artifacts, "_volume", lambda: volume)
+    result = artifacts.upload_source(source_jpeg, mask=mask_png)
+    canonical = volume.batch.files[result["path"]]
+
+    assert result["path"].startswith("client-inputs/")
+    assert result["path"].endswith(".png")
+    # The uploaded bytes are the canonical form, never the raw source.
+    assert canonical != source_jpeg
+    assert result["path"] == f"client-inputs/{hashlib.sha256(canonical).hexdigest()}.png"
+
+    with Image.open(io.BytesIO(canonical)) as image:
+        assert image.format == "PNG"
+        assert image.mode == "RGBA"
+        assert image.size == (1024, 1024)
+        assert image.getchannel("A").getextrema() != (255, 255)
+
+    assert result["conditioning"]["strategy"] == "birefnet"
+    assert result["conditioning"]["source_sha256"] == hashlib.sha256(source_jpeg).hexdigest()
+
+
+def test_upload_source_preserves_existing_alpha_without_a_mask(monkeypatch, source_rgba):
+    volume = Volume()
+    monkeypatch.setattr(artifacts, "_volume", lambda: volume)
+    result = artifacts.upload_source(source_rgba)
+    assert result["conditioning"]["strategy"] == "preserve-alpha"
+    assert volume.batch.files[result["path"]]
+
+
+def test_upload_source_auto_predicts_mask_for_opaque_sources(monkeypatch, source_jpeg, mask_png):
+    volume = Volume()
+    calls = []
+    monkeypatch.setattr(artifacts, "_volume", lambda: volume)
+    monkeypatch.setattr(
+        artifacts.background,
+        "predict_mask",
+        lambda data: calls.append(data) or {
+            "mask_bytes": mask_png,
+            "engine": "birefnet-general-lite",
+            "elapsed_ms": 12.5,
+        },
+    )
     result = artifacts.upload_source(source_jpeg)
-    sha = hashlib.sha256(source_jpeg).hexdigest()
-    assert result["path"] == f"source-inputs/{sha}.jpg"
-    assert volume.batch.files[result["path"]] == source_jpeg
+    assert calls == [source_jpeg]
+    assert result["path"].startswith("client-inputs/")
+    assert result["conditioning"]["strategy"] == "birefnet"
+    assert result["conditioning"]["engine"] == "birefnet-general-lite"
+    assert result["conditioning"]["mask_elapsed_ms"] == 12.5
+
+
+def test_explicit_mask_bypasses_t4_prediction(monkeypatch, source_jpeg, mask_png):
+    volume = Volume()
+    monkeypatch.setattr(artifacts, "_volume", lambda: volume)
+    monkeypatch.setattr(
+        artifacts.background,
+        "predict_mask",
+        lambda _data: pytest.fail("explicit mask must bypass the T4 worker"),
+    )
+    result = artifacts.upload_source(source_jpeg, mask=mask_png)
+    assert result["conditioning"]["strategy"] == "birefnet"
+    assert result["path"].startswith("client-inputs/")
 
 
 def test_fetch_streams_verified_glb_to_content_cache(tmp_path: Path, monkeypatch, glb_bytes):

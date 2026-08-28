@@ -11,7 +11,15 @@ from pathlib import Path, PurePosixPath
 import modal
 from PIL import Image
 
-from .constants import ARTIFACTS_VOLUME, OUTPUT_MIME, OUTPUT_ROLE, SOURCE_MAX_BYTES
+from . import background
+from .conditioning import BackgroundMaskRequired, condition_image
+from .constants import (
+    ARTIFACTS_VOLUME,
+    CLIENT_INPUT_PREFIX,
+    OUTPUT_MIME,
+    OUTPUT_ROLE,
+    SOURCE_MAX_BYTES,
+)
 from .contracts import ContractError, validate_artifact
 from .modal_session import client
 from .storage import data_dir
@@ -66,12 +74,46 @@ def validate_source_image(data: bytes) -> dict[str, object]:
     }
 
 
-def upload_source(data: bytes) -> dict[str, object]:
+_CONDITIONING_EVIDENCE_FIELDS = (
+    "strategy",
+    "source_sha256",
+    "canonical_sha256",
+    "source_format",
+    "source_size",
+    "foreground_bbox",
+    "foreground_ratio",
+    "canonical_size",
+    "engine",
+    "mask_elapsed_ms",
+)
+
+
+def upload_source(data: bytes, *, mask: bytes | None = None) -> dict[str, object]:
+    """Condition the source locally, then upload the finished canonical RGBA.
+
+    Modal workers only accept `client-inputs/`. Existing alpha or a caller mask
+    is handled entirely locally. Opaque sources without a mask call the T4
+    `RemBgWorker.process` method directly, then canonicalization stays local.
+    """
     descriptor = validate_source_image(data)
-    path = f"source-inputs/{descriptor['sha256']}{descriptor['extension']}"
+    if mask is not None:
+        conditioned = condition_image(data, mask)
+    else:
+        try:
+            conditioned = condition_image(data)
+        except BackgroundMaskRequired:
+            prediction = background.predict_mask(data)
+            conditioned = condition_image(data, bytes(prediction["mask_bytes"]))
+            conditioned["engine"] = prediction.get("engine")
+            conditioned["mask_elapsed_ms"] = prediction.get("elapsed_ms")
+    canonical = bytes(conditioned["canonical_bytes"])
+    path = f"{CLIENT_INPUT_PREFIX}{conditioned['canonical_sha256']}.png"
     with _volume().batch_upload(force=True) as batch:
-        batch.put_file(io.BytesIO(data), path)
-    return {**descriptor, "path": path}
+        batch.put_file(io.BytesIO(canonical), path)
+    evidence = {
+        key: conditioned[key] for key in _CONDITIONING_EVIDENCE_FIELDS if key in conditioned
+    }
+    return {**descriptor, "path": path, "canonical_bytes": len(canonical), "conditioning": evidence}
 
 
 def _cache_path(sha256: str) -> Path:

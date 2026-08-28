@@ -32,6 +32,27 @@ def source_webp() -> bytes:
 
 
 @pytest.fixture
+def source_rgba() -> bytes:
+    """Opaque subject on a fully transparent background: no mask needed."""
+    image = Image.new("RGBA", (320, 240), (0, 0, 0, 0))
+    subject = Image.new("RGBA", (160, 120), (220, 20, 20, 255))
+    image.alpha_composite(subject, (80, 60))
+    stream = io.BytesIO()
+    image.save(stream, format="PNG")
+    return stream.getvalue()
+
+
+@pytest.fixture
+def mask_png() -> bytes:
+    """L-mode background mask matching `source_jpeg` dimensions."""
+    mask = Image.new("L", (320, 240), 0)
+    mask.paste(255, (80, 60, 240, 180))
+    stream = io.BytesIO()
+    mask.save(stream, format="PNG")
+    return stream.getvalue()
+
+
+@pytest.fixture
 def glb_bytes() -> bytes:
     body = b"\x00" * 16
     total = 12 + len(body)
