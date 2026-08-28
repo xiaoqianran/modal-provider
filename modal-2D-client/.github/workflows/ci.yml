@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv lock --check
+      - run: uv sync --dev --frozen
+      - run: uv run ruff check .
+      - run: uv run python -m compileall -q modal_2d_client tests
+      - run: uv run pytest -q
+      - name: Validate installed agent entrypoint
+        run: uv run python -c "from modal_2d_client.server import main; assert callable(main)"
