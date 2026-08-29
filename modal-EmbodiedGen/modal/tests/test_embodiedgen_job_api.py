@@ -80,29 +80,78 @@ class ArtifactLifecycleTest(unittest.TestCase):
         self.assertFalse(runtime.api_job_expired(succeeded, now=now, fallback_mtime=now))
 
 
-class InputResolutionTest(unittest.TestCase):
-    def test_api_job_requires_uploaded_image(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            job_id = runtime.new_job_id()
-            with self.assertRaises(FileNotFoundError):
-                runtime.resolve_job_input(job_id, Path(tmp), Path("fallback.jpg"))
 
-    def test_legacy_job_can_use_benchmark_fallback(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            fallback = Path(tmp) / "fallback.jpg"
-            path, source = runtime.resolve_job_input("bench-safe", Path(tmp), fallback)
-            self.assertEqual(path, fallback)
-            self.assertEqual(source, "benchmark-sample")
 
-    def test_api_job_uses_uploaded_image(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            uploaded = root / "input_image"
-            uploaded.write_bytes(b"image")
-            path, source = runtime.resolve_job_input(runtime.new_job_id(), root, Path("fallback.jpg"))
-            self.assertEqual(path, uploaded)
-            self.assertEqual(source, "uploaded")
 
+
+
+
+
+class UnifiedRuntimeTest(unittest.TestCase):
+    def test_unified_worker_is_single_l40s_cache_boundary(self):
+        source = RUNTIME.read_text(encoding="utf-8")
+        pos = source.index("class EmbodiedGenWorker:")
+        decorator = source[source.rfind("@app.cls(", 0, pos):pos]
+        body = source[pos:source.index("\n@app.function(", pos)]
+        self.assertIn('gpu="L40S"', decorator)
+        self.assertIn('scaledown_window=PIPELINE_SCALEDOWN_SECONDS', decorator)
+        self.assertIn('ort.preload_dlls(cuda=True, cudnn=True, directory="")', body)
+        self.assertIn('new_session(BIREFNET_ENGINE,providers=providers)', body)
+        self.assertIn('self.pipeline=Sam3dInference', body)
+
+    def test_pipeline_stages_stay_in_one_method_and_in_order(self):
+        source = RUNTIME.read_text(encoding="utf-8")
+        start = source.index("class EmbodiedGenWorker:")
+        end = source.index("\n@app.function(", start)
+        body = source[start:end]
+        markers = [
+            '_job_stage(job_id,"rembg"',
+            '_job_stage(job_id,"sam3d"',
+            '_job_stage(job_id,"mesh"',
+            '_job_stage(job_id,"texture"',
+            '_job_stage(job_id,"finalize"',
+        ]
+        positions = [body.index(marker) for marker in markers]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(body.count("artifacts.commit()"), 1)
+        self.assertNotIn("artifacts.reload()", body)
+        self.assertNotIn("state_handoff", body)
+
+    def test_legacy_split_workers_are_gone(self):
+        runtime_source = RUNTIME.read_text(encoding="utf-8")
+        direct_source = DIRECT.read_text(encoding="utf-8")
+        for old in (
+            "class RembgWorker:",
+            "class Sam3DWorker:",
+            "class MeshWorker:",
+            "def lite_gpu_bake(",
+            "def cpu_finalize(",
+            "state_handoff",
+            "apply_autoscale_profile",
+            "update_autoscaler",
+        ):
+            self.assertNotIn(old, runtime_source)
+        self.assertNotIn('modal.Cls.from_name(APP_NAME, "RembgWorker")', direct_source)
+        self.assertNotIn('modal.Cls.from_name(APP_NAME, "Sam3DWorker")', direct_source)
+        self.assertIn('modal.Cls.from_name(APP_NAME, "EmbodiedGenWorker")', direct_source)
+
+    def test_image_submit_spawns_unified_worker_without_volume_bus(self):
+        source = DIRECT.read_text(encoding="utf-8")
+        start = source.index("def submit_image3d(")
+        end = source.index("def _wait_job(", start)
+        body = source[start:end]
+        self.assertIn("path.read_bytes()", body)
+        self.assertIn("_pipeline_worker().generate.spawn(job_id, data, int(seed))", body)
+        self.assertNotIn("batch_upload", body)
+        self.assertNotIn("update_autoscaler", body)
+
+    def test_unified_benchmark_requires_same_resident_instance(self):
+        source = RUNTIME.read_text(encoding="utf-8")
+        start = source.index("def benchmark_unified(")
+        body = source[start:]
+        self.assertIn('for label in ("cold", "warm")', body)
+        self.assertIn('runs[0]["instance_id"] != runs[1]["instance_id"]', body)
+        self.assertIn("UNIFIED_BENCHMARK_OK", body)
 
 
 class TextJobTest(unittest.TestCase):
@@ -114,68 +163,29 @@ class TextJobTest(unittest.TestCase):
             with self.subTest(value=value[:16]), self.assertRaises(ValueError):
                 runtime.normalize_text_prompt(value)
 
-    def test_generated_text_input_is_labeled_separately(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "input_image").write_bytes(b"png")
-            (root / "prompt.txt").write_text("red mug\n")
-            path, source = runtime.resolve_job_input(runtime.new_job_id(), root, Path("fallback.jpg"))
-            self.assertEqual(path, root / "input_image")
-            self.assertEqual(source, "generated-text")
-
-    def test_text_worker_is_l40s_and_offline(self):
+    def test_text_worker_is_l40s_offline_handoff_worker(self):
         source = RUNTIME.read_text(encoding="utf-8")
         pos = source.index("class Text2ImageWorker:")
         decorator = source[source.rfind("@app.cls(", 0, pos):pos]
-        body_end = source.index("def _rembg_load", pos)
+        body_end = source.index("class RetextureWorker:", pos)
         body = source[pos:body_end]
-        self.assertIn('image=image', decorator)
         self.assertIn('gpu="L40S"', decorator)
+        self.assertIn('scaledown_window=TEXT2IMG_SCALEDOWN_SECONDS', decorator)
         self.assertIn('local_files_only=True', body)
         self.assertIn('HF_HUB_OFFLINE', body)
         self.assertIn('TRANSFORMERS_OFFLINE', body)
+        self.assertIn('modal.Cls.from_name(APP_NAME,"EmbodiedGenWorker")', body)
+        self.assertIn('worker.generate.spawn(job_id,png,seed)', body)
 
-    def test_text_stage_runs_before_rembg(self):
+    def test_text_submit_returns_job_without_vps_png_round_trip(self):
         source = DIRECT.read_text(encoding="utf-8")
-        start = source.index("def generate_text3d(")
-        end = source.index("def retexture(", start)
+        start = source.index("def submit_text3d(")
+        end = source.index("def generate_text3d(", start)
         body = source[start:end]
-        self.assertLess(body.index('"text2image"'), body.index('"rembg"'))
-        self.assertLess(body.index('"rembg"'), body.index('"sam3d"'))
-    def test_text_path_has_no_modal_submit_orchestrator(self):
-        runtime_source = RUNTIME.read_text(encoding="utf-8")
-        direct_source = DIRECT.read_text(encoding="utf-8")
-        self.assertNotIn("def run_job(", runtime_source)
-        self.assertNotIn("def job_api(", runtime_source)
-        self.assertIn('modal.Cls.from_name(APP_NAME, "Text2ImageWorker")', direct_source)
-        self.assertIn('text.generate.remote(job_id, prompt, seed)', direct_source)
-
-class AutoscaleDedupeTest(unittest.TestCase):
-    class FakeTarget:
-        def __init__(self):
-            self.calls = []
-
-        def update_autoscaler(self, **kwargs):
-            self.calls.append(kwargs)
-
-    def setUp(self):
-        runtime._active_autoscale_profile = None
-
-    def handles(self):
-        return tuple(self.FakeTarget() for _ in range(5))
-
-    def test_same_profile_only_updates_once_per_process(self):
-        handles = self.handles()
-        runtime.apply_autoscale_profile("cost_first", handles)
-        runtime.apply_autoscale_profile("cost_first", handles)
-        self.assertEqual([len(target.calls) for target in handles], [1, 1, 1, 1, 1])
-
-    def test_profile_change_updates_all_stages(self):
-        handles = self.handles()
-        runtime.apply_autoscale_profile("min_cost", handles)
-        runtime.apply_autoscale_profile("cost_first", handles)
-        self.assertEqual([len(target.calls) for target in handles], [2, 2, 2, 2, 2])
-        self.assertEqual(runtime._active_autoscale_profile, "cost_first")
+        self.assertIn('text.generate.spawn(job_id, prompt, seed, True)', body)
+        self.assertNotIn("image_bytes", body)
+        self.assertNotIn("threading", body)
+        self.assertNotIn(".remote(", body)
 
 
 class RetextureJobTest(unittest.TestCase):
@@ -183,9 +193,10 @@ class RetextureJobTest(unittest.TestCase):
         source = RUNTIME.read_text(encoding="utf-8")
         pos = source.index("class RetextureWorker:")
         decorator = source[source.rfind("@app.cls(", 0, pos):pos]
-        end = source.index("def _rembg_load", pos)
+        end = source.index("def _job_stage", pos)
         body = source[pos:end]
         self.assertIn('gpu="L40S"', decorator)
+        self.assertIn('scaledown_window=RETEXTURE_SCALEDOWN_SECONDS', decorator)
         self.assertIn('local_files_only=True', body)
         self.assertIn('HF_HUB_OFFLINE', body)
         self.assertIn('delight=False', body)
@@ -194,7 +205,7 @@ class RetextureJobTest(unittest.TestCase):
     def test_retexture_validates_geometry_preservation(self):
         source = RUNTIME.read_text(encoding="utf-8")
         pos = source.index("class RetextureWorker:")
-        end = source.index("def _rembg_load", pos)
+        end = source.index("def _job_stage", pos)
         body = source[pos:end]
         self.assertIn('source_geometry_preserved', body)
         self.assertIn('np.allclose(src_mesh.bounds,objm.bounds', body)
@@ -208,7 +219,8 @@ class RetextureJobTest(unittest.TestCase):
         self.assertIn('source.get("status") != "succeeded"', body)
         self.assertIn('modal.Cls.from_name(APP_NAME, "RetextureWorker")', body)
         self.assertIn('worker.generate.remote(job_id, source_job_id, prompt, seed)', body)
-        self.assertNotIn("spawn(", body)
+        self.assertNotIn("update_autoscaler", body)
+
 
 class AffordanceJobTest(unittest.TestCase):
     def test_affordance_options_are_strict_and_defaulted(self):
@@ -312,7 +324,7 @@ class AffordanceSemanticInputTest(unittest.TestCase):
     def test_semantic_input_renderer_is_isolated_from_gpt_and_hash_binds_outputs(self):
         source = RUNTIME.read_text(encoding="utf-8")
         start = source.index("def prepare_affordance_semantic_inputs(")
-        end = source.index("def affordance_runtime_handles", start)
+        end = source.index("\n@app.function(", start)
         body = source[start:end]
         self.assertIn('gpu="L40S"', source[source.rfind("@app.function", 0, start):start])
         self.assertIn('from embodied_gen.utils.vis_utils import render_grid', body)
@@ -368,94 +380,8 @@ class AffordanceSemanticInputTest(unittest.TestCase):
             runtime.normalize_semantic_category("x" * 161)
 
 
-class AsyncControlPlaneTest(unittest.IsolatedAsyncioTestCase):
-    class AsyncCall:
-        def __init__(self, fn):
-            self.aio = fn
-
-    class AsyncItems:
-        def __init__(self, data):
-            self.data = data
-
-        def aio(self):
-            async def iterate():
-                for item in list(self.data.items()):
-                    yield item
-            return iterate()
-
-    class FakeTraffic:
-        def __init__(self):
-            self.data = {}
-            self.put = AsyncControlPlaneTest.AsyncCall(self._put)
-            self.pop = AsyncControlPlaneTest.AsyncCall(self._pop)
-            self.items = AsyncControlPlaneTest.AsyncItems(self.data)
-
-        async def _put(self, key, value):
-            self.data[key] = value
-            return True
-
-        async def _pop(self, key, default=None):
-            return self.data.pop(key, default)
-
-    class FakeAutoscalerCall:
-        def __init__(self, owner):
-            self.owner = owner
-            self.aio = self._aio
-
-        async def _aio(self, **kwargs):
-            self.owner.calls.append(kwargs)
-            return kwargs
-
-    class FakeTarget:
-        def __init__(self):
-            self.calls = []
-            self.update_autoscaler = AsyncControlPlaneTest.FakeAutoscalerCall(self)
-
-    async def test_async_profile_selection_uses_only_aio_dict_methods(self):
-        original = runtime.traffic_events
-        fake = self.FakeTraffic()
-        runtime.traffic_events = fake
-        try:
-            first = await runtime.select_request_profile_aio("auto", now=1000.0)
-            second = await runtime.select_request_profile_aio("auto", now=1001.0)
-        finally:
-            runtime.traffic_events = original
-        self.assertEqual(first["selected_profile"], "min_cost")
-        self.assertEqual(second["selected_profile"], "cost_first")
-        self.assertEqual(second["recent_requests_60s"], 2)
-
-    async def test_async_autoscale_updates_all_stages_via_aio(self):
-        runtime._active_autoscale_profile = None
-        handles = tuple(self.FakeTarget() for _ in range(5))
-        await runtime.apply_autoscale_profile_aio("min_cost", handles)
-        self.assertEqual([len(target.calls) for target in handles], [1, 1, 1, 1, 1])
-        self.assertTrue(all(target.calls[0]["scaledown_window"] == 2 for target in handles))
 
 
-class RuntimeIsolationTest(unittest.TestCase):
-    def test_cpu_workers_use_lightweight_cpu_image(self):
-        source = RUNTIME.read_text(encoding="utf-8")
-        for marker in ("class RembgWorker:", "class MeshWorker:", "def cpu_finalize("):
-            pos = source.index(marker)
-            decorator = source[source.rfind("@app.", 0, pos):pos]
-            self.assertIn("image=cpu_image", decorator, marker)
-        self.assertIn("image=image,\n    gpu=\"L40S\"", source)
-
-    def test_production_hot_path_has_no_modal_api_orchestrator(self):
-        runtime_source = RUNTIME.read_text(encoding="utf-8")
-        direct_source = DIRECT.read_text(encoding="utf-8")
-        for forbidden in ("def job_api(", "def run_job(", "def run_retexture_job(", "def run_affordance_job("):
-            self.assertNotIn(forbidden, runtime_source)
-        self.assertNotIn("@modal.asgi_app", runtime_source)
-        self.assertIn("batch_upload", direct_source)
-        self.assertIn('modal.Cls.from_name(APP_NAME, "RembgWorker")', direct_source)
-        self.assertIn('modal.Cls.from_name(APP_NAME, "Sam3DWorker")', direct_source)
-    def test_benchmark_fallback_is_preloaded_not_source_checkout(self):
-        source = RUNTIME.read_text(encoding="utf-8")
-        self.assertIn('/weights/examples/sample_00.jpg', source)
-        rembg_start = source.index("def _rembg_load")
-        rembg_end = source.index("def _rembg_prepare", rembg_start)
-        self.assertNotIn('/workspace/EmbodiedGen', source[rembg_start:rembg_end])
 
 
 if __name__ == "__main__":

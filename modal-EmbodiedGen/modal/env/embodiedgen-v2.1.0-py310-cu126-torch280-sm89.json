@@ -21,14 +21,19 @@
     "sam3d_weights": "kept outside release assets in Modal Volume",
     "hf_zerogpu_decorators": "disabled for real Modal GPU workers",
     "consumer_cuda_compiler": "nvcc intentionally absent; release archive hashes are source-pinned and verified before extraction",
-    "production_pipeline": "resident rembg CPU -> resident SAM3D L40S -> Dict state handoff -> CPU mesh/xatlas -> Lite L40S texture bake -> CPU finalize",
+    "production_pipeline": "one warm L40S cache boundary: GPU BiRefNet -> GPU SAM3D -> CPU mesh/xatlas -> GPU texture bake -> CPU finalize; one final artifact commit",
     "validation_profile": "SAM3D 16/16, 50k-face UV target, 24-view horizontal texture bake, 60-frame preview",
-    "binary_release_reuse": "Reuses the v2.0.0 PyTorch3D/nvdiffrast/gsplat SM89 binary bundle because v2.1.0 keeps Python 3.10, Torch 2.8.0, CUDA 12.6, and identical SAM3D/TRELLIS submodule pointers."
+    "binary_release_reuse": "Reuses the v2.0.0 PyTorch3D/nvdiffrast/gsplat SM89 binary bundle because v2.1.0 keeps Python 3.10, Torch 2.8.0, CUDA 12.6, and identical SAM3D/TRELLIS submodule pointers.",
+    "state_handoff": "in-process only; no split-worker Dict/Volume message bus",
+    "runtime_policy": "EmbodiedGenWorker warm 180s; Text2Image handoff 5s; Retexture warm 120s"
   },
   "validated": {
-    "status": "pending-real-modal-e2e",
+    "status": "real-modal-e2e-passed",
     "gpu": "NVIDIA L40S",
-    "profile": "min_cost"
+    "runtime": "unified-l40s",
+    "image_to_3d_pipeline_seconds": 40.893,
+    "resident_model_load_seconds": 23.789,
+    "birefnet_provider": "CUDAExecutionProvider"
   },
   "source_commit": "f0124197888c2b733e4eaa65acd81ad9cfda3b79",
   "git_dependencies": {
