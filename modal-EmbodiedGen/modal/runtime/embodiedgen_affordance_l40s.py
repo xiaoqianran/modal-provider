@@ -221,7 +221,7 @@ def _glb_accessor_array(doc: dict, bin_chunk: bytes, accessor_index: int):
     try:
         view_index = int(accessor["bufferView"])
     except (TypeError, ValueError) as exc:
-        raise RuntimeError(f"invalid GLB bufferView index: {accessor.get("bufferView")!r}") from exc
+        raise RuntimeError(f"invalid GLB bufferView index: {accessor.get('bufferView')!r}") from exc
     if not (0 <= view_index < len(views)):
         raise RuntimeError(f"invalid GLB bufferView index: {view_index}")
     view = views[view_index]
