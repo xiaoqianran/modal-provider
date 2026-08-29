@@ -85,7 +85,7 @@ MODELS: tuple[ModelSpec, ...] = (
         worker_app="modal-2d-qwen-image-2512",
         steps=50,
         guidance=4.0,
-        gpu="H100",
+        gpu="RTX-PRO-6000",
         snapshot_file="model_index.json",
     ),
     ModelSpec(
@@ -112,7 +112,7 @@ MODELS: tuple[ModelSpec, ...] = (
         worker_app="modal-2d-hidream-o1",
         steps=50,
         guidance=5.0,
-        gpu="H100",
+        gpu="L40S",
         snapshot_file="config.json",
     ),
 )
