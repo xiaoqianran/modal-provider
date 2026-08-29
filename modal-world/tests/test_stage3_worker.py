@@ -70,3 +70,13 @@ def test_stage3_worker_skips_existing_trajectory_results_but_updates_memory():
     ]
     assert "memory_bank.update_memory" in skip_block
     assert "continue" in skip_block
+
+
+def test_stage3_worker_adds_hyworld2_package_root_and_cpu_preflight():
+    source = Path("modal_world/stage3_app.py").read_text()
+    assert 'hyworld2_root = f"{HYWORLD2_SOURCE}/hyworld2"' in source
+    assert 'f"{hyworld2_root}:{worldgen_root}:{HYWORLD2_SOURCE}"' in source
+    assert "def verify_stage3_module_paths" in source
+    preflight = source[source.index("def verify_stage3_module_paths") : source.index("@app.cls(")]
+    assert 'find_spec("worldrecon.pipeline")' in preflight
+    assert "os.chdir(worldgen_root)" in preflight

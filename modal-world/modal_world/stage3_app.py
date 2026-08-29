@@ -33,6 +33,33 @@ hf_secret = modal.Secret.from_name("hyworld2-hf")
 _MODEL_TYPE = "worldstereo-memory-dmd"
 
 
+@app.function(
+    image=hyworld2_worldgen_stage3_image,
+    cpu=1.0,
+    memory=2048,
+    timeout=5 * 60,
+)
+def verify_stage3_module_paths() -> dict[str, Any]:
+    """CPU-only import-path preflight for nested WorldMirror subprocesses."""
+    import importlib.util
+    import os
+    import sys
+
+    hyworld2_root = f"{HYWORLD2_SOURCE}/hyworld2"
+    worldgen_root = f"{hyworld2_root}/worldgen"
+    for path in (hyworld2_root, worldgen_root, HYWORLD2_SOURCE):
+        if path not in sys.path:
+            sys.path.insert(0, path)
+    os.chdir(worldgen_root)
+    spec = importlib.util.find_spec("worldrecon.pipeline")
+    return {
+        "success": spec is not None,
+        "cwd": os.getcwd(),
+        "hyworld2_root": hyworld2_root,
+        "worldrecon_origin": getattr(spec, "origin", None),
+    }
+
+
 @app.cls(
     image=hyworld2_worldgen_stage3_image,
     gpu=GPU,
@@ -57,18 +84,18 @@ class WorldStereoWorker:
         os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/models/torchinductor"
         os.environ["TRITON_CACHE_DIR"] = "/models/triton"
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
-        os.environ["PYTHONPATH"] = f"{HYWORLD2_SOURCE}/hyworld2/worldgen:{HYWORLD2_SOURCE}"
+        hyworld2_root = f"{HYWORLD2_SOURCE}/hyworld2"
+        worldgen_root = f"{hyworld2_root}/worldgen"
+        os.environ["PYTHONPATH"] = f"{hyworld2_root}:{worldgen_root}:{HYWORLD2_SOURCE}"
         os.environ["RANK"] = "0"
         os.environ["LOCAL_RANK"] = "0"
         os.environ["WORLD_SIZE"] = "1"
 
         import sys
 
-        worldgen_root = f"{HYWORLD2_SOURCE}/hyworld2/worldgen"
-        if worldgen_root not in sys.path:
-            sys.path.insert(0, worldgen_root)
-        if HYWORLD2_SOURCE not in sys.path:
-            sys.path.insert(0, HYWORLD2_SOURCE)
+        for path in (hyworld2_root, worldgen_root, HYWORLD2_SOURCE):
+            if path not in sys.path:
+                sys.path.insert(0, path)
         # Preserve upstream video_gen.py cwd semantics. PanoramaMemoryBank invokes
         # ``torchrun -m worldrecon.pipeline`` with cwd="..", which must resolve
         # from hyworld2/worldgen to hyworld2 so the sibling package is importable.
