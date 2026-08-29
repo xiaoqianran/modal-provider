@@ -4,7 +4,7 @@ import hashlib
 from collections.abc import Iterator
 from pathlib import Path
 
-from . import capabilities
+from . import capabilities, modal_session
 from .constants import (
     ARTIFACT_ROLE,
     DEFAULT_MODEL,
@@ -48,6 +48,18 @@ class Modal2DProvider:
 
     def unavailable_descriptor(self) -> dict[str, object]:
         return _descriptor(model_ids=[], status="disabled", health="unavailable")
+
+    def connection_status(self) -> dict[str, object]:
+        return {"connected": modal_session.connected(), "managed": True}
+
+    def connect(self, token_id: str, token_secret: str) -> dict[str, object]:
+        modal_session.connect(token_id, token_secret)
+        capabilities.document(refresh_remote=True)
+        return self.connection_status()
+
+    def disconnect(self) -> dict[str, object]:
+        modal_session.disconnect()
+        return self.connection_status()
 
     def submit(
         self,
