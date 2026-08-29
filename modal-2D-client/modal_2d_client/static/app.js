@@ -30,7 +30,7 @@ function setAgent(mode,text){const el=$("#agent-status");el.dataset.state=mode;e
 function setBusy(btn,busy,label,text){btn.classList.toggle("is-busy",busy);btn.disabled=busy;if(label&&text)label.textContent=text}
 function setConnected(value){
   state.connected=value;
-  setAgent(value?"ok":"warn",value?"Modal 已连接":"Modal 未连接");
+  setAgent(value?"ok":"warn",value?"凭据就绪":"未连接");
   $("#form-message").textContent=value?"准备就绪，任务会直接提交到 Modal。":"请先在设置中输入 Modal Token。";
   $("#drawer-status").textContent=value?"已连接 Modal":"尚未连接";
 }
@@ -78,8 +78,8 @@ async function connect(){
   finally{setBusy(btn,false)}
 }
 async function disconnect(){try{await request("/modal/connect",{method:"DELETE"});setConnected(false);toast("已断开 Modal")}catch(e){toast(e.message,"error")}}
-function updateModelNote(){const model=state.models.find(m=>m.id===$("#model").value);const profile=model?.profiles?.[0];$("#model-note").textContent=model?`${model.width} × ${model.height}${profile?.steps?` · ${profile.steps} steps`:""}`:"1024 × 1024"}
-async function loadModels(){try{const{data}=await request("/v1/models");const models=Array.isArray(data.models)?data.models:[];state.models=models;if(models.length)$("#model").innerHTML=models.map(m=>`<option value="${esc(m.id)}">${esc(m.name||m.id)}</option>`).join("");updateModelNote();renderJobs()}catch(e){if(e.status!==409)toast(`模型加载失败：${e.message}`,"error")}}
+function updateModelNote(){const model=state.models.find(m=>m.id===$("#model").value);const profile=model?.profiles?.[0];$("#model-note").textContent=model?`${model.width} × ${model.height}${profile?.steps?` · ${profile.steps} steps`:""}`:"1024 × 1024";const gpu=document.querySelector(".resource-pill>span:nth-child(2)");if(gpu)gpu.textContent=`${model?.gpu||"L40S"} GPU`}
+async function loadModels(){try{const{data}=await request("/v1/models");const models=Array.isArray(data.models)?data.models:[];state.models=models;if(models.length)$("#model").innerHTML=models.map(m=>`<option value="${esc(m.id)}">${esc(m.name||m.id)}</option>`).join("");updateModelNote();renderJobs();renderModels()}catch(e){if(e.status!==409)toast(`模型加载失败：${e.message}`,"error");renderModels()}}
 function parseSeeds(){const values=$("#seeds").value.split(/[\s,]+/).filter(Boolean).map(Number);if(!values.length||values.length>8||values.some(v=>!Number.isInteger(v)||v<0||v>4294967295)||new Set(values).size!==values.length)throw new Error("Seeds 需要 1–8 个不重复整数");return values}
 function payload(){const prompt=$("#prompt").value.trim();if(!prompt)throw new Error("请先描述你想生成的画面");const body={prompt,model:$("#model").value};if($("#batch-toggle").checked)body.seeds=parseSeeds();else{const seed=Number($("#seed").value);if(!Number.isInteger(seed)||seed<0||seed>4294967295)throw new Error("Seed 不合法");body.seed=seed}const guidance=$("#guidance").value.trim();if(guidance){const n=Number(guidance);if(!Number.isFinite(n)||n<0||n>20)throw new Error("Guidance 需在 0–20 之间");body.guidance=n}return body}
 async function generate(){
@@ -133,7 +133,7 @@ function renderMeta(){
   const items=descriptors();if(items.length>1)chips.push(`${items.length} 个候选`);
   $("#meta-chips").innerHTML=chips.map(c=>`<span>${esc(c)}</span>`).join("");
 }
-async function loadJobs(){try{const{data}=await request("/v1/jobs?limit=12");state.jobs=Array.isArray(data.jobs)?data.jobs:[];renderJobs()}catch(e){toast(`任务加载失败：${e.message}`,"error")}}
+async function loadJobs(){try{const{data}=await request("/v1/jobs?limit=50");state.jobs=Array.isArray(data.jobs)?data.jobs:[];renderJobs();renderGallery()}catch(e){toast(`任务加载失败：${e.message}`,"error")}}
 function renderJobs(){
   const root=$("#job-list");
   if(!state.jobs.length){root.innerHTML='<div class="list-empty">还没有生成任务</div>';return}
@@ -155,6 +155,9 @@ async function selectJob(id){
   else{showEmpty();renderMeta();toast(`任务状态：${statusLabel(row.status)}`)}
 }
 function download(){if(!state.blobUrl)return;const descriptor=descriptors()[state.artifactIndex];const a=document.createElement("a");a.href=state.blobUrl;a.download=`${descriptor?.id||state.job?.id||"modal-2d"}.png`;a.click()}
+function renderGallery(){const root=$("#gallery-grid"),meta=readMeta();if(!state.jobs.length){root.innerHTML='<div class="list-empty">还没有生成记录</div>';return}root.innerHTML=state.jobs.map(j=>{const m=meta[j.id]||{},prompt=m.prompt||"未保存提示词";return `<article class="gallery-card" data-gallery-id="${esc(j.id)}" tabindex="0" role="button"><div class="gallery-preview">${j.status==="succeeded"?"▧":"◌"}</div><div class="gallery-card-body"><h3>${esc(prompt)}</h3><div class="gallery-card-footer"><span>${esc(modelLabel(j.model))}</span><span class="job-status" data-state="${esc(j.status)}">${esc(statusLabel(j.status))}</span></div></div></article>`}).join("")}
+function renderModels(){const root=$("#models-grid");if(!state.connected){root.innerHTML='<div class="list-empty">连接 Modal 后即可读取可用模型</div>';return}if(!state.models.length){root.innerHTML='<div class="list-empty">当前没有可用模型</div>';return}root.innerHTML=state.models.map(m=>{const p=m.profiles?.[0],params=m.parameters?Object.keys(m.parameters).join("、"):"Prompt、Seed、Guidance";return `<article class="model-card"><div class="model-badge">2D</div><h3>${esc(m.name||m.id)}</h3><p>${esc(params)}</p><div class="model-meta"><span>${esc(m.width||1024)} × ${esc(m.height||1024)}</span><span>${p?.steps?`${esc(p.steps)} steps`:"Text to Image"}</span></div><button class="model-use" data-model-id="${esc(m.id)}" type="button">使用此模型</button></article>`}).join("")}
+function showView(view){document.querySelectorAll(".topbar nav [data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===view));const work=view==="workspace";$(".composer").hidden=!work;$(".workspace").hidden=!work;$(".jobs").hidden=!work;$("#gallery-view").hidden=view!=="gallery";$("#models-view").hidden=view!=="models";if(view==="gallery")renderGallery();if(view==="models"){renderModels();if(state.connected&&!state.models.length)loadModels()}}
 function syncShortcutHint(){$("#kbd-hint").textContent=/Mac|iPhone|iPad|iPod/.test(navigator.platform||navigator.userAgent)?"⌘ ↵":"Ctrl ↵"}
 $("#open-settings").onclick=openSettings;$("#close-settings").onclick=closeSettings;$("#scrim").onclick=closeSettings;$("#connect").onclick=connect;$("#disconnect").onclick=disconnect;$("#generate").onclick=generate;$("#refresh-jobs").onclick=loadJobs;$("#download").onclick=download;
 $("#prompt").oninput=e=>$("#prompt-count").textContent=`${e.target.value.length} / 4000`;
@@ -162,6 +165,12 @@ $("#model").onchange=updateModelNote;
 $("#token-command").addEventListener("input",e=>parseTokenCommand(e.target.value));
 $("#token-command").addEventListener("paste",e=>setTimeout(()=>parseTokenCommand(e.target.value),0));
 $("#batch-toggle").onchange=e=>{$("#batch-seeds-wrap").hidden=!e.target.checked;$("#seed-wrap").hidden=e.target.checked};
+function setBatchMode(enabled){$("#batch-toggle").checked=enabled;$("#batch-seeds-wrap").hidden=!enabled;$("#seed-wrap").hidden=enabled;$("#single-mode").classList.toggle("active",!enabled);$("#batch-mode").classList.toggle("active",enabled)}
+$("#single-mode").onclick=()=>setBatchMode(false);$("#batch-mode").onclick=()=>setBatchMode(true);
+document.querySelector(".topbar nav").onclick=e=>{const b=e.target.closest("[data-view]");if(b)showView(b.dataset.view)};
+$("#gallery-refresh").onclick=loadJobs;
+$("#gallery-grid").onclick=e=>{const card=e.target.closest("[data-gallery-id]");if(card){showView("workspace");selectJob(card.dataset.galleryId)}};
+$("#models-grid").onclick=e=>{const b=e.target.closest("[data-model-id]");if(b){$("#model").value=b.dataset.modelId;updateModelNote();showView("workspace");toast(`已选择 ${modelLabel(b.dataset.modelId)}`)}};
 $("#candidate-tabs").onclick=e=>{const b=e.target.closest("button[data-index]");if(b)loadArtifact(Number(b.dataset.index))};
 $("#job-list").onclick=e=>{const card=e.target.closest("[data-id]");if(card)selectJob(card.dataset.id)};
 $("#job-list").onkeydown=e=>{if(e.key!=="Enter"&&e.key!==" ")return;const card=e.target.closest("[data-id]");if(card){e.preventDefault();selectJob(card.dataset.id)}};

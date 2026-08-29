@@ -58,6 +58,7 @@ def public_models() -> list[dict[str, object]]:
             "profiles": model["profiles"],
             "width": model["width"],
             "height": model["height"],
+            "gpu": model.get("gpu", "L40S"),
         }
         for model in doc["models"]
     ]

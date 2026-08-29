@@ -1,64 +1,23 @@
 <!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark"><title>modal-2D Agent · Image Studio</title>
-  <link rel="stylesheet" href="./styles.css">
-</head>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>modal-2D Agent · Image Studio</title><link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./views.css"></head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="./" aria-label="modal-2D 首页">M<span>2</span></a>
-    <div class="brand-copy"><strong>modal-2D</strong><small>Image Studio</small></div>
-    <div class="top-actions"><span class="status" id="agent-status"><i></i><span>检测中</span></span><button class="icon-btn" id="open-settings" type="button">设置</button></div>
-  </header>
-  <main class="studio">
-    <section class="composer panel">
-      <div class="section-title"><div><span class="kicker">CREATE</span><h1>生成一张图片</h1></div><span class="model-note" id="model-note">1024 × 1024</span></div>
-      <label class="prompt-wrap"><textarea id="prompt" maxlength="4000" rows="5" placeholder="描述你想生成的画面……" aria-label="画面描述"></textarea><span id="prompt-count" class="prompt-count">0 / 4000</span></label>
-      <div class="controls">
-        <label><span>模型</span><select id="model"><option value="sana-sprint-1.6b">SANA-Sprint 1.6B</option><option value="sana-sprint-0.6b">SANA-Sprint 0.6B</option></select></label>
-        <label id="seed-wrap"><span>Seed</span><input id="seed" type="number" min="0" max="4294967295" value="42"></label>
-        <label><span>Guidance</span><input id="guidance" type="number" min="0" max="20" step="0.1" placeholder="默认"></label>
-      </div>
-      <div class="batch-row"><label class="switch"><input id="batch-toggle" type="checkbox"><span></span>批量候选</label><label class="batch-seeds" id="batch-seeds-wrap" hidden><span>Seeds（逗号分隔，1–8 个）</span><input id="seeds" value="42, 73, 104, 135"></label></div>
-      <div class="generate-row"><p id="form-message">输入 Modal Token 后即可生成。</p><button class="generate" id="generate" type="button"><span class="btn-spinner" aria-hidden="true"></span><span id="generate-label">生成图片</span><kbd id="kbd-hint">⌘ ↵</kbd></button></div>
-    </section>
-    <section class="result panel">
-      <div class="section-title compact"><div><span class="kicker">RESULT</span><h2>生成结果</h2></div><span class="job-state" id="job-state">等待生成</span></div>
-      <div class="canvas">
-        <div class="empty" id="result-empty"><div class="empty-mark">✦</div><strong>结果会显示在这里</strong><span>PNG · 1024 × 1024</span></div>
-        <div class="progress" id="result-progress" hidden><i></i><strong id="progress-title">正在生成</strong><span id="progress-copy">任务已提交，等待 GPU 返回结果</span></div>
-        <img id="result-image" alt="生成结果" hidden tabindex="0" role="button" title="点击放大查看">
-      </div>
-      <div class="result-meta" id="result-meta" hidden>
-        <p id="meta-prompt"></p>
-        <div class="meta-chips" id="meta-chips"></div>
-      </div>
-      <div class="result-footer"><div class="candidate-tabs" id="candidate-tabs"></div><div class="result-actions"><span id="verify-state">尚无产物</span><button class="secondary" id="download" type="button" disabled>下载 PNG</button></div></div>
-    </section>
-    <section class="jobs panel">
-      <div class="section-title compact"><div><span class="kicker">RECENT</span><h2>最近任务</h2></div><button class="text-btn" id="refresh-jobs" type="button">刷新</button></div>
-      <div class="job-list" id="job-list"><div class="list-empty">还没有生成任务</div></div>
-    </section>
-  </main>
-  <aside class="drawer" id="settings" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true" inert>
-    <div class="drawer-head"><div><span class="kicker">SETTINGS</span><h2 id="drawer-title">连接 Modal</h2></div><button class="close" id="close-settings" type="button" aria-label="关闭设置">×</button></div>
-    <p class="drawer-copy">凭据只保存在当前 Agent 进程内存中，不写入数据库或日志。</p>
-    <label><span>粘贴 modal token set 命令</span><input id="token-command" type="password" autocomplete="off" placeholder="modal token set --token-id ak-... --token-secret as-..."></label>
-    <p class="parse-hint" id="parse-hint">粘贴后自动提取 ID 和 Secret。</p>
-    <label><span>Modal Token ID</span><input id="token-id" autocomplete="off" placeholder="ak-..."></label>
-    <label><span>Modal Token Secret</span><input id="token-secret" type="password" autocomplete="off" placeholder="as-..."></label>
-    <label><span>本地 Agent Session（可选）</span><input id="session-token" type="password" autocomplete="off" placeholder="X-Modal-2D-Session"></label>
-    <div class="drawer-actions"><button class="secondary" id="disconnect" type="button">断开</button><button class="generate" id="connect" type="button"><span class="btn-spinner" aria-hidden="true"></span><span>连接 Modal</span></button></div>
-    <p class="drawer-status" id="drawer-status"></p>
-    <details><summary>API 调试信息</summary><pre id="debug-log">尚无请求</pre></details>
-  </aside>
-  <div class="scrim" id="scrim" hidden></div>
-  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
-  <div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="图片预览">
-    <img id="lightbox-image" alt="生成结果大图">
-    <button class="lightbox-close" id="lightbox-close" type="button" aria-label="关闭预览">×</button>
-  </div>
-  <script src="./app.js" defer></script>
-</body>
-</html>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="./" aria-label="modal-2D 首页">M2</a><strong class="brand-name">Modal Studio</strong><span class="top-divider"></span><div class="resource-pill"><span>◈</span><span>A100 GPU</span><b id="agent-status" data-state="warn"><i></i><span>检测中</span></b></div><div class="resource-pill credits"><span>◎</span><span>2,450 Credits</span></div><nav aria-label="主导航"><button class="active" data-view="workspace" type="button">工作台</button><button data-view="gallery" type="button">图库</button><button data-view="models" type="button">模型</button></nav><div class="top-actions"><button class="bare-btn" type="button" aria-label="通知">●</button><button class="icon-btn" id="open-settings" type="button" aria-label="设置">⚙</button><span class="avatar">AI</span></div></div></header>
+<main class="studio">
+<aside class="composer"><div class="composer-scroll">
+<div class="mode-toggle"><button class="active" id="single-mode" type="button"><span>✎</span>单张</button><button id="batch-mode" type="button"><span>▦</span>批量</button></div>
+<div><div class="field-head"><label for="prompt">提示词</label><span id="prompt-count">0 / 4000</span></div><label class="prompt-wrap"><textarea id="prompt" maxlength="4000" rows="5" placeholder="描述你想生成的画面……" aria-label="画面描述"></textarea><span class="prompt-tools" aria-hidden="true">✦</span></label></div>
+<button class="generate" id="generate" type="button"><span class="btn-spinner" aria-hidden="true"></span><span class="magic">✦</span><span id="generate-label">生成图片</span><kbd id="kbd-hint">⌘ ↵</kbd></button><p id="form-message" class="form-message">输入 Modal Token 后即可生成。</p><div class="section-rule"></div>
+<details class="parameters" open><summary>参数设置 <span>⌃</span></summary>
+<div class="control"><div class="field-head"><label for="model">模型</label><span id="model-note">1024 × 1024</span></div><select id="model"><option value="sana-sprint-1.6b">SANA-Sprint 1.6B</option><option value="sana-sprint-0.6b">SANA-Sprint 0.6B</option></select></div>
+<div class="control"><div class="field-head"><label for="guidance">Guidance Scale</label></div><input id="guidance" type="number" min="0" max="20" step="0.1" placeholder="默认"></div>
+<div class="control" id="seed-wrap"><div class="field-head"><label for="seed">Seed</label><span>固定种子可复现</span></div><input id="seed" type="number" min="0" max="4294967295" value="42"></div>
+<div class="batch-row"><label class="switch"><span>批量候选</span><input id="batch-toggle" type="checkbox"><i></i></label></div><label class="batch-seeds" id="batch-seeds-wrap" hidden><span>Seeds（逗号分隔，1–8 个）</span><input id="seeds" value="42, 73, 104, 135"></label>
+</details></div></aside>
+<section class="workspace"><div class="workspace-bar"><div><strong>当前会话</strong><span class="ready"><i></i>Ready</span></div><div><button class="square-btn" id="download" type="button" disabled aria-label="下载 PNG">⇩</button><button class="square-btn" type="button" aria-label="更多操作">•••</button></div></div><div class="canvas-area"><div class="canvas"><div class="empty" id="result-empty"><div class="empty-mark">▧</div><strong>结果会显示在这里</strong><span>输入提示词并开始生成</span></div><div class="progress" id="result-progress" hidden><i></i><strong id="progress-title">正在生成</strong><span id="progress-copy">任务已提交，等待 GPU 返回结果</span></div><img id="result-image" alt="生成结果" hidden tabindex="0" role="button" title="点击放大查看"></div><div class="result-meta" id="result-meta" hidden><p id="meta-prompt"></p><div class="meta-chips" id="meta-chips"></div></div><div class="result-footer"><div class="candidate-tabs" id="candidate-tabs"></div><div class="result-actions"><span id="verify-state">尚无产物</span></div></div></div></section>
+<aside class="jobs"><div class="jobs-head"><div><h2>历史记录</h2><span class="job-state" id="job-state">等待生成</span></div><button class="text-btn" id="refresh-jobs" type="button">刷新</button></div><div class="job-list" id="job-list"><div class="list-empty">还没有生成任务</div></div></aside>
+<section class="page-view" id="gallery-view" hidden><div class="page-heading"><div><span class="kicker">LIBRARY</span><h1>生成图库</h1><p>浏览并重新打开你的历史生成结果。</p></div><button class="secondary" id="gallery-refresh" type="button">刷新图库</button></div><div class="gallery-grid" id="gallery-grid"></div></section>
+<section class="page-view" id="models-view" hidden><div class="page-heading"><div><span class="kicker">MODELS</span><h1>模型中心</h1><p>查看当前 Modal 服务提供的图像生成模型。</p></div></div><div class="models-grid" id="models-grid"></div></section>
+</main>
+<aside class="drawer" id="settings" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true" inert><div class="drawer-head"><div><span class="kicker">SETTINGS</span><h2 id="drawer-title">连接 Modal</h2></div><button class="close" id="close-settings" type="button" aria-label="关闭设置">×</button></div><p class="drawer-copy">凭据只保存在当前 Agent 进程内存中，不写入数据库或日志。</p><label><span>粘贴 modal token set 命令</span><input id="token-command" type="password" autocomplete="off" placeholder="modal token set --token-id ak-... --token-secret as-..."></label><p class="parse-hint" id="parse-hint">粘贴后自动提取 ID 和 Secret。</p><label><span>Modal Token ID</span><input id="token-id" autocomplete="off" placeholder="ak-..."></label><label><span>Modal Token Secret</span><input id="token-secret" type="password" autocomplete="off" placeholder="as-..."></label><label><span>本地 Agent Session（可选）</span><input id="session-token" type="password" autocomplete="off" placeholder="X-Modal-2D-Session"></label><div class="drawer-actions"><button class="secondary" id="disconnect" type="button">断开</button><button class="generate" id="connect" type="button"><span class="btn-spinner" aria-hidden="true"></span><span>连接 Modal</span></button></div><p class="drawer-status" id="drawer-status"></p><details><summary>API 调试信息</summary><pre id="debug-log">尚无请求</pre></details></aside>
+<div class="scrim" id="scrim" hidden></div><div class="toasts" id="toasts" role="status" aria-live="polite"></div><div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="图片预览"><img id="lightbox-image" alt="生成结果大图"><button class="lightbox-close" id="lightbox-close" type="button" aria-label="关闭预览">×</button></div><script src="./app.js" defer></script>
+</body></html>
