@@ -14,7 +14,7 @@ from . import capabilities, modal_session
 from .contracts import ContractError
 from .jobs import JobService
 
-UI_DIR = Path(__file__).parent / "ui"
+UI_DIR = Path(__file__).parent / "static"
 UI_ROOT = "/ui"
 UI_INDEX = UI_DIR / "index.html"
 

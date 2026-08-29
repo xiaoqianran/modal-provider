@@ -321,9 +321,9 @@ def test_ui_assets_are_declared_as_package_data():
     )
     package_data = pyproject.get("tool", {}).get("setuptools", {}).get("package-data", {})
     patterns = package_data.get("modal_2d_client", [])
-    assert "ui/*.html" in patterns
-    assert "ui/*.css" in patterns
-    assert "ui/*.js" in patterns
+    assert "static/*.html" in patterns
+    assert "static/*.css" in patterns
+    assert "static/*.js" in patterns
 
 
 def test_api_accepts_batch_seeds_as_one_job():
