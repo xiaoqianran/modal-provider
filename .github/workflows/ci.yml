@@ -147,7 +147,7 @@ jobs:
           python-version: "3.10"
           enable-cache: true
       - run: uv run --isolated --with pytest --with "modal>=1.5,<2" python -m compileall -q embodied_gen modal
-      - run: uv run --isolated --with pytest --with "modal>=1.5,<2" pytest -q modal/tests
+      - run: uv run --isolated --with pytest --with "modal>=1.5,<2" --with "numpy==1.26.4" pytest -q modal/tests
 
   modal-build:
     name: modal-build
