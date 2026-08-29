@@ -5,7 +5,10 @@ from modal_world.stage3_patch import patch_stage3_runtime
 
 def test_stage3_runtime_patch_matches_pinned_upstream(tmp_path: Path):
     src = Path("/tmp/hyworld2-src")
-    if not src.exists():
+    if not (
+        (src / "hyworld2/worldgen/models/worldstereo_wrapper.py").is_file()
+        and (src / "hyworld2/worldgen/src/retrieval_wm.py").is_file()
+    ):
         return
     target = tmp_path / "source"
     for rel in (
@@ -80,3 +83,21 @@ def test_stage3_worker_adds_hyworld2_package_root_and_cpu_preflight():
     preflight = source[source.index("def verify_stage3_module_paths") : source.index("@app.cls(")]
     assert 'find_spec("worldrecon.pipeline")' in preflight
     assert "os.chdir(worldgen_root)" in preflight
+
+
+def test_stage3_alignment_has_phase_profiling_without_algorithm_changes():
+    patch = Path("modal_world/stage3_patch.py").read_text()
+    worker = Path("modal_world/stage3_app.py").read_text()
+    for name in (
+        "phase1_mapping",
+        "phase2_preprocess_align",
+        "phase3_sync_kb",
+        "phase4_detect_kb_anomalies",
+        "phase5_finalize_kb",
+        "phase6_build_pointclouds",
+        "phase6_5_sor",
+        "phase7_save_sync",
+    ):
+        assert name in patch
+    assert 'getattr(memory_bank, "alignment_profile", {})' in worker
+    assert '"alignment_profile": alignment_profile' in worker

@@ -19,7 +19,10 @@ def test_stage2_uses_single_process_and_persistent_cuda_caches():
 
 def test_stage2_patch_matches_pinned_upstream(tmp_path: Path):
     src = Path("/tmp/hyworld2-src")
-    if not src.exists():
+    if not (
+        (src / "hyworld2/worldgen/traj_render.py").is_file()
+        and (src / "hyworld2/worldgen/src/pointcloud.py").is_file()
+    ):
         return
     target = tmp_path / "source"
     target.mkdir()

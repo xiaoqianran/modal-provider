@@ -366,6 +366,10 @@ class WorldStereoWorker:
                 memory_bank.apply_worldmirror(skip_exist=True)
             with timer.track("Memory bank Alignment"):
                 memory_bank.alignment(debug_mode=False)
+            alignment_profile = {
+                name: round(value, 4)
+                for name, value in getattr(memory_bank, "alignment_profile", {}).items()
+            }
             with timer.track("[IO] Save final aligned pointcloud (update memory)"):
                 memory_bank.export_pcd(
                     str(target / f"render_results/generation_bank_{_MODEL_TYPE}"),
@@ -385,6 +389,7 @@ class WorldStereoWorker:
             "gpu_peak_used_mib": int(torch.cuda.max_memory_allocated() / (1024**2)),
             "result_count": len(results),
             "aligned_pcd_exists": aligned_pcd.is_file(),
+            "alignment_profile": alignment_profile,
             "timer_records": {
                 name: [round(value, 4) for value in values]
                 for name, values in timer.records.items()
