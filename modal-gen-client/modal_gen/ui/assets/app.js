@@ -1,5 +1,5 @@
 // modal-gen console — shell, router, api and shared UI primitives.
-import { mountConnect } from "./views/view_connect.js";
+import { mountConnect, openConnectionSettings } from "./views/view_connect.js";
 import { mountCreate } from "./views/view_create.js";
 import { mountJobs } from "./views/view_jobs.js";
 import { mountArtifacts } from "./views/view_artifacts.js";
@@ -217,12 +217,12 @@ function drawNav() {
       const r = ROUTES[key];
       const count = key === "jobs" ? store.counts.jobs : key === "artifacts" ? store.counts.artifacts : null;
       const item = h("button", {
-        class: "nav-item", dataset: { route: key },
+        class: "topnav__item", dataset: { route: key },
         onclick: () => { location.hash = `#/${key}`; },
       },
-        icon(r.icon, 16),
-        h("span", { class: "nav-item__label" }, r.label),
-        count ? h("span", { class: "nav-item__count" }, String(count)) : null
+        h("span", { class: "topnav__icon" }, icon(r.icon, 14)),
+        h("span", {}, r.label),
+        count ? h("span", { class: "topnav__count" }, String(count)) : null
       );
       const active = (location.hash || "#/connect").slice(2) === key;
       if (active) item.setAttribute("aria-current", "true");
@@ -242,19 +242,19 @@ function route() {
 }
 
 function paintConnector() {
-  const dot = document.getElementById("conn-dot");
+  const status = document.getElementById("connector-status");
   const state = document.getElementById("conn-state");
   const id = document.getElementById("conn-id");
   const badge = document.getElementById("mode-badge");
   badge.hidden = store.mode !== "demo";
   if (!store.reachable) {
-    dot.className = "conn-dot conn-dot--off";
-    state.textContent = "离线";
-    id.textContent = "Connector unreachable";
+    status.dataset.state = "bad";
+    state.textContent = "Connector 离线";
+    id.textContent = "unreachable";
     return;
   }
-  dot.className = "conn-dot conn-dot--ok";
-  state.textContent = store.connector ? "已连接" : "就绪";
+  status.dataset.state = "ok";
+  state.textContent = "Connector 在线";
   const cid = store.connector?.id || "unified-connector";
   const ver = store.connector?.version || "0.1.0";
   id.textContent = `${cid} · v${ver}`;
@@ -270,6 +270,7 @@ async function bootstrap() {
     store.reachable = false;
   }
   paintConnector();
+  document.getElementById("open-settings").onclick = () => openConnectionSettings();
   // render the shell immediately; nav counts are decorative and must never
   // block the first paint of a screen.
   refreshCounts();

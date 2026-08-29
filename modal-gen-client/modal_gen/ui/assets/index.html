@@ -1,43 +1,28 @@
 <!doctype html>
-<html lang="zh">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>modal-gen · 本地生成控制台</title>
-    <link rel="stylesheet" href="/ui/assets/styles.css" />
-  </head>
-  <body>
-    <div id="app" class="app">
-      <aside class="rail">
-        <div class="rail__brand">
-          <span class="brand__mark" aria-hidden="true"></span>
-          <div class="brand__text">
-            <span class="brand__name">modal-gen</span>
-            <span class="brand__sub">本地生成控制台</span>
-          </div>
-        </div>
-
-        <nav class="rail__nav" id="nav" aria-label="主导航"></nav>
-
-        <div class="rail__foot" id="rail-foot">
-          <div class="conn-card" id="conn-card">
-            <span class="conn-dot" id="conn-dot"></span>
-            <div class="conn-text">
-              <span class="conn-state" id="conn-state">检测中</span>
-              <span class="conn-id" id="conn-id">Connector —</span>
-            </div>
-          </div>
-          <span class="pill pill--demo" id="mode-badge" hidden>演示</span>
-        </div>
-      </aside>
-
-      <main class="main" id="screen" aria-live="polite"></main>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>modal-gen · Generation Studio</title>
+  <link rel="stylesheet" href="/ui/assets/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/connect" aria-label="modal-gen 首页">M<span>G</span></a>
+    <div class="brand-copy"><strong>modal-gen</strong><small>Generation Studio</small></div>
+    <nav class="topnav" id="nav" aria-label="主导航"></nav>
+    <div class="top-actions">
+      <span class="pill pill--demo" id="mode-badge" hidden>演示</span>
+      <span class="status" id="connector-status"><i id="conn-dot"></i><span id="conn-state">检测中</span></span>
+      <span class="connector-id" id="conn-id">Connector —</span>
+      <button class="icon-btn" id="open-settings" type="button">设置</button>
     </div>
-
-    <div id="toast-host" class="toast-host" aria-live="polite"></div>
-    <div id="drawer-host" class="drawer-host"></div>
-    <div id="dialog-host" class="dialog-host"></div>
-
-    <script type="module" src="/ui/assets/app.js"></script>
-  </body>
+  </header>
+  <main class="studio studio--gen" id="screen" aria-live="polite"></main>
+  <div id="toast-host" class="toast-host" aria-live="polite"></div>
+  <div id="drawer-host" class="drawer-host"></div>
+  <div id="dialog-host" class="dialog-host"></div>
+  <script type="module" src="/ui/assets/app.js"></script>
+</body>
 </html>

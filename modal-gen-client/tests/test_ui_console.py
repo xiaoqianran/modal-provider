@@ -254,3 +254,14 @@ def test_live_gateway_uses_longer_timeout_for_provider_connect(monkeypatch) -> N
     assert captured["method"] == "POST"
     assert captured["path"] == "/v1/providers/connect"
     assert captured["timeout"] == 30.0
+
+
+def test_ui_shell_matches_provider_client_studio(ui_server: str) -> None:
+    with urllib.request.urlopen(f"{ui_server}/") as resp:  # noqa: S310
+        body = resp.read().decode()
+
+    assert 'class="topbar"' in body
+    assert 'class="brand"' in body
+    assert 'id="open-settings"' in body
+    assert 'id="nav"' in body
+    assert 'class="rail"' not in body

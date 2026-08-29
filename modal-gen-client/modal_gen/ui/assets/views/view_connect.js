@@ -1,14 +1,20 @@
 // Screen: 连接 — inspect the Provider Hub and manage in-memory Modal connections.
 import {
-  h, icon, fmtTime, providerBadge, apiGet, apiPost, toast, store, stateEmpty,
+  h, icon, fmtTime, providerBadge, apiGet, apiPost, toast, store, stateEmpty, openDrawer,
 } from "../app.js";
 import { parseModalTokenCommand } from "../modal_credentials.js";
 
 export async function mountConnect(root) {
   root.append(
-    h("div", { class: "screen-head" },
-      h("h1", { class: "screen-head__title" }, "Provider Hub"),
-      h("p", { class: "screen-head__job" }, "modal-gen 聚合本机 Provider；2D / 3D client 直接连接已部署的 Modal App。")
+    h("div", { class: "screen-head studio-head" },
+      h("div", {},
+        h("span", { class: "kicker" }, "PROVIDERS"),
+        h("h1", { class: "screen-head__title" }, "Provider Hub"),
+        h("p", { class: "screen-head__job" }, "统一管理 2D / 3D Provider 与 Modal Workspace 连接。")
+      ),
+      store.mode === "live"
+        ? h("button", { class: "icon-btn", type: "button", onclick: () => openConnectionSettings() }, "连接设置")
+        : null
     )
   );
 
@@ -45,10 +51,6 @@ export async function mountConnect(root) {
   loading.remove();
 
   root.append(hubOverview(snap, connections));
-
-  if (store.mode === "live") {
-    root.append(connectionPanel(connections));
-  }
 
   const providers = h("div", { class: "stack" });
   const connectionMap = new Map(connections.map((item) => [item.id, item]));
@@ -96,6 +98,21 @@ function hubOverview(snapshot, connections) {
       )
     )
   );
+}
+
+export async function openConnectionSettings() {
+  if (store.mode !== "live") {
+    toast("演示模式不需要 Modal 凭证");
+    return;
+  }
+  let connections = [];
+  try {
+    const data = await apiGet("connections");
+    connections = data.providers || [];
+  } catch (error) {
+    toast(`读取连接状态失败：${String(error.message || error)}`, "danger");
+  }
+  openDrawer("连接 Modal", connectionPanel(connections));
 }
 
 function connectionPanel(connections) {
@@ -190,42 +207,25 @@ function connectionPanel(connections) {
   const count = managed.filter((item) => item.connected).length;
   const allConnected = managed.length > 0 && count === managed.length;
 
-  return h("section", { class: "connect-card" },
-    h("div", { class: "connect-card__head" },
-      h("div", {},
-        h("div", { class: "connect-card__eyebrow" }, "MODAL CONNECTION"),
-        h("h2", { class: "connect-card__title" }, "连接 Modal Workspace"),
-        h("p", { class: "connect-card__copy" }, "一组凭证同时用于本机 2D / 3D Provider。")
-      ),
-      h("span", { class: `badge badge--${allConnected ? "ok" : count ? "warn" : "neutral"}` },
-        h("span", { class: "badge__dot" }),
-        allConnected ? `${count}/${managed.length} 已连接` : count ? `${count}/${managed.length} 部分连接` : "未连接"
-      )
+  return h("div", { class: "modal-settings" },
+    h("p", { class: "drawer-copy" }, "一组凭证同时用于本机 2D / 3D Provider。凭据只保存在当前 Agent 进程内存中。"),
+    h("div", { class: "connect-status-grid" },
+      ...managed.map((item) => h("div", { class: "connect-provider" },
+        h("span", { class: `connect-provider__dot ${item.connected ? "is-on" : ""}` }),
+        h("div", {},
+          h("strong", {}, item.id === "modal-2d" ? "Modal 2D" : item.id === "modal-3d" ? "Modal 3D" : item.id),
+          h("span", {}, item.connected ? "Connected" : "Disconnected")
+        )
+      ))
     ),
-    h("div", { class: "connect-card__body" },
-      h("div", { class: "connect-status-grid" },
-        ...managed.map((item) => h("div", { class: "connect-provider" },
-          h("span", { class: `connect-provider__dot ${item.connected ? "is-on" : ""}` }),
-          h("div", {},
-            h("strong", {}, item.id === "modal-2d" ? "Modal 2D" : item.id === "modal-3d" ? "Modal 3D" : item.id),
-            h("span", {}, item.connected ? "Connected" : "Disconnected")
-          )
-        ))
-      ),
-      h("div", { class: "connect-section" },
-        h("div", { class: "connect-section__label" }, "Modal CLI 命令"),
-        command,
-        status
-      ),
-      h("div", { class: "connect-credentials" },
-        field("Token ID", tokenId),
-        field("Token Secret", tokenSecret)
-      ),
-      h("div", { class: "connect-footer" },
-        h("span", { class: "connect-footer__note" }, "凭证不会写入数据库或前端存储。"),
-        h("div", { class: "row" }, disconnect, connect)
-      )
-    )
+    h("label", { class: "drawer-field" },
+      h("span", {}, "粘贴 modal token set 命令"),
+      command
+    ),
+    status,
+    h("label", { class: "drawer-field" }, h("span", {}, "Modal Token ID"), tokenId),
+    h("label", { class: "drawer-field" }, h("span", {}, "Modal Token Secret"), tokenSecret),
+    h("div", { class: "drawer-actions" }, disconnect, connect)
   );
 }
 
