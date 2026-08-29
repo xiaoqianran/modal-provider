@@ -13,6 +13,7 @@ all_packages=(
   modal-gen-client
   modal-EmbodiedGen
   modal-build
+  modal-world
 )
 
 repo_url() {
@@ -24,6 +25,7 @@ repo_url() {
     modal-gen-client) echo "https://github.com/xiaoqianran/modal-gen-client.git" ;;
     modal-EmbodiedGen) echo "https://github.com/xiaoqianran/modal-EmbodiedGen.git" ;;
     modal-build) echo "https://github.com/xiaoqianran/modal-build.git" ;;
+    modal-world) echo "https://github.com/xiaoqianran/modal-world.git" ;;
     *) return 1 ;;
   esac
 }
@@ -31,7 +33,7 @@ repo_url() {
 repo_branch() {
   case "$1" in
     modal-2D|modal-2D-client|modal-3D-client|modal-gen-client) echo "main" ;;
-    modal-3D|modal-EmbodiedGen|modal-build) echo "master" ;;
+    modal-3D|modal-EmbodiedGen|modal-build|modal-world) echo "master" ;;
     *) return 1 ;;
   esac
 }

@@ -14,6 +14,7 @@ modal-provider
 ├─ modal-2D/              image generation Provider
 ├─ modal-3D-client/       3D Reference Sidecar
 ├─ modal-3D/              3D generation Provider
+├─ modal-world/           world generation/reconstruction Provider
 ├─ modal-EmbodiedGen/     EmbodiedGen fork；其 modal/ 仅负责 EmbodiedGen 的 Modal 集成
 └─ modal-build/           通用 CUDA/PyTorch 可复现构建与 release artifacts
 ```
@@ -30,6 +31,7 @@ modal-provider
 - Reference Sidecar restore/cache；
 - local pairing/session/security gateway；
 - 2D/3D input conditioning and model execution；
+- World generation/reconstruction、HY-World 2.0 orchestration and resumable world artifacts；
 - EmbodiedGen fork 与其 `modal/` 下的 EmbodiedGen-specific build/runtime/control plane；
 - FastSAM3D、Hunyuan3D、TRELLIS、Pixal3D、BiRefNet、HY-World 等通用 CUDA/PyTorch build artifacts。
 
@@ -69,6 +71,7 @@ modal-provider
 - `modal-gen-client` (`main`) → https://github.com/xiaoqianran/modal-gen-client
 - `modal-EmbodiedGen` (`master`) → https://github.com/xiaoqianran/modal-EmbodiedGen
 - `modal-build` (`master`) → https://github.com/xiaoqianran/modal-build
+- `modal-world` (`master`) → https://github.com/xiaoqianran/modal-world
 
 ### 同步前必须检查
 

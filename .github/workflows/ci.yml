@@ -158,3 +158,22 @@ jobs:
       - run: uv run --isolated --with "modal>=1.5,<2" python -m compileall -q integrations
       - run: uv run --isolated --with "modal>=1.5,<2" python -m unittest discover -s integrations/birefnet/tests -v
       - run: uv run --isolated --with "modal>=1.5,<2" python -m unittest discover -s integrations/hyworld2/tests -v
+
+  modal-world:
+    name: modal-world
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: modal-world
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.11"
+          enable-cache: true
+      - run: uv lock --check
+      - run: uv sync --extra dev --frozen
+      - run: uv run ruff check modal_world tests
+      - run: uv run python -m compileall -q modal_world tests
+      - run: uv run pytest -q
