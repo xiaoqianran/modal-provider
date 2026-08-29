@@ -33,7 +33,8 @@
       <div class="stage">
         <div class="empty" id="result-empty"><div class="cube">◇</div><strong>GLB 资产会显示在这里</strong><span>上传图片开始生成</span></div>
         <div class="progress" id="result-progress" hidden><i></i><strong>正在构建 3D 资产</strong><span id="progress-copy">准备输入图片</span></div>
-        <div class="complete" id="result-complete" hidden><div class="cube ready">◆</div><strong>GLB 已生成</strong><span id="artifact-meta">产物已通过完整性校验</span><button class="generate" id="download" type="button">下载 GLB</button></div>
+        <model-viewer id="glb-viewer" camera-controls touch-action="pan-y" auto-rotate shadow-intensity="1" environment-image="neutral" alt="生成的 3D GLB 资产" hidden></model-viewer>
+        <div class="complete" id="result-complete" hidden><div><strong>GLB 已生成</strong><span id="artifact-meta">产物已通过完整性校验</span></div><div class="viewer-actions"><button class="secondary" id="reset-camera" type="button">重置视角</button><button class="generate" id="download" type="button">下载 GLB</button></div></div>
       </div>
       <div class="pipeline"><span data-step="upload">上传</span><i></i><span data-step="preprocess">预处理</span><i></i><span data-step="generate">生成</span><i></i><span data-step="artifact">GLB</span></div>
     </section>
@@ -59,6 +60,7 @@
     <details><summary>API 调试信息</summary><pre id="debug-log">尚无请求</pre></details>
   </aside>
   <div class="scrim" id="scrim" hidden></div><div class="toasts" id="toasts"></div>
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js"></script>
   <script src="/ui/app.js" defer></script>
 </body>
 </html>

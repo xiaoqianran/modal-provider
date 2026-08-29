@@ -26,6 +26,8 @@ def test_static_ui_is_mounted_and_serves_index(monkeypatch, tmp_path):
     res = client.get("/ui/")
     assert res.status_code == 200
     assert "modal-3D Client" in res.text
+    assert '<model-viewer id="glb-viewer"' in res.text
+    assert "model-viewer/4.3.1/model-viewer.min.js" in res.text
     css = client.get("/ui/styles.css")
     assert css.status_code == 200
     js = client.get("/ui/app.js")
