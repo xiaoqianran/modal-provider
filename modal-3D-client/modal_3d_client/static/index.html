@@ -1,81 +1,64 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>modal-3D Client · 工作台</title>
-  <link rel="stylesheet" href="/ui/styles.css" />
-  <link rel="icon" href="data:," />
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark"><title>modal-3D Client · Asset Studio</title>
+  <link rel="stylesheet" href="/ui/styles.css">
 </head>
 <body>
-  <div class="app">
-    <aside class="sidebar" id="sidebar">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true">3D</span>
-        <div class="brand-text">
-          <span class="brand-name">modal-3D</span>
-          <span class="brand-sub">Client 工作台</span>
-        </div>
+  <header class="topbar">
+    <a class="brand" href="/ui/">M<span>3</span></a>
+    <div class="brand-copy"><strong>modal-3D</strong><small>Asset Studio</small></div>
+    <div class="top-actions"><span class="status" id="agent-status"><i></i><span>检测中</span></span><button class="icon-btn" id="open-settings" type="button">设置</button></div>
+  </header>
+  <main class="studio">
+    <section class="composer panel">
+      <div class="section-title"><div><span class="kicker">CREATE</span><h1>图片生成 3D</h1></div><span class="model-note">PNG · JPEG · WebP</span></div>
+      <label class="dropzone" id="dropzone">
+        <input id="source-file" type="file" accept="image/png,image/jpeg,image/webp">
+        <img id="source-preview" alt="输入图片预览" hidden>
+        <div class="drop-copy" id="drop-copy"><b>＋</b><strong>拖入一张图片</strong><span>或点击选择文件</span></div>
+        <button class="remove-file" id="remove-file" type="button" hidden>移除</button>
+      </label>
+      <div class="controls">
+        <label><span>模型</span><select id="model"><option>正在读取模型…</option></select></label>
+        <label><span>Profile</span><select id="profile"><option value="recommended">recommended</option></select></label>
+        <label><span>Seed</span><input id="seed" type="number" min="0" max="4294967295" value="42"></label>
       </div>
-
-      <nav class="nav" id="nav" aria-label="主导航">
-        <a class="nav-item is-active" href="#workspace" data-section="workspace">
-          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v16M2 10h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          <span>工作台</span>
-          <span class="nav-note">生成资产</span>
-        </a>
-        <a class="nav-item" href="#jobs" data-section="jobs">
-          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h12M6 3v3M14 3v3M4 6h12v11H4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-          <span>任务</span>
-          <span class="nav-note">/v1/jobs</span>
-        </a>
-        <a class="nav-item" href="#models" data-section="models">
-          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l6 3v8l-6 3-6-3V6z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M10 6v8M4 6l6 3 6-3" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
-          <span>模型</span>
-          <span class="nav-note">/v1/models</span>
-        </a>
-        <a class="nav-item" href="#connection" data-section="connection">
-          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 6L3 3M14 6l3-3M6 14l-3 3M14 14l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-          <span>连接</span>
-          <span class="nav-note">Modal 凭据</span>
-        </a>
-        <a class="nav-item" href="#api" data-section="api">
-          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          <span>API 参考</span>
-          <span class="nav-note">curl 接口</span>
-        </a>
-      </nav>
-
-      <div class="sidebar-foot">
-        <div class="conn-pill" id="conn-pill" data-state="unknown">
-          <span class="dot" aria-hidden="true"></span>
-          <span class="conn-pill-text">检测连接中…</span>
-        </div>
+      <details class="advanced"><summary>高级输入</summary><div class="advanced-body"><label><span>可选 Mask</span><input id="mask-file" type="file" accept="image/png,image/jpeg,image/webp"></label><label><span>自定义 Job ID</span><input id="job-id" placeholder="留空自动生成"></label></div></details>
+      <div class="generate-row"><p id="form-message">输入 Modal Token 并选择图片后即可生成。</p><button class="generate" id="generate" type="button"><span>生成 GLB</span><kbd>⌘ ↵</kbd></button></div>
+    </section>
+    <section class="result panel">
+      <div class="section-title compact"><div><span class="kicker">RESULT</span><h2>3D 资产</h2></div><span class="job-state" id="job-state">等待生成</span></div>
+      <div class="stage">
+        <div class="empty" id="result-empty"><div class="cube">◇</div><strong>GLB 资产会显示在这里</strong><span>上传图片开始生成</span></div>
+        <div class="progress" id="result-progress" hidden><i></i><strong>正在构建 3D 资产</strong><span id="progress-copy">准备输入图片</span></div>
+        <div class="complete" id="result-complete" hidden><div class="cube ready">◆</div><strong>GLB 已生成</strong><span id="artifact-meta">产物已通过完整性校验</span><button class="generate" id="download" type="button">下载 GLB</button></div>
       </div>
-    </aside>
-
-    <main class="main">
-      <header class="topbar">
-        <div class="topbar-title">
-          <h1 id="page-title">工作台</h1>
-          <p id="page-subtitle" class="muted">上传图片，选择一个模型生成 GLB 资产</p>
-        </div>
-        <div class="topbar-actions" id="topbar-actions"></div>
-      </header>
-
-      <div class="content" id="content">
-        <!-- sections rendered by app.js -->
-      </div>
-    </main>
-  </div>
-
-  <div class="toast-region" id="toasts" aria-live="polite"></div>
-  <div class="modal-backdrop" id="modal-backdrop" hidden></div>
-
-  <template id="spinner">
-    <span class="spinner" role="status" aria-label="加载中"></span>
-  </template>
-
-  <script src="/ui/app.js" type="module"></script>
+      <div class="pipeline"><span data-step="upload">上传</span><i></i><span data-step="preprocess">预处理</span><i></i><span data-step="generate">生成</span><i></i><span data-step="artifact">GLB</span></div>
+    </section>
+    <section class="models panel">
+      <div class="section-title compact"><div><span class="kicker">MODELS</span><h2>可用模型</h2></div><button class="text-btn" id="refresh-models" type="button">刷新</button></div>
+      <div class="model-grid" id="model-grid"><div class="list-empty">正在加载模型</div></div>
+    </section>
+    <section class="jobs panel">
+      <div class="section-title compact"><div><span class="kicker">RECENT</span><h2>最近任务</h2></div><button class="text-btn" id="refresh-jobs" type="button">刷新</button></div>
+      <div class="job-list" id="job-list"><div class="list-empty">还没有生成任务</div></div>
+    </section>
+  </main>
+  <aside class="drawer" id="settings" aria-hidden="true">
+    <div class="drawer-head"><div><span class="kicker">SETTINGS</span><h2>连接 Modal</h2></div><button class="close" id="close-settings" type="button">×</button></div>
+    <p class="drawer-copy">凭据只保存在当前 Client 进程内存中，不写入 Job、数据库或日志。</p>
+    <label><span>粘贴 modal token set 命令</span><input id="token-command" type="password" autocomplete="off" placeholder="modal token set --token-id ak-... --token-secret as-..."></label>
+    <p class="parse-hint" id="parse-hint">粘贴后自动提取 ID 和 Secret。</p>
+    <label><span>Modal Token ID</span><input id="token-id" autocomplete="off" placeholder="ak-..."></label>
+    <label><span>Modal Token Secret</span><input id="token-secret" type="password" autocomplete="off" placeholder="as-..."></label>
+    <label><span>本地 Client Session（可选）</span><input id="session-token" type="password" autocomplete="off" placeholder="X-Modal-3D-Session"></label>
+    <div class="drawer-actions"><button class="secondary" id="disconnect" type="button">断开</button><button class="generate" id="connect" type="button">连接 Modal</button></div>
+    <p class="drawer-status" id="drawer-status"></p>
+    <details><summary>API 调试信息</summary><pre id="debug-log">尚无请求</pre></details>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div><div class="toasts" id="toasts"></div>
+  <script src="/ui/app.js" defer></script>
 </body>
 </html>

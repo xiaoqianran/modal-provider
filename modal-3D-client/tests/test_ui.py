@@ -20,6 +20,9 @@ def test_static_ui_is_mounted_and_serves_index(monkeypatch, tmp_path):
     app = create_app()
     mount_ui(app)
     client = TestClient(app)
+    root = client.get("/", follow_redirects=False)
+    assert root.status_code == 307
+    assert root.headers["location"] == "/ui/index.html"
     res = client.get("/ui/")
     assert res.status_code == 200
     assert "modal-3D Client" in res.text

@@ -1,362 +1,55 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="color-scheme" content="dark" />
-<meta name="theme-color" content="#303446" />
-<title>modal-2D Agent · Console</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ca9ee6'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='14' font-weight='600' fill='%23232634' text-anchor='middle'%3E2D%3C/text%3E%3C/svg%3E" />
-<link rel="stylesheet" href="./styles.css" />
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark"><title>modal-2D Agent · Image Studio</title>
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-
-<header class="topbar">
-  <a class="brand" href="#" aria-label="modal-2D Agent Console">
-    <span class="brand-mark" aria-hidden="true">◈</span>
-    <span>modal-2D</span>
-    <span class="brand-sub">Agent Console</span>
-  </a>
-  <div class="topbar-meta">
-    <span class="pill muted mono" id="base-url">—</span>
-    <span class="pill" id="conn-pill" data-state="unknown">
-      <span class="dot"></span><span id="conn-pill-text">状态未知</span>
-    </span>
-    <button class="btn ghost sm" id="session-toggle" aria-expanded="false" aria-controls="session-panel">会话令牌</button>
-  </div>
-</header>
-
-<div class="banner" id="offline-banner" hidden>
-  <span class="banner-text" id="offline-text">无法访问 Agent</span>
-  <button class="btn ghost sm" id="offline-retry">重试</button>
-</div>
-
-<section class="session-panel" id="session-panel" hidden>
-  <p class="session-help">
-    Agent 启用了 <code>MODAL_2D_AGENT_TOKEN</code>，非 <code>OPTIONS</code> 请求需携带
-    <code>X-Modal-2D-Session</code>。令牌仅保存在当前标签页，不写入后端。
-  </p>
-  <div class="session-row">
-    <input type="password" id="session-input" class="input mono" placeholder="X-Modal-2D-Session" autocomplete="off" spellcheck="false" />
-    <button class="btn primary sm" id="session-save">保存</button>
-    <button class="btn ghost sm" id="session-clear">清除</button>
-    <span class="session-state mono" id="session-state">未设置</span>
-  </div>
-</section>
-
-<main id="main">
-
-  <!-- ── Hero ───────────────────────────────────────────── -->
-  <section class="hero" aria-labelledby="hero-title">
-    <p class="eyebrow">MODAL-2D PROVIDER · LOCAL AGENT</p>
-    <h1 id="hero-title">把生成流程走成看得见的 API</h1>
-    <p class="lede">不写一行 curl，也能看每个端点真实发出的请求、可复制的命令与返回。从连接 Modal 到取出经过 SHA-256 校验的 PNG，五步走完。</p>
-    <div class="recommendations" id="hero-recs" aria-label="流程概览"></div>
-  </section>
-
-  <!-- ── Step 01 · 连接 ──────────────────────────────────── -->
-  <section class="step-section" id="step-1" aria-labelledby="step-1-title">
-    <div class="section-heading">
-      <div>
-        <p class="eyebrow">01 · CONNECT</p>
-        <h2 id="step-1-title">把 Modal 凭据交给本地 Agent</h2>
-      </div>
-      <p class="section-note">凭据只驻留进程内存，不写 SQLite、不写日志、不进入 Job。未连接时能力查询与提交会返回 409。</p>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <h3 class="card-title">一键填入</h3>
-        <p class="note">把 <code>modal token set</code> 整条命令贴进来，自动拆出 id 与密钥。</p>
-      </div>
-      <label class="field">
-        <span class="field-label">modal token set 命令</span>
-        <input class="input mono" id="token-command" placeholder="modal token set --token-id ak-… --token-secret as-…" autocomplete="off" spellcheck="false" />
-      </label>
-      <div class="row-actions">
-        <button class="btn primary sm" id="btn-parse-token" type="button">解析并填入</button>
-        <span class="hint" id="token-command-hint"></span>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="field-grid">
-        <label class="field">
-          <span class="field-label">token_id</span>
-          <input class="input mono" id="token-id" placeholder="ak-…" autocomplete="off" spellcheck="false" />
-        </label>
-        <label class="field">
-          <span class="field-label">token_secret</span>
-          <input class="input mono" type="password" id="token-secret" placeholder="as-…" autocomplete="off" spellcheck="false" />
-        </label>
-      </div>
-      <div class="row-actions">
-        <button class="btn primary lg" id="btn-connect">连接</button>
-        <button class="btn ghost" id="btn-disconnect">断开</button>
-        <span class="hint">凭据也可在 <code>~/.modal.toml</code> 配置，SDK 会自动读取。</span>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <h3 class="card-title">本步骤调用的接口</h3>
-      </div>
-      <div class="eps" data-eps="health,modalStatus,modalConnect,modalDisconnect"></div>
-      <pre class="response" data-step-response="1">尚未发起请求</pre>
-    </div>
-  </section>
-
-  <!-- ── Step 02 · 能力 ──────────────────────────────────── -->
-  <section class="step-section" id="step-2" aria-labelledby="step-2-title">
-    <div class="section-heading">
-      <div>
-        <p class="eyebrow">02 · CAPABILITIES</p>
-        <h2 id="step-2-title">确认 Provider 契约与模型</h2>
-      </div>
-      <p class="section-note">客户端独立校验远端能力，不信任 Provider 返回。产物必须是 1024×1024 lossless PNG。</p>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <h3 class="card-title">契约</h3>
-        <div class="row-actions">
-          <button class="btn primary sm" id="btn-capabilities">拉取能力文档</button>
-          <button class="btn ghost sm" id="btn-models">刷新模型</button>
-        </div>
-      </div>
-
-      <div class="metrics" id="contract-summary"></div>
-      <div class="empty" id="capability-empty">尚未拉取能力文档。</div>
-
-      <div class="table-wrap" id="models-wrap" hidden>
-        <table class="table">
-          <thead>
-            <tr><th>模型 ID</th><th>参数</th><th>步数</th><th>guidance</th><th>尺寸</th></tr>
-          </thead>
-          <tbody id="models-body"></tbody>
-        </table>
-      </div>
-
-      <details class="disclose" id="capability-raw-wrap" hidden>
-        <summary>原始 capabilities JSON</summary>
-        <div class="disclose-body">
-          <pre class="response" id="capability-raw"></pre>
-        </div>
-      </details>
-    </div>
-
-    <div class="card">
-      <h3 class="card-title">本步骤调用的接口</h3>
-      <div class="eps" data-eps="capabilities,models"></div>
-      <pre class="response" data-step-response="2">尚未发起请求</pre>
-    </div>
-  </section>
-
-  <!-- ── Step 03 · 提交 ──────────────────────────────────── -->
-  <section class="step-section" id="step-3" aria-labelledby="step-3-title">
-    <div class="section-heading">
-      <div>
-        <p class="eyebrow">03 · GENERATE</p>
-        <h2 id="step-3-title">提交一个生成 Job</h2>
-      </div>
-      <p class="section-note">同一 prompt 的多个 seed 是<strong>一个</strong> Job，Provider 在单个 warm worker 内顺序出图。</p>
-    </div>
-
-    <div class="card">
-      <label class="field">
-        <span class="field-label">prompt <span class="counter mono" id="prompt-count">0 / 4000</span></span>
-        <textarea class="input textarea" id="prompt" rows="3" maxlength="4000" placeholder="a glossy red apple on a wooden table"></textarea>
-      </label>
-
-      <div class="field-grid">
-        <label class="field">
-          <span class="field-label">model</span>
-          <select class="input" id="model-select"></select>
-        </label>
-      </div>
-
-      <div class="tabs" role="tablist" id="mode-tabs">
-        <button class="tab is-active" role="tab" data-mode="single" aria-selected="true" type="button">单张 · seed</button>
-        <button class="tab" role="tab" data-mode="batch" aria-selected="false" type="button">批量候选 · seeds</button>
-      </div>
-
-      <div class="field" data-pane="single">
-        <label class="field">
-          <span class="field-label">seed</span>
-          <input class="input mono" id="seed" type="number" min="0" max="4294967295" value="42" />
-        </label>
-      </div>
-
-      <div class="field" data-pane="batch" hidden>
-        <label class="field">
-          <span class="field-label">seeds <span class="counter mono">1–8 个不重复整数</span></span>
-          <input class="input mono" id="seeds" placeholder="42, 73, 104, 135" />
-        </label>
-        <div class="row-actions">
-          <button class="btn ghost sm" data-seeds-preset="42, 73, 104, 135" type="button">4 个候选</button>
-          <button class="btn ghost sm" data-seeds-preset="42, 73" type="button">2 个候选</button>
-        </div>
-      </div>
-
-      <details class="disclose">
-        <summary>高级选项</summary>
-        <div class="disclose-body">
-          <div class="field-grid">
-            <label class="field">
-              <span class="field-label">guidance</span>
-              <input class="input mono" id="guidance" type="number" step="0.1" min="0" max="20" placeholder="4.5" />
-            </label>
-            <label class="field">
-              <span class="field-label">job_id <span class="counter mono">可选 · URL-safe</span></span>
-              <input class="input mono" id="job-id" placeholder="job_my_batch" />
-            </label>
-          </div>
-          <p class="hint">SANA-Sprint 固定 2 steps，本地 API 不暴露 steps 参数。guidance 留空则用模型默认。</p>
-        </div>
-      </details>
-
-      <div class="row-actions submit-row">
-        <button class="btn primary lg" id="btn-submit">提交 Job</button>
-      </div>
-      <p class="error-line" id="submit-error" hidden></p>
-    </div>
-
-    <div class="card">
-      <h3 class="card-title">本步骤调用的接口</h3>
-      <div class="eps" data-eps="submitJob"></div>
-      <pre class="response" data-step-response="3">尚未发起请求</pre>
-    </div>
-  </section>
-
-  <!-- ── Step 04 · 跟踪 ──────────────────────────────────── -->
-  <section class="step-section" id="step-4" aria-labelledby="step-4-title">
-    <div class="section-heading">
-      <div>
-        <p class="eyebrow">04 · TRACK</p>
-        <h2 id="step-4-title">轮询 Job 直到终态</h2>
-      </div>
-      <p class="section-note">Job 镜像存在本地 SQLite，重启后可恢复。取消是尽力而为，远端可能已经出图。</p>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <h3 class="card-title">Job 列表</h3>
-        <div class="row-actions">
-          <label class="check">
-            <input type="checkbox" id="auto-poll" checked />
-            <span>非终态自动轮询</span>
-          </label>
-          <button class="btn ghost sm" id="btn-list-jobs" type="button">刷新</button>
-        </div>
-      </div>
-
-      <div class="table-wrap">
-        <table class="table table-select">
-          <thead>
-            <tr><th>Job ID</th><th>模型</th><th>状态</th><th>创建于</th><th>操作</th></tr>
-          </thead>
-          <tbody id="jobs-body"></tbody>
-        </table>
-        <div class="empty" id="jobs-empty">还没有 Job。先在第 3 步提交一个。</div>
-      </div>
-
-      <div class="selected" id="job-detail" hidden>
-        <div class="selected-head">
-          <h3 class="card-title mono" id="job-detail-id">—</h3>
-          <div class="row-actions">
-            <button class="btn ghost sm" id="btn-poll-job" type="button">立即查询</button>
-            <button class="btn danger sm" id="btn-cancel-job" type="button">取消</button>
-          </div>
-        </div>
-        <div class="metrics" id="job-kv"></div>
-        <div class="cta-success" id="job-success-cta" hidden>
-          <span>Job 已完成。</span>
-          <button class="btn primary sm" id="btn-goto-artifact" type="button">查看产物 ↓</button>
-        </div>
-        <details class="disclose">
-          <summary>原始 Job JSON</summary>
-          <div class="disclose-body">
-            <pre class="response" id="job-raw"></pre>
-          </div>
-        </details>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3 class="card-title">本步骤调用的接口</h3>
-      <div class="eps" data-eps="listJobs,getJob,cancelJob"></div>
-      <pre class="response" data-step-response="4">尚未发起请求</pre>
-    </div>
-  </section>
-
-  <!-- ── Step 05 · 产物 ──────────────────────────────────── -->
-  <section class="step-section" id="step-5" aria-labelledby="step-5-title">
-    <div class="section-heading">
-      <div>
-        <p class="eyebrow">05 · ARTIFACT</p>
-        <h2 id="step-5-title">取出并校验产物</h2>
-      </div>
-      <p class="section-note">PNG 只有被读取时才下载。响应头 SHA-256 必须与 descriptor 一致，否则拒绝信任。</p>
-    </div>
-
-    <div class="card">
-      <div class="card-head" id="artifact-index-card" hidden>
-        <h3 class="card-title">候选索引</h3>
-        <div class="index-bar" id="artifact-index"></div>
-      </div>
-
-      <div class="empty" id="artifact-empty">还没有可取的产物。先在第 4 步完成一个 Job。</div>
-
-      <div class="artifact-view" id="artifact-view" hidden>
-        <div class="img-frame" id="img-frame">
-          <span class="dim" id="img-placeholder">—</span>
-          <img id="artifact-img" alt="生成的 PNG" hidden />
-        </div>
-        <div class="artifact-meta">
-          <div class="verify" id="verify-chip" data-state="unknown">
-            <span class="dot"></span><span id="verify-text">未校验</span>
-          </div>
-          <div class="metrics" id="artifact-kv"></div>
-          <div class="row-actions">
-            <button class="btn primary sm" id="btn-download" type="button">下载 PNG</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3 class="card-title">本步骤调用的接口</h3>
-      <div class="eps" data-eps="artifact,batchArtifact"></div>
-      <pre class="response" data-step-response="5">尚未发起请求</pre>
-    </div>
-  </section>
-
-</main>
-
-<section class="log" id="log" data-open="true">
-  <header class="log-bar">
-    <button class="log-toggle" id="log-toggle" aria-expanded="true" type="button">
-      <span class="chev" aria-hidden="true">▾</span>
-      <span>请求日志 · curl</span>
-      <span class="log-count mono" id="log-count">0</span>
-    </button>
-    <div class="log-bar-actions">
-      <label class="check">
-        <input type="checkbox" id="show-secrets" />
-        <span>显示密钥</span>
-      </label>
-      <button class="btn ghost sm" id="log-clear" type="button">清空</button>
-    </div>
+  <header class="topbar">
+    <a class="brand" href="#">M<span>2</span></a>
+    <div class="brand-copy"><strong>modal-2D</strong><small>Image Studio</small></div>
+    <div class="top-actions"><span class="status" id="agent-status"><i></i><span>检测中</span></span><button class="icon-btn" id="open-settings" type="button">设置</button></div>
   </header>
-  <div class="log-body" id="log-body">
-    <div class="empty" id="log-empty">还没有请求。从第 1 步开始。</div>
-  </div>
-</section>
-
-<div class="toasts" id="toasts" aria-live="polite"></div>
-
-<noscript><p class="empty">此操作台需要 JavaScript。</p></noscript>
-
-<script src="./app.js"></script>
+  <main class="studio">
+    <section class="composer panel">
+      <div class="section-title"><div><span class="kicker">CREATE</span><h1>生成一张图片</h1></div><span class="model-note">1024 × 1024 · 2 steps</span></div>
+      <label class="prompt-wrap"><textarea id="prompt" maxlength="4000" rows="5" placeholder="描述你想生成的画面……"></textarea><span id="prompt-count">0 / 4000</span></label>
+      <div class="controls">
+        <label><span>模型</span><select id="model"><option value="sana-sprint-1.6b">SANA-Sprint 1.6B</option><option value="sana-sprint-0.6b">SANA-Sprint 0.6B</option></select></label>
+        <label id="seed-wrap"><span>Seed</span><input id="seed" type="number" min="0" max="4294967295" value="42"></label>
+        <label><span>Guidance</span><input id="guidance" type="number" min="0" max="20" step="0.1" placeholder="默认"></label>
+      </div>
+      <div class="batch-row"><label class="switch"><input id="batch-toggle" type="checkbox"><span></span>批量候选</label><label class="batch-seeds" id="batch-seeds-wrap" hidden><span>Seeds</span><input id="seeds" value="42, 73, 104, 135"></label></div>
+      <div class="generate-row"><p id="form-message">输入 Modal Token 后即可生成。</p><button class="generate" id="generate" type="button"><span>生成图片</span><kbd>⌘ ↵</kbd></button></div>
+    </section>
+    <section class="result panel">
+      <div class="section-title compact"><div><span class="kicker">RESULT</span><h2>生成结果</h2></div><span class="job-state" id="job-state">等待生成</span></div>
+      <div class="canvas">
+        <div class="empty" id="result-empty"><div class="empty-mark">✦</div><strong>结果会显示在这里</strong><span>PNG · 1024 × 1024</span></div>
+        <div class="progress" id="result-progress" hidden><i></i><strong>正在生成</strong><span id="progress-copy">任务已提交，等待 GPU 返回结果</span></div>
+        <img id="result-image" alt="生成结果" hidden>
+      </div>
+      <div class="result-footer"><div class="candidate-tabs" id="candidate-tabs"></div><div class="result-actions"><span id="verify-state">尚无产物</span><button class="secondary" id="download" type="button" disabled>下载 PNG</button></div></div>
+    </section>
+    <section class="jobs panel">
+      <div class="section-title compact"><div><span class="kicker">RECENT</span><h2>最近任务</h2></div><button class="text-btn" id="refresh-jobs" type="button">刷新</button></div>
+      <div class="job-list" id="job-list"><div class="list-empty">还没有生成任务</div></div>
+    </section>
+  </main>
+  <aside class="drawer" id="settings" aria-hidden="true">
+    <div class="drawer-head"><div><span class="kicker">SETTINGS</span><h2>连接 Modal</h2></div><button class="close" id="close-settings" type="button">×</button></div>
+    <p class="drawer-copy">凭据只保存在当前 Agent 进程内存中，不写入数据库或日志。</p>
+    <label><span>粘贴 modal token set 命令</span><input id="token-command" type="password" autocomplete="off" placeholder="modal token set --token-id ak-... --token-secret as-..."></label>
+    <p class="parse-hint" id="parse-hint">粘贴后自动提取 ID 和 Secret。</p>
+    <label><span>Modal Token ID</span><input id="token-id" autocomplete="off" placeholder="ak-..."></label>
+    <label><span>Modal Token Secret</span><input id="token-secret" type="password" autocomplete="off" placeholder="as-..."></label>
+    <label><span>本地 Agent Session（可选）</span><input id="session-token" type="password" autocomplete="off" placeholder="X-Modal-2D-Session"></label>
+    <div class="drawer-actions"><button class="secondary" id="disconnect" type="button">断开</button><button class="generate" id="connect" type="button">连接 Modal</button></div>
+    <p class="drawer-status" id="drawer-status"></p>
+    <details><summary>API 调试信息</summary><pre id="debug-log">尚无请求</pre></details>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div><div class="toasts" id="toasts"></div>
+  <script src="./app.js" defer></script>
 </body>
 </html>

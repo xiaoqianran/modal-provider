@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, SecretStr
 
@@ -187,6 +187,11 @@ def create_app(service: JobService | None = None) -> FastAPI:
                 "maxBytes": constants.SOURCE_MAX_BYTES,
             },
         }
+
+    @app.get("/", include_in_schema=False)
+    def ui_root():
+        """Match modal-2D-client: send the bare origin to the packaged UI."""
+        return RedirectResponse(url="/ui/index.html", status_code=307)
 
     def _allow_origin(request: Request) -> str:
         # Any origin is allowed. Set MODAL_3D_CLIENT_ORIGIN to a single origin
