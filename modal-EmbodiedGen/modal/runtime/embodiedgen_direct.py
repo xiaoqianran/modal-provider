@@ -24,14 +24,10 @@ TRAFFIC_DICT = "modal-3d-embodiedgen-traffic"
 JOB_PREFIX = "job-"
 JOB_VOLUME_PREFIX = "/embodiedgen/jobs"
 
-AUTOSCALE_PROFILES = {
-    "min_cost": {"rembg": 2, "sam3d": 2, "mesh": 2, "lite": 2, "finalize": 2},
-    "cost_first": {"rembg": 60, "sam3d": 30, "mesh": 30, "lite": 10, "finalize": 2},
-    "balanced": {"rembg": 120, "sam3d": 90, "mesh": 90, "lite": 30, "finalize": 10},
-    "burst": {"rembg": 300, "sam3d": 180, "mesh": 120, "lite": 60, "finalize": 30},
-}
-TEXT2IMG_WINDOWS = {"min_cost": 2, "cost_first": 30, "balanced": 90, "burst": 180}
-RETEXTURE_WINDOWS = dict(TEXT2IMG_WINDOWS)
+COMPAT_PROFILES = {"auto", "warm", "min_cost", "cost_first", "balanced", "burst"}
+PIPELINE_POLICY = "warm_180"
+TEXT2IMG_POLICY = "handoff_5"
+RETEXTURE_POLICY = "warm_120"
 RESULT_FILES = {
     "glb": "result/mesh/sample_00.glb",
     "obj": "result/mesh/sample_00.obj",
@@ -58,10 +54,6 @@ def _jobs():
     return modal.Dict.from_name(JOB_DICT, create_if_missing=True)
 
 
-def _traffic():
-    return modal.Dict.from_name(TRAFFIC_DICT, create_if_missing=True)
-
-
 def _artifacts():
     return modal.Volume.from_name(ARTIFACT_VOLUME, create_if_missing=False)
 
@@ -71,7 +63,6 @@ def get_job(job_id: str) -> dict | None:
 
 
 def list_jobs(limit: int = 100) -> list[dict]:
-    """Return recent persisted jobs, newest first."""
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError("limit must be a positive integer")
     jobs = [dict(state or {"job_id": job_id}) for job_id, state in _jobs().items()]
@@ -88,212 +79,140 @@ def _put_job(job_id: str, **changes) -> dict:
     return state
 
 
-def select_profile(requested: str = "auto", *, now: float | None = None) -> str:
-    if requested != "auto":
-        if requested not in AUTOSCALE_PROFILES:
-            raise ValueError(f"unknown autoscale profile: {requested}")
-        return requested
-    now = time.time() if now is None else float(now)
-    traffic = _traffic()
-    key = f"request:{now:.6f}:{uuid.uuid4().hex}"
-    traffic.put(key, now)
-    recent = 0
-    stale = []
-    for event_key, timestamp in traffic.items():
-        try:
-            age = now - float(timestamp)
-        except (TypeError, ValueError):
-            stale.append(event_key)
-            continue
-        if age <= 60.0:
-            recent += 1
-        else:
-            stale.append(event_key)
-    for event_key in stale:
-        traffic.pop(event_key, None)
-    return "cost_first" if recent >= 2 else "min_cost"
+def _compat_profile(requested: str) -> str:
+    """Validate the old UI argument, but routing is now deployment-static."""
+    if requested not in COMPAT_PROFILES:
+        raise ValueError(f"unknown profile: {requested}")
+    return PIPELINE_POLICY
 
 
-def _compute_handles():
-    rembg = modal.Cls.from_name(APP_NAME, "RembgWorker")()
-    sam3d = modal.Cls.from_name(APP_NAME, "Sam3DWorker")()
-    mesh = modal.Cls.from_name(APP_NAME, "MeshWorker")()
-    lite = modal.Function.from_name(APP_NAME, "lite_gpu_bake")
-    finalize = modal.Function.from_name(APP_NAME, "cpu_finalize")
-    return rembg, sam3d, mesh, lite, finalize
-
-
-def apply_profile(profile: str):
-    cfg = AUTOSCALE_PROFILES[profile]
-    handles = _compute_handles()
-    common = {"min_containers": 0, "max_containers": 1, "buffer_containers": 0}
-    for stage, target in zip(("rembg", "sam3d", "mesh", "lite", "finalize"), handles, strict=True):
-        target.update_autoscaler(scaledown_window=cfg[stage], **common)
-    return handles
-
-
-def _run_stage(job_id: str, stage: str, invoke: Callable[[], object], timings: dict) -> object:
-    _put_job(job_id, status="running", stage=stage)
-    started = time.perf_counter()
-    try:
-        result = invoke()
-    except Exception as exc:
-        timings[stage] = round(time.perf_counter() - started, 3)
-        _put_job(
-            job_id,
-            status="failed",
-            stage=stage,
-            stage_seconds=dict(timings),
-            error_type=type(exc).__name__,
-            error=str(exc)[:2000],
-        )
-        raise
-    timings[stage] = round(time.perf_counter() - started, 3)
-    return result
-
-
-def upload_image(image_path: str | Path, job_id: str | None = None) -> str:
-    path = Path(image_path)
-    if not path.is_file():
-        raise FileNotFoundError(path)
-    job_id = job_id or new_job_id()
-    remote = f"{JOB_VOLUME_PREFIX}/{job_id}/input_image"
-    with _artifacts().batch_upload(force=True) as batch:
-        batch.put_file(path, remote)
+def _new_job(*, workflow: str, requested_profile: str, input_info: dict) -> str:
+    job_id = new_job_id()
     now = time.time()
-    _jobs().put(
-        job_id,
-        {
-            "job_id": job_id,
-            "status": "queued",
-            "stage": "queued",
-            "created_epoch": now,
-            "created_at": datetime.fromtimestamp(now, UTC).isoformat(),
-            "updated_epoch": now,
-            "updated_at": datetime.fromtimestamp(now, UTC).isoformat(),
-            "input": {"type": "image", "bytes": path.stat().st_size, "name": path.name},
-        },
-    )
+    _jobs().put(job_id, {
+        "job_id": job_id,
+        "status": "queued",
+        "stage": "queued",
+        "workflow": workflow,
+        "profile": PIPELINE_POLICY,
+        "requested_profile": requested_profile,
+        "runtime_policy": PIPELINE_POLICY,
+        "created_epoch": now,
+        "created_at": datetime.fromtimestamp(now, UTC).isoformat(),
+        "updated_epoch": now,
+        "updated_at": datetime.fromtimestamp(now, UTC).isoformat(),
+        "input": input_info,
+    })
     return job_id
 
 
-def generate_image3d(image_path: str | Path, profile: str = "auto") -> dict:
-    job_id = upload_image(image_path)
-    selected = select_profile(profile)
-    _put_job(
-        job_id,
-        profile=selected,
-        requested_profile=profile,
+def _pipeline_worker():
+    return modal.Cls.from_name(APP_NAME, "EmbodiedGenWorker")()
+
+
+def submit_image3d(image_path: str | Path, profile: str = "auto", *, seed: int = 0) -> dict:
+    """Read/validate locally, then spawn one unified L40S pipeline and return immediately."""
+    _compat_profile(profile)
+    path = Path(image_path)
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    size = path.stat().st_size
+    if size <= 0 or size > 20 * 1024 * 1024:
+        raise ValueError("image must contain 1 byte..20 MiB")
+    data = path.read_bytes()
+    job_id = _new_job(
         workflow="image_to_3d",
+        requested_profile=profile,
+        input_info={"type": "image", "bytes": size, "name": path.name},
     )
-    rembg, sam3d, mesh, lite, finalize = apply_profile(selected)
-    timings: dict[str, float] = {}
-    _run_stage(job_id, "rembg", lambda: rembg.prepare.remote(job_id), timings)
-    _run_stage(job_id, "sam3d", lambda: sam3d.generate.remote(job_id), timings)
-    _run_stage(job_id, "mesh", lambda: mesh.process.remote(job_id), timings)
-    _run_stage(job_id, "texture", lambda: lite.remote(job_id), timings)
-    validation = _run_stage(job_id, "finalize", lambda: finalize.remote(job_id, True), timings)
-    return _put_job(
-        job_id,
-        status="succeeded",
-        stage="done",
-        profile=selected,
-        stage_seconds=timings,
-        files=sorted(RESULT_FILES),
-        validation=validation,
-    )
+    try:
+        call = _pipeline_worker().generate.spawn(job_id, data, int(seed))
+        return _put_job(
+            job_id,
+            status="queued",
+            stage="gpu_dispatch",
+            modal_call_id=getattr(call, "object_id", None),
+        )
+    except Exception as exc:
+        _put_job(job_id, status="failed", stage="gpu_dispatch", error_type=type(exc).__name__, error=str(exc)[:2000])
+        raise
 
 
-def generate_text3d(prompt: str, seed: int = 0, profile: str = "auto") -> dict:
+def _wait_job(job_id: str, timeout: float = 30 * 60, poll: float = 1.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        state = get_job(job_id)
+        if state and state.get("status") in {"succeeded", "failed"}:
+            if state.get("status") == "failed":
+                raise RuntimeError(state.get("error") or f"job failed at {state.get('stage')}")
+            return state
+        time.sleep(poll)
+    raise TimeoutError(f"job timed out: {job_id}")
+
+
+def generate_image3d(image_path: str | Path, profile: str = "auto") -> dict:
+    """Synchronous compatibility wrapper around submit_image3d()."""
+    state = submit_image3d(image_path, profile)
+    return _wait_job(state["job_id"])
+
+
+def submit_text3d(prompt: str, seed: int = 0, profile: str = "auto") -> dict:
+    """Spawn Kolors immediately; Kolors dispatches PNG bytes directly to unified GPU worker."""
+    _compat_profile(profile)
     prompt = str(prompt).strip()
     if not prompt or len(prompt) > 1000:
         raise ValueError("prompt must contain 1..1000 characters")
     if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 100000:
         raise ValueError("seed must be an integer in 0..100000")
-    job_id = new_job_id()
-    selected = select_profile(profile)
-    now = time.time()
-    _jobs().put(job_id, _stamp({
-        "job_id": job_id,
-        "status": "queued",
-        "stage": "queued",
-        "profile": selected,
-        "requested_profile": profile,
-        "workflow": "text_to_3d",
-        "created_epoch": now,
-        "created_at": datetime.fromtimestamp(now, UTC).isoformat(),
-        "input": {"type": "text", "prompt_chars": len(prompt), "seed": seed},
-    }))
-    rembg, sam3d, mesh, lite, finalize = apply_profile(selected)
-    text = modal.Cls.from_name(APP_NAME, "Text2ImageWorker")()
-    text.update_autoscaler(
-        min_containers=0,
-        max_containers=1,
-        buffer_containers=0,
-        scaledown_window=TEXT2IMG_WINDOWS[selected],
+    job_id = _new_job(
+        workflow="text_to_3d",
+        requested_profile=profile,
+        input_info={"type": "text", "prompt_chars": len(prompt), "seed": seed},
     )
-    timings: dict[str, float] = {}
-    _run_stage(job_id, "text2image", lambda: text.generate.remote(job_id, prompt, seed), timings)
-    _run_stage(job_id, "rembg", lambda: rembg.prepare.remote(job_id), timings)
-    _run_stage(job_id, "sam3d", lambda: sam3d.generate.remote(job_id), timings)
-    _run_stage(job_id, "mesh", lambda: mesh.process.remote(job_id), timings)
-    _run_stage(job_id, "texture", lambda: lite.remote(job_id), timings)
-    validation = _run_stage(job_id, "finalize", lambda: finalize.remote(job_id, True), timings)
-    return _put_job(
-        job_id,
-        status="succeeded",
-        stage="done",
-        profile=selected,
-        stage_seconds=timings,
-        files=sorted(RESULT_FILES),
-        validation=validation,
-    )
+    _put_job(job_id, runtime_policy=f"{TEXT2IMG_POLICY}+{PIPELINE_POLICY}", stage="text2image")
+    try:
+        text = modal.Cls.from_name(APP_NAME, "Text2ImageWorker")()
+        call = text.generate.spawn(job_id, prompt, seed, True)
+        return _put_job(job_id, status="queued", stage="text2image", modal_text_call_id=getattr(call, "object_id", None))
+    except Exception as exc:
+        _put_job(job_id, status="failed", stage="text2image", error_type=type(exc).__name__, error=str(exc)[:2000])
+        raise
+
+
+def generate_text3d(prompt: str, seed: int = 0, profile: str = "auto") -> dict:
+    """Synchronous compatibility wrapper around submit_text3d()."""
+    state = submit_text3d(prompt, seed, profile)
+    return _wait_job(state["job_id"])
 
 
 def retexture(source_job_id: str, prompt: str, seed: int = 0, profile: str = "auto") -> dict:
+    """Retexture keeps its own warm GPU model; autoscaling is fixed at deployment time."""
+    _compat_profile(profile)
     source = get_job(source_job_id)
     if not source or source.get("status") != "succeeded":
         raise ValueError("source job must exist and be succeeded")
     prompt = str(prompt).strip()
     if not prompt or len(prompt) > 1000:
         raise ValueError("prompt must contain 1..1000 characters")
-    selected = select_profile(profile)
-    job_id = new_job_id()
-    now = time.time()
-    _jobs().put(job_id, _stamp({
-        "job_id": job_id,
-        "status": "queued",
-        "stage": "queued",
-        "profile": selected,
-        "requested_profile": profile,
-        "created_epoch": now,
-        "created_at": datetime.fromtimestamp(now, UTC).isoformat(),
-        "workflow": "retexture",
-        "source_job_id": source_job_id,
-    }))
+    if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 100000:
+        raise ValueError("seed must be an integer in 0..100000")
+    job_id = _new_job(
+        workflow="retexture",
+        requested_profile=profile,
+        input_info={"type": "retexture", "source_job_id": source_job_id, "seed": seed},
+    )
+    _put_job(job_id, profile=RETEXTURE_POLICY, runtime_policy=RETEXTURE_POLICY, source_job_id=source_job_id)
     worker = modal.Cls.from_name(APP_NAME, "RetextureWorker")()
-    worker.update_autoscaler(
-        min_containers=0,
-        max_containers=1,
-        buffer_containers=0,
-        scaledown_window=RETEXTURE_WINDOWS[selected],
-    )
-    timings: dict[str, float] = {}
-    validation = _run_stage(
-        job_id,
-        "retexture",
-        lambda: worker.generate.remote(job_id, source_job_id, prompt, seed),
-        timings,
-    )
-    return _put_job(
-        job_id,
-        status="succeeded",
-        stage="done",
-        profile=selected,
-        stage_seconds=timings,
-        files=sorted(RESULT_FILES),
-        validation=validation,
-    )
+    started = time.perf_counter()
+    try:
+        _put_job(job_id, status="running", stage="retexture")
+        validation = worker.generate.remote(job_id, source_job_id, prompt, seed)
+        elapsed = round(time.perf_counter() - started, 3)
+        return _put_job(job_id, status="succeeded", stage="done", stage_seconds={"retexture": elapsed}, files=sorted(RESULT_FILES), validation=validation)
+    except Exception as exc:
+        elapsed = round(time.perf_counter() - started, 3)
+        _put_job(job_id, status="failed", stage="retexture", stage_seconds={"retexture": elapsed}, error_type=type(exc).__name__, error=str(exc)[:2000])
+        raise
 
 
 AFFORDANCE_PROFILE = "part-evidence-only"

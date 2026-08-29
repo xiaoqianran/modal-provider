@@ -14,8 +14,8 @@ from embodiedgen_direct import (
     AFFORDANCE_SEMANTIC_PROFILE,
     download_result,
     generate_affordance,
-    generate_image3d,
-    generate_text3d,
+    submit_image3d,
+    submit_text3d,
     get_job,
     list_jobs,
     retexture,
@@ -24,7 +24,6 @@ from embodiedgen_direct import (
 RESULT_ROOT = Path("/workspace/embodiedgen-ui-results")
 RESULT_ROOT.mkdir(parents=True, exist_ok=True)
 
-PROFILES = ["auto", "min_cost", "cost_first", "balanced", "burst"]
 ROLE_SUFFIX = {
     "glb": ".glb",
     "obj": ".obj",
@@ -63,7 +62,7 @@ def _elapsed(state: dict, *, live: bool = True) -> float | None:
     if created is None:
         return None
     try:
-        if live and state.get("status") not in {"succeeded", "failed"}:
+        if live and state.get("status") not in {"succeeded", "failed", "lost"}:
             end = time.time()
         else:
             end = float(state.get("updated_epoch") or time.time())
@@ -160,6 +159,46 @@ def load_job(job_id: str):
     return _status("历史任务", state), state, model, video, files
 
 
+def _watch_job(label: str, submitted: dict):
+    """Poll a persisted async job; the Modal GPU call is already detached."""
+    job_id = submitted.get("job_id")
+    if not job_id:
+        yield f"{label} · 提交失败：没有 Job ID", submitted, None, None, []
+        return
+    missing_since = None
+    while True:
+        state = get_job(job_id)
+        if state is None:
+            if missing_since is None:
+                missing_since = time.time()
+            # Allow a brief persistence/visibility window immediately after submit.
+            if time.time() - missing_since < 10:
+                state = submitted
+            else:
+                lost_state = dict(submitted)
+                lost_state.update(
+                    status="lost",
+                    stage="state_missing",
+                    updated_epoch=time.time(),
+                    error="任务状态已从 Modal Dict 消失；远端任务可能已被清理、迁移或异常终止。",
+                )
+                yield _status(label, lost_state), lost_state, None, None, []
+                return
+        else:
+            missing_since = None
+
+        terminal = state.get("status") in {"succeeded", "failed", "lost"}
+        if terminal:
+            if state.get("status") == "succeeded":
+                model, video, files = _download_job(state)
+                yield _status(label, state), state, model, video, files
+            else:
+                yield _status(label, state), state, None, None, []
+            return
+        yield _status(label, state), state, None, None, []
+        time.sleep(2)
+
+
 def _watch_call(label: str, call):
     before = {state.get("job_id") for state in list_jobs(200)}
     result_box: list[dict] = []
@@ -209,22 +248,24 @@ def _watch_call(label: str, call):
     yield _status(label, state), state, model, video, files
 
 
-def ui_image(image_path: str | None, profile: str):
+def ui_image(image_path: str | None):
     if not image_path:
         yield "请先上传图片。", {}, None, None, []
         return
-    yield from _watch_call("图生 3D", lambda: generate_image3d(image_path, profile))
+    submitted = submit_image3d(image_path, "auto")
+    yield from _watch_job("图生 3D", submitted)
 
 
-def ui_text(prompt: str, seed: float, profile: str):
+def ui_text(prompt: str, seed: float):
     prompt = (prompt or "").strip()
     if not prompt:
         yield "请输入 Prompt。", {}, None, None, []
         return
-    yield from _watch_call("文生 3D", lambda: generate_text3d(prompt, int(seed), profile))
+    submitted = submit_text3d(prompt, int(seed), "auto")
+    yield from _watch_job("文生 3D", submitted)
 
 
-def ui_retexture(source_job_id: str, prompt: str, seed: float, profile: str):
+def ui_retexture(source_job_id: str, prompt: str, seed: float):
     prompt = (prompt or "").strip()
     if not source_job_id:
         yield "请选择来源 3D 任务。", {}, None, None, []
@@ -234,7 +275,7 @@ def ui_retexture(source_job_id: str, prompt: str, seed: float, profile: str):
         return
     yield from _watch_call(
         "Retexture",
-        lambda: retexture(source_job_id, prompt, int(seed), profile),
+        lambda: retexture(source_job_id, prompt, int(seed), "auto"),
     )
 
 
@@ -282,7 +323,7 @@ with gr.Blocks(title="EmbodiedGen · Modal") as demo:
             with gr.Row():
                 with gr.Column():
                     img_in = gr.Image(type="filepath", label="输入图片", height=420)
-                    img_profile = gr.Dropdown(PROFILES, value="auto", label="GPU 保活策略")
+                    gr.Markdown("运行策略：**统一 L40S · warm 180s**")
                     img_run = gr.Button("生成 3D", variant="primary")
                     img_status = gr.Markdown("等待任务。")
                 with gr.Column():
@@ -290,14 +331,14 @@ with gr.Blocks(title="EmbodiedGen · Modal") as demo:
                     img_video = gr.Video(label="预览视频")
             img_state = gr.JSON(label="任务状态")
             img_files = gr.Files(label="下载结果")
-            img_run.click(ui_image, [img_in, img_profile], [img_status, img_state, img_model, img_video, img_files])
+            img_run.click(ui_image, [img_in], [img_status, img_state, img_model, img_video, img_files])
 
         with gr.Tab("文生 3D"):
             with gr.Row():
                 with gr.Column():
                     txt_prompt = gr.Textbox(label="Prompt", lines=6)
                     txt_seed = gr.Number(value=0, precision=0, label="Seed")
-                    txt_profile = gr.Dropdown(PROFILES, value="auto", label="GPU 保活策略")
+                    gr.Markdown("运行策略：**Kolors handoff 5s → 统一 L40S warm 180s**")
                     txt_run = gr.Button("文生 3D", variant="primary")
                     txt_status = gr.Markdown("等待任务。")
                 with gr.Column():
@@ -305,7 +346,7 @@ with gr.Blocks(title="EmbodiedGen · Modal") as demo:
                     txt_video = gr.Video(label="预览视频")
             txt_state = gr.JSON(label="任务状态")
             txt_files = gr.Files(label="下载结果")
-            txt_run.click(ui_text, [txt_prompt, txt_seed, txt_profile], [txt_status, txt_state, txt_model, txt_video, txt_files])
+            txt_run.click(ui_text, [txt_prompt, txt_seed], [txt_status, txt_state, txt_model, txt_video, txt_files])
 
         with gr.Tab("Retexture"):
             with gr.Row():
@@ -313,7 +354,7 @@ with gr.Blocks(title="EmbodiedGen · Modal") as demo:
                     re_source = gr.Dropdown(choices=[], label="来源成功 3D Job", allow_custom_value=True)
                     re_prompt = gr.Textbox(label="材质 Prompt", lines=5)
                     re_seed = gr.Number(value=0, precision=0, label="Seed")
-                    re_profile = gr.Dropdown(PROFILES, value="auto", label="GPU 保活策略")
+                    gr.Markdown("运行策略：**Retexture warm 120s**")
                     re_run = gr.Button("开始 Retexture", variant="primary")
                     re_status = gr.Markdown("等待任务。")
                 with gr.Column():
@@ -321,7 +362,7 @@ with gr.Blocks(title="EmbodiedGen · Modal") as demo:
                     re_video = gr.Video(label="预览视频")
             re_state = gr.JSON(label="任务状态")
             re_files = gr.Files(label="下载结果")
-            re_run.click(ui_retexture, [re_source, re_prompt, re_seed, re_profile], [re_status, re_state, re_model, re_video, re_files])
+            re_run.click(ui_retexture, [re_source, re_prompt, re_seed], [re_status, re_state, re_model, re_video, re_files])
 
         with gr.Tab("Affordance"):
             with gr.Row():
@@ -376,7 +417,7 @@ with gr.Blocks(title="EmbodiedGen · Modal") as demo:
             demo.load(_history_updates, [], [hist_table, hist_job, re_source, af_source])
 
 
-demo.queue(default_concurrency_limit=1, max_size=16)
+demo.queue(default_concurrency_limit=8, max_size=32)
 
 if __name__ == "__main__":
     demo.launch(

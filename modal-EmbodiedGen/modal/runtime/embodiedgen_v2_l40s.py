@@ -25,6 +25,14 @@ RELEASE_EXTENSIONS_SHA256 = "e5e1991ec465b399d46bca271af46394b054afd9eefdbcdcd8b
 SAM3D_STAGE1_STEPS = 16
 SAM3D_STAGE2_STEPS = 16
 TARGET_MESH_FACES = 50_000
+PIPELINE_SCALEDOWN_SECONDS = 180
+TEXT2IMG_SCALEDOWN_SECONDS = 5
+RETEXTURE_SCALEDOWN_SECONDS = 120
+BIREFNET_ENGINE = "birefnet-general-lite"
+BIREFNET_MODEL_URL = "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx"
+BIREFNET_MODEL_PATH = Path("/weights/rembg/birefnet-general-lite.onnx")
+BIREFNET_MODEL_BYTES = 224_005_088
+BIREFNET_MODEL_SHA256 = "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333"
 JOB_ROOT = Path("/artifacts/embodiedgen/jobs")
 API_JOB_PREFIX = "job-"
 MAX_INPUT_BYTES = 20 * 1024 * 1024
@@ -964,6 +972,7 @@ image = (
         "python -m pip install pygltflib warp-lang usd-core ipycanvas ipyevents 'jupyter_client<8' tornado",
         "python -m pip install --no-deps gsplat==1.5.3",
         "python -m pip install --no-deps fast-simplification==0.2.0",
+        "python -m pip uninstall -y onnxruntime onnxruntime-gpu || true && python -m pip install --no-deps onnxruntime-gpu==1.23.2",
     )
     # Consume release artifacts: no source builds.
     .run_commands(
@@ -1048,15 +1057,28 @@ def preload_weights():
     """CPU-only model/cache pull for a fresh Modal workspace."""
     os.environ.update({"TORCH_HOME": "/weights/torch", "U2NET_HOME": "/weights/u2net"})
     t0 = time.perf_counter()
+    # Keep the old U2Net cache for rollback, but production requests use GPU BiRefNet.
     u2net = Path("/weights/u2net/u2net.onnx")
     if not u2net.exists():
         import urllib.request
         u2net.parent.mkdir(parents=True, exist_ok=True)
-        print("CPU ONLY: downloading U2Net", flush=True)
+        print("CPU ONLY: downloading U2Net rollback weight", flush=True)
         urllib.request.urlretrieve(
             "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx",
             str(u2net),
         )
+
+    import hashlib
+    import urllib.request
+    if not BIREFNET_MODEL_PATH.exists() or BIREFNET_MODEL_PATH.stat().st_size != BIREFNET_MODEL_BYTES:
+        BIREFNET_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        print("CPU ONLY: downloading BiRefNet-General-Lite", flush=True)
+        urllib.request.urlretrieve(BIREFNET_MODEL_URL, str(BIREFNET_MODEL_PATH))
+    if BIREFNET_MODEL_PATH.stat().st_size != BIREFNET_MODEL_BYTES:
+        raise RuntimeError(f"unexpected BiRefNet weight size: {BIREFNET_MODEL_PATH.stat().st_size}")
+    digest = hashlib.sha256(BIREFNET_MODEL_PATH.read_bytes()).hexdigest()
+    if digest != BIREFNET_MODEL_SHA256:
+        raise RuntimeError(f"BiRefNet weight SHA-256 mismatch: {digest}")
 
     example = Path("/weights/examples/sample_00.jpg")
     if not example.exists():
@@ -1200,7 +1222,7 @@ def preload_retexture_weights() -> dict:
     min_containers=0,
     max_containers=1,
     buffer_containers=0,
-    scaledown_window=TEXT2IMG_SCALEDOWN_WINDOWS[STATIC_AUTOSCALE_PROFILE],
+    scaledown_window=TEXT2IMG_SCALEDOWN_SECONDS,
     timeout=30*60,
 )
 class Text2ImageWorker:
@@ -1244,7 +1266,9 @@ class Text2ImageWorker:
         )
 
     @modal.method()
-    def generate(self,job_id: str,prompt: str,seed: int=0) -> dict:
+    def generate(self,job_id: str,prompt: str,seed: int=0,dispatch_3d: bool=False) -> dict:
+        """Generate one PNG in memory; do not use Volume as an inter-stage bus."""
+        import io
         import torch
         from embodied_gen.models.text_model import PROMPT_APPEND
 
@@ -1253,11 +1277,11 @@ class Text2ImageWorker:
             raise ValueError(f"invalid API job id: {job_id!r}")
         if isinstance(seed,bool) or not isinstance(seed,int) or not 0 <= seed <= 100000:
             raise ValueError("seed must be an integer in 0..100000")
-        artifacts.reload()
-        root=api_job_root(job_id)
-        root.mkdir(parents=True,exist_ok=True)
         full_prompt=PROMPT_APPEND.format(object=prompt)
         generator=torch.Generator().manual_seed(seed)
+        state=dict(job_states.get(job_id) or {"job_id":job_id})
+        state.update({"status":"running","stage":"text2image","updated_epoch":time.time()})
+        job_states.put(job_id,state)
         t0=time.perf_counter()
         image_out=self.pipe(
             prompt=full_prompt,
@@ -1268,10 +1292,10 @@ class Text2ImageWorker:
             num_images_per_prompt=1,
             generator=generator,
         ).images[0]
-        output=root/"input_image"
-        image_out.save(output,format="PNG")
-        (root/"prompt.txt").write_text(prompt+"\n")
-        artifacts.commit()
+        buf=io.BytesIO()
+        image_out.save(buf,format="PNG")
+        png=buf.getvalue()
+        generate_seconds=round(time.perf_counter()-t0,3)
         out={
             "job_id":job_id,
             "model":"kolors",
@@ -1280,10 +1304,21 @@ class Text2ImageWorker:
             "width":image_out.width,
             "height":image_out.height,
             "load_seconds":round(self.load_seconds,3),
-            "generate_seconds":round(time.perf_counter()-t0,3),
+            "generate_seconds":generate_seconds,
         }
-        print("TEXT2IMG_OK",json.dumps(out),flush=True)
+        if dispatch_3d:
+            worker=modal.Cls.from_name(APP_NAME,"EmbodiedGenWorker")()
+            call=worker.generate.spawn(job_id,png,seed)
+            now=time.time()
+            state=dict(job_states.get(job_id) or {"job_id":job_id})
+            state.update({"status":"running","stage":"gpu_dispatch","text2image_seconds":generate_seconds,"text2image_model":"kolors","modal_call_id":getattr(call,"object_id",None),"updated_epoch":now,"updated_at":datetime.fromtimestamp(now,timezone.utc).isoformat()})
+            job_states.put(job_id,state)
+            out["pipeline_call_id"]=getattr(call,"object_id",None)
+        else:
+            out["image_bytes"]=png
+        print("TEXT2IMG_OK",json.dumps({k:v for k,v in out.items() if k != "image_bytes"}),flush=True)
         return out
+
 
 
 @app.cls(
@@ -1295,7 +1330,7 @@ class Text2ImageWorker:
     min_containers=0,
     max_containers=1,
     buffer_containers=0,
-    scaledown_window=RETEXTURE_SCALEDOWN_WINDOWS[STATIC_AUTOSCALE_PROFILE],
+    scaledown_window=RETEXTURE_SCALEDOWN_SECONDS,
     timeout=30*60,
 )
 class RetextureWorker:
@@ -1585,6 +1620,293 @@ def _rembg_prepare(worker, job_id: str) -> dict:
     }
     print("REMBG_PREPARE_OK",json.dumps(out),flush=True)
     return out
+
+
+
+def _job_stage(job_id: str, stage: str, timings: dict | None = None, **extra) -> None:
+    state = dict(job_states.get(job_id) or {"job_id": job_id})
+    now = time.time()
+    state.update({
+        "status": "running",
+        "stage": stage,
+        "updated_epoch": now,
+        "updated_at": datetime.fromtimestamp(now, timezone.utc).isoformat(),
+        **extra,
+    })
+    if timings is not None:
+        state["stage_seconds"] = dict(timings)
+    job_states.put(job_id, state)
+
+
+def _write_gaussian_plys_from_state(state: dict, root: Path) -> dict:
+    """CPU-only Gaussian PLY conversion; state stays in process memory."""
+    import numpy as np
+
+    g=state["gaussian"]
+    aabb=np.asarray(g["aabb"],dtype=np.float32)
+    means=np.asarray(g["_xyz"],dtype=np.float32)*aabb[3:]+aabb[:3]
+    fdc=np.asarray(g["_features_dc"],dtype=np.float32).transpose(0,2,1).reshape(len(means),-1)
+    opacity_bias=np.float32(g["opacity_bias"])
+    logit_bias=np.log(opacity_bias/(np.float32(1.0)-opacity_bias)).astype(np.float32)
+    opacities=np.asarray(g["_opacity"],dtype=np.float32).reshape(-1)+logit_bias
+    hidden_scale=np.asarray(g["_scaling"],dtype=np.float32)
+    scale_bias=np.float32(g["scaling_bias"])
+    activation=g["scaling_activation"]
+    if activation == "softplus":
+        inv_bias=scale_bias+np.log(-np.expm1(-scale_bias))
+        active_scale=np.logaddexp(np.float32(0.0),hidden_scale+inv_bias)
+    elif activation == "exp":
+        active_scale=np.exp(hidden_scale+np.log(scale_bias))
+    else:
+        raise RuntimeError(f"unsupported Gaussian scaling activation: {activation}")
+    active_scale=np.sqrt(active_scale*active_scale+np.float32(g["mininum_kernel_size"])**2)
+    log_scales=np.log(active_scale).astype(np.float32)
+    raw_quats=np.asarray(g["_rotation"],dtype=np.float32)+np.asarray([1,0,0,0],dtype=np.float32)
+
+    def write_ply(path: Path, xyz, quats):
+        fields=["x","y","z"]+[f"f_dc_{i}" for i in range(fdc.shape[1])]+["opacity"]+[f"scale_{i}" for i in range(3)]+[f"rot_{i}" for i in range(4)]
+        dtype=np.dtype([(name,"<f4") for name in fields])
+        out=np.empty(len(xyz),dtype=dtype)
+        out["x"],out["y"],out["z"]=xyz[:,0],xyz[:,1],xyz[:,2]
+        for i in range(fdc.shape[1]): out[f"f_dc_{i}"]=fdc[:,i]
+        out["opacity"]=opacities
+        for i in range(3): out[f"scale_{i}"]=log_scales[:,i]
+        for i in range(4): out[f"rot_{i}"]=quats[:,i]
+        with path.open("wb") as f:
+            f.write(b"ply\nformat binary_little_endian 1.0\n")
+            f.write(f"element vertex {len(xyz)}\n".encode())
+            f.writelines(f"property float {name}\n".encode() for name in fields)
+            f.write(b"end_header\n")
+            out.tofile(f)
+
+    write_ply(root/"sample_00_gs.ply",means,raw_quats)
+    align_rot=np.asarray([[0,0,-1],[0,-1,0],[-1,0,0]],dtype=np.float32)
+    aligned_means=means@align_rot.T
+    q=raw_quats/np.linalg.norm(raw_quats,axis=1,keepdims=True)
+    qi=np.asarray([0.0,0.7071067811865476,0.0,-0.7071067811865476],dtype=np.float32)
+    v1=qi[1:]; w1=qi[0]; w2=q[:,0]; v2=q[:,1:]
+    aligned_q=np.empty_like(q)
+    aligned_q[:,0]=w1*w2-np.sum(v2*v1,axis=1)
+    aligned_q[:,1:]=w1*v2+w2[:,None]*v1+np.cross(np.broadcast_to(v1,v2.shape),v2)
+    write_ply(root/"sample_00_gs_aligned.ply",aligned_means,aligned_q)
+    return {"ply_vertices": int(len(means))}
+
+
+def _mesh_from_state_in_process(state: dict, root: Path) -> dict:
+    import fast_simplification
+    import numpy as np
+    import xatlas
+
+    t0=time.perf_counter()
+    ply_info=_write_gaussian_plys_from_state(state,root)
+    vertices=np.asarray(state["mesh"]["vertices"],dtype=np.float32)
+    faces=np.asarray(state["mesh"]["faces"],dtype=np.int32)
+    input_vertices,input_faces=len(vertices),len(faces)
+    mesh_add_rot=np.array([[1,0,0],[0,0,-1],[0,1,0]],dtype=np.float32)
+    rot_matrix=np.array([[0,0,-1],[0,1,0],[1,0,0]],dtype=np.float32)
+    vertices=vertices @ mesh_add_rot @ rot_matrix
+    simplify0=time.perf_counter()
+    vertices,faces,was_simplified=simplify_mesh_if_needed(vertices,faces,fast_simplification.simplify)
+    simplify1=time.perf_counter()
+    vertices=np.asarray(vertices,dtype=np.float32); faces=np.asarray(faces,dtype=np.int32)
+    bbmin=vertices.min(0); bbmax=vertices.max(0); extent=float((bbmax-bbmin).max())
+    if not np.isfinite(extent) or extent <= 0.0:
+        raise RuntimeError(f"invalid mesh extent: {extent}")
+    center=(bbmin+bbmax)*0.5; scale=np.float32(2.0/extent); norm=(vertices-center)*scale
+    x_rot=np.array([[1,0,0],[0,0,1],[0,-1,0]],dtype=np.float32)
+    z_rot=np.array([[0,1,0],[-1,0,0],[0,0,1]],dtype=np.float32)
+    norm=norm @ x_rot @ z_rot
+    x0=time.perf_counter(); vmapping,indices,uvs=xatlas.parametrize(norm,faces); x1=time.perf_counter()
+    baked_vertices=norm[vmapping]
+    np.savez(
+        root/"bake_mesh.npz",
+        vertices=baked_vertices.astype(np.float32),
+        faces=np.asarray(indices,dtype=np.int32),
+        uvs=np.asarray(uvs,dtype=np.float32),
+        scale=np.asarray(scale,dtype=np.float32),
+        center=center.astype(np.float32),x_rot=x_rot,z_rot=z_rot,
+    )
+    return {
+        **ply_info,
+        "input_vertices":int(input_vertices),"input_faces":int(input_faces),
+        "dec_vertices":len(vertices),"dec_faces":len(faces),"was_simplified":was_simplified,
+        "simplify_seconds":round(simplify1-simplify0,3),"uv_vertices":len(baked_vertices),
+        "uv_faces":len(indices),"xatlas_seconds":round(x1-x0,3),
+        "method_seconds":round(time.perf_counter()-t0,3),
+    }
+
+
+def _texture_bake_in_process(root: Path) -> dict:
+    import math
+    import imageio.v2 as imageio
+    import numpy as np
+    import torch
+    from embodied_gen.data.backproject_v3 import TextureBaker
+    from embodied_gen.data.utils import CameraSetting, init_kal_camera, post_process_texture
+    from embodied_gen.models.gs_model import load_gs_model
+    from gsplat import rasterization
+    from PIL import Image
+
+    t0=time.perf_counter(); d=np.load(root/"bake_mesh.npz")
+    vertices=d["vertices"]; faces=d["faces"]; uvs=d["uvs"]
+    cp=CameraSetting(num_images=24,elevation=[0],distance=5.0,resolution_hw=(512,512),fov=math.radians(30),device="cuda")
+    cam=init_kal_camera(cp,flip_az=True); mv=cam.view_matrix(); mv[:,:3,3]=-mv[:,:3,3]
+    K=torch.tensor(cp.Ks,device="cuda"); model=load_gs_model(str(root/"sample_00_gs_aligned.ply"),pre_quat=[0.,0.,1.,0.])
+    views=[]; r0=time.perf_counter()
+    for m in mv:
+        c2w=torch.linalg.inv(m.to("cuda")); gs=model.get_gaussians(c2w,apply_activate=True)
+        renders,_,_=rasterization(
+            means=gs._means,quats=gs._quats,scales=gs._scales,opacities=gs._opacities.squeeze(),colors=gs._rgbs,
+            viewmats=torch.linalg.inv(c2w)[None,...],Ks=K[None,...],width=512,height=512,packed=False,absgrad=True,
+            sparse_grad=False,rasterize_mode="antialiased",near_plane=0.01,far_plane=1_000_000_000,radius_clip=0.0,render_mode="RGB")
+        torch.cuda.synchronize(); views.append((renders[0,...,:3].clamp(0,1)*255).to(torch.uint8).cpu().numpy())
+    r1=time.perf_counter(); b0=time.perf_counter(); baker=TextureBaker(vertices,faces,uvs,cp,device="cuda")
+    texture=baker.bake_texture([v[...,:3] for v in views],texture_size=1024,mode="fast")
+    texture=post_process_texture(texture); b1=time.perf_counter(); Image.fromarray(texture).save(root/"texture.png")
+    preview=[]; cpv=CameraSetting(num_images=60,elevation=[0],distance=5.0,resolution_hw=(512,512),fov=math.radians(30),device="cuda")
+    camv=init_kal_camera(cpv,flip_az=True); mvv=camv.view_matrix(); mvv[:,:3,3]=-mvv[:,:3,3]; Kv=torch.tensor(cpv.Ks,device="cuda")
+    for m in mvv:
+        c2w=torch.linalg.inv(m.to("cuda")); gs=model.get_gaussians(c2w,apply_activate=True)
+        rr,_,_=rasterization(
+            means=gs._means,quats=gs._quats,scales=gs._scales,opacities=gs._opacities.squeeze(),colors=gs._rgbs,
+            viewmats=torch.linalg.inv(c2w)[None,...],Ks=Kv[None,...],width=512,height=512,packed=False,absgrad=True,
+            sparse_grad=False,rasterize_mode="antialiased",near_plane=0.01,far_plane=1_000_000_000,radius_clip=0.0,render_mode="RGB")
+        torch.cuda.synchronize(); preview.append((rr[0,...,:3].clamp(0,1)*255).to(torch.uint8).cpu().numpy())
+    imageio.mimsave(str(root/"preview.mp4"),preview,fps=30,codec="libx264")
+    del model, baker, views, preview
+    torch.cuda.empty_cache()
+    return {"render24_seconds":round(r1-r0,3),"bake_seconds":round(b1-b0,3),"total_seconds":round(time.perf_counter()-t0,3)}
+
+
+def _finalize_in_process(root: Path) -> dict:
+    import json as _json
+    import shutil
+    import xml.etree.ElementTree as ET
+    import numpy as np
+    import trimesh
+    from PIL import Image
+
+    t0=time.perf_counter(); d=np.load(root/"bake_mesh.npz")
+    vertices=d["vertices"]; faces=d["faces"]; uvs=d["uvs"]; scale=float(d["scale"]); center=d["center"]; x_rot=d["x_rot"]; z_rot=d["z_rot"]
+    vertices=vertices @ np.linalg.inv(z_rot); vertices=vertices @ np.linalg.inv(x_rot); vertices=vertices/scale + center
+    texture=Image.open(root/"texture.png").convert("RGB")
+    mesh=trimesh.Trimesh(vertices=vertices,faces=faces,visual=trimesh.visual.TextureVisuals(uv=uvs,image=texture),process=True)
+    obj=root/"sample_00.obj"; glb=root/"sample_00.glb"; mesh.export(obj); mesh.export(glb)
+    result=root/"result"; meshdir=result/"mesh"; shutil.rmtree(result,ignore_errors=True); meshdir.mkdir(parents=True,exist_ok=True)
+    copy_obj_bundle(obj,meshdir)
+    for pth in root.glob("sample_00*.*"):
+        if pth.suffix.lower() in {".glb",".ply"}: shutil.copy2(pth,meshdir/pth.name)
+    if (root/"texture.png").exists(): shutil.copy2(root/"texture.png",meshdir/"texture.png")
+    if (root/"preview.mp4").exists(): shutil.copy2(root/"preview.mp4",result/"video.mp4")
+    robot=ET.Element("robot",{"name":"sample_00"}); link=ET.SubElement(robot,"link",{"name":"sample_00"})
+    visual=ET.SubElement(link,"visual"); ET.SubElement(visual,"origin",{"xyz":"0 0 0","rpy":"1.5708 0 1.5708"}); geom=ET.SubElement(visual,"geometry"); ET.SubElement(geom,"mesh",{"filename":"mesh/sample_00.obj","scale":"1 1 1"})
+    collision=ET.SubElement(link,"collision"); ET.SubElement(collision,"origin",{"xyz":"0 0 0","rpy":"1.5708 0 1.5708"}); cgeom=ET.SubElement(collision,"geometry"); ET.SubElement(cgeom,"mesh",{"filename":"mesh/sample_00.obj","scale":"1 1 1"})
+    inertial=ET.SubElement(link,"inertial"); ET.SubElement(inertial,"mass",{"value":"1.0"}); extra=ET.SubElement(link,"extra_info")
+    for k,v in {"category":"unknown","description":"unknown","real_height":"1.0","version":"2.1.0","gs_model":"mesh/sample_00_gs.ply"}.items(): ET.SubElement(extra,k).text=v
+    urdf=result/"sample_00.urdf"; ET.ElementTree(robot).write(urdf,encoding="utf-8",xml_declaration=True)
+    result_obj=meshdir/"sample_00.obj"; result_glb=meshdir/"sample_00.glb"; objm=trimesh.load(result_obj,force="mesh"); glbs=trimesh.load(result_glb,force="scene"); ET.parse(urdf)
+    with (root/"sample_00_gs.ply").open("rb") as f: header=f.read(8192).decode("ascii","ignore")
+    ply_vertices=next(int(x.split()[-1]) for x in header.splitlines() if x.startswith("element vertex "))
+    checks={"ply_vertices":ply_vertices,"obj_vertices":len(objm.vertices),"obj_faces":len(objm.faces),"glb_geometries":len(glbs.geometry),"urdf_mesh_exists":result_obj.exists(),"video_exists":(result/"video.mp4").exists(),"obj_material_missing":missing_obj_material_dependencies(result_obj)}
+    checks["obj_material_refs_ok"]=not checks["obj_material_missing"]
+    if not validation_passes(checks): raise RuntimeError(checks)
+    report={"checks":checks,"seconds":round(time.perf_counter()-t0,3)}
+    (root/"validation_report.json").write_text(_json.dumps(report,indent=2)+"\n")
+    return report
+
+
+@app.cls(
+    image=image,
+    gpu="L40S",
+    volumes={"/weights": weights, "/artifacts": artifacts},
+    cpu=8.0,
+    memory=32768,
+    min_containers=0,
+    max_containers=1,
+    buffer_containers=0,
+    scaledown_window=PIPELINE_SCALEDOWN_SECONDS,
+    timeout=30 * 60,
+)
+class EmbodiedGenWorker:
+    """One warm L40S cache boundary: GPU BiRefNet -> SAM3D -> CPU mesh -> GPU bake -> CPU finalize."""
+
+    @modal.enter()
+    def load(self):
+        import uuid
+        import onnxruntime as ort
+        import torch
+        from embodied_gen.models.sam3d import Sam3dInference
+        from rembg.session_factory import new_session
+
+        # Match modal-3D's proven CUDA ONNX bootstrap: load NVIDIA wheel DLLs
+        # before constructing CUDAExecutionProvider so cuDNN/cublas resolve.
+        if hasattr(ort, "preload_dlls"):
+            ort.preload_dlls(cuda=True, cudnn=True, directory="")
+
+        t0=time.perf_counter(); os.chdir("/workspace/EmbodiedGen")
+        os.environ.update({"TORCH_HOME":"/weights/torch", "U2NET_HOME":"/weights/rembg"})
+        if not BIREFNET_MODEL_PATH.is_file() or BIREFNET_MODEL_PATH.stat().st_size != BIREFNET_MODEL_BYTES:
+            raise RuntimeError("BiRefNet weight missing; run preload_weights first")
+        providers=["CUDAExecutionProvider","CPUExecutionProvider"]
+        self.rembg_session=new_session(BIREFNET_ENGINE,providers=providers)
+        active=self.rembg_session.inner_session.get_providers()
+        if not active or active[0] != "CUDAExecutionProvider":
+            raise RuntimeError(f"BiRefNet CUDA provider unavailable: {active}")
+        self.pipeline=Sam3dInference(local_dir="/weights/sam-3d-objects")
+        torch.cuda.synchronize(); self.torch=torch; self.instance_id=uuid.uuid4().hex; self.load_seconds=time.perf_counter()-t0
+        print("EMBODIEDGEN_RESIDENT_READY "+json.dumps({"instance_id":self.instance_id,"gpu":torch.cuda.get_device_name(0),"load_seconds":round(self.load_seconds,3),"rembg":BIREFNET_ENGINE,"providers":active}),flush=True)
+
+    @modal.method()
+    def generate(self, job_id: str, image_bytes: bytes, seed: int = 0) -> dict:
+        import io
+        import shutil
+        import tempfile
+        import numpy as np
+        from embodied_gen.utils.trender import pack_state
+        from PIL import Image, ImageOps
+
+        if not is_api_job_id(job_id): raise ValueError(f"invalid API job id: {job_id!r}")
+        if not image_bytes or len(image_bytes) > MAX_INPUT_BYTES: raise ValueError("invalid image payload size")
+        timings={}; all0=time.perf_counter(); local_root=Path(tempfile.mkdtemp(prefix=f"embodiedgen-{job_id}-"))
+        try:
+            # GPU BiRefNet and SAM3D share one already-warm L40S container.
+            _job_stage(job_id,"rembg",timings)
+            t0=time.perf_counter()
+            with Image.open(io.BytesIO(image_bytes)) as opened:
+                image=ImageOps.exif_transpose(opened).convert("RGB")
+            if image.width*image.height > MAX_INPUT_PIXELS: raise ValueError("input image exceeds pixel limit")
+            scale=min(1.0,1024.0/max(image.size))
+            if scale < 1.0:
+                image=image.resize((max(1,int(image.width*scale)),max(1,int(image.height*scale))),Image.Resampling.LANCZOS)
+            masks=self.rembg_session.predict(image)
+            if not masks: raise RuntimeError("BiRefNet returned no mask")
+            mask=masks[0].convert("L")
+            if mask.size != image.size: mask=mask.resize(image.size,Image.Resampling.LANCZOS)
+            cond=image.convert("RGBA"); cond.putalpha(mask); timings["rembg"]=round(time.perf_counter()-t0,3)
+
+            _job_stage(job_id,"sam3d",timings)
+            t0=time.perf_counter(); outputs=self.pipeline.run(cond,seed=seed,stage1_inference_steps=SAM3D_STAGE1_STEPS,stage2_inference_steps=SAM3D_STAGE2_STEPS); self.torch.cuda.synchronize()
+            gs=outputs["gaussian"][0]; mesh=outputs["mesh"][0]; state=pack_state(gs,mesh); state["mesh"]["faces"]=state["mesh"]["faces"].astype(np.int32,copy=False)
+            del outputs,gs,mesh; self.torch.cuda.empty_cache(); timings["sam3d"]=round(time.perf_counter()-t0,3)
+
+            _job_stage(job_id,"mesh",timings); t0=time.perf_counter(); mesh_info=_mesh_from_state_in_process(state,local_root); del state; timings["mesh"]=round(time.perf_counter()-t0,3)
+            _job_stage(job_id,"texture",timings); t0=time.perf_counter(); texture_info=_texture_bake_in_process(local_root); timings["texture"]=round(time.perf_counter()-t0,3)
+            _job_stage(job_id,"finalize",timings); t0=time.perf_counter(); validation=_finalize_in_process(local_root); timings["finalize"]=round(time.perf_counter()-t0,3)
+
+            # One durable publication at the end. No inter-stage commit/reload barrier.
+            dest=api_job_root(job_id); shutil.rmtree(dest,ignore_errors=True); dest.mkdir(parents=True,exist_ok=True)
+            shutil.copytree(local_root/"result",dest/"result")
+            shutil.copy2(local_root/"validation_report.json",dest/"validation_report.json")
+            artifacts.commit()
+            result={"job_id":job_id,"instance_id":self.instance_id,"resident_model_load_seconds":round(self.load_seconds,3),"stage_seconds":timings,"total_seconds":round(time.perf_counter()-all0,3),"files":sorted(RESULT_FILES),"validation":validation,"mesh":mesh_info,"texture":texture_info}
+            state_out=dict(job_states.get(job_id) or {"job_id":job_id}); now=time.time(); state_out.update({"status":"succeeded","stage":"done","stage_seconds":timings,"files":sorted(RESULT_FILES),"validation":validation,"runtime":"unified-l40s","updated_epoch":now,"updated_at":datetime.fromtimestamp(now,timezone.utc).isoformat()}); job_states.put(job_id,state_out)
+            print("EMBODIEDGEN_PIPELINE_OK",json.dumps({k:v for k,v in result.items() if k not in {"validation","mesh","texture"}}),flush=True)
+            return result
+        except Exception as exc:
+            failed=dict(job_states.get(job_id) or {"job_id":job_id}); now=time.time(); failed.update({"status":"failed","stage":failed.get("stage","pipeline"),"stage_seconds":timings,"error_type":type(exc).__name__,"error":str(exc)[:2000],"updated_epoch":now,"updated_at":datetime.fromtimestamp(now,timezone.utc).isoformat()}); job_states.put(job_id,failed)
+            raise
+        finally:
+            shutil.rmtree(local_root,ignore_errors=True)
 
 
 @app.cls(
