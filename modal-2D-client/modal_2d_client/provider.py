@@ -40,7 +40,7 @@ class Modal2DProvider:
 
     def descriptor(self) -> dict[str, object]:
         try:
-            document = capabilities.document()
+            document = capabilities.document(refresh_remote=False)
             model_ids = [str(item["id"]) for item in document["models"]]  # type: ignore[index]
         except (NotConnectedError, ContractError):
             return self.unavailable_descriptor()
@@ -54,7 +54,11 @@ class Modal2DProvider:
 
     def connect(self, token_id: str, token_secret: str) -> dict[str, object]:
         modal_session.connect(token_id, token_secret)
-        capabilities.document(refresh_remote=True)
+        try:
+            capabilities.document(refresh_remote=True)
+        except Exception:
+            modal_session.disconnect()
+            raise
         return self.connection_status()
 
     def disconnect(self) -> dict[str, object]:
@@ -120,7 +124,7 @@ def _descriptor(*, model_ids: list[str], status: str, health: str) -> dict[str, 
         "id": "modal-2d",
         "displayName": "Modal 2D",
         "version": "1",
-        "implementationRevision": "modal-2d.generation.v1",
+        "implementationRevision": "modal-2d.generation.v2",
         "health": health,
         "status": status,
         "contractVersion": "1",
