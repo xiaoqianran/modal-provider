@@ -212,3 +212,28 @@ def test_live_gateway_builds_current_connector_job_contract(monkeypatch) -> None
     assert captured["capabilityHash"] == snapshot["hash"]
     assert captured["operationVersion"] == "1"
     verify_request_identity(captured)
+
+
+
+def test_modal_token_command_parser() -> None:
+    import subprocess
+
+    script = r"""
+import { parseModalTokenCommand } from "./modal_gen/ui/assets/modal_credentials.js";
+const cases = [
+  ["modal token set --token-id ak-demo --token-secret as-demo", "ak-demo", "as-demo"],
+  ["modal token set --token-id=ak-eq --token-secret=as-eq", "ak-eq", "as-eq"],
+];
+for (const [input, id, secret] of cases) {
+  const parsed = parseModalTokenCommand(input);
+  if (!parsed || parsed.tokenId !== id || parsed.tokenSecret !== secret) process.exit(1);
+}
+if (parseModalTokenCommand("modal token set --token-id only")) process.exit(2);
+"""
+    subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        check=True,
+        cwd=".",
+        capture_output=True,
+        text=True,
+    )

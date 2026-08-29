@@ -2,6 +2,7 @@
 import {
   h, icon, fmtTime, providerBadge, apiGet, apiPost, toast, store, stateEmpty,
 } from "../app.js";
+import { parseModalTokenCommand } from "../modal_credentials.js";
 
 export async function mountConnect(root) {
   root.append(
@@ -98,6 +99,13 @@ function hubOverview(snapshot, connections) {
 }
 
 function connectionPanel(connections) {
+  const command = h("textarea", {
+    class: "input input--mono",
+    rows: "3",
+    autocomplete: "off",
+    spellcheck: "false",
+    placeholder: "粘贴 modal token set --token-id ... --token-secret ...",
+  });
   const tokenId = h("input", {
     class: "input input--mono",
     type: "text",
@@ -110,9 +118,20 @@ function connectionPanel(connections) {
     autocomplete: "off",
     placeholder: "Modal token secret",
   });
-  const status = h("div", { class: "field__hint" }, "凭证只用于当前进程内存，不写入 Connector DB。以部署了 2D / 3D App 的 Modal Workspace 凭证为准。");
+  const status = h("div", { class: "field__hint" }, "可直接粘贴完整 Modal CLI 命令自动识别。凭证只用于当前进程内存，不写入 Connector DB。");
   const connect = h("button", { class: "btn btn--primary", type: "button" }, "连接 2D + 3D");
   const disconnect = h("button", { class: "btn", type: "button" }, "断开全部");
+
+  command.addEventListener("input", () => {
+    const parsed = parseModalTokenCommand(command.value);
+    if (!parsed) {
+      if (command.value.trim()) status.textContent = "尚未识别到完整的 --token-id / --token-secret。";
+      return;
+    }
+    tokenId.value = parsed.tokenId;
+    tokenSecret.value = parsed.tokenSecret;
+    status.textContent = "已自动识别 Token ID / Secret，可直接连接。";
+  });
 
   connect.addEventListener("click", async () => {
     if (!tokenId.value.trim() || !tokenSecret.value.trim()) {
@@ -127,6 +146,7 @@ function connectionPanel(connections) {
         tokenSecret: tokenSecret.value,
       });
       tokenSecret.value = "";
+      command.value = "";
       toast("2D / 3D Provider 已连接 Modal", "ok");
       location.reload();
     } catch (e) {
@@ -156,6 +176,7 @@ function connectionPanel(connections) {
       h("span", { class: `badge badge--${count ? "ok" : "neutral"}` }, `${count} connected`)
     ),
     h("div", { class: "panel__body stack" },
+      field("Modal CLI 命令", command),
       h("div", { class: "grid-2" },
         field("Token ID", tokenId),
         field("Token Secret", tokenSecret)
