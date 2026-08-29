@@ -70,10 +70,17 @@ modal-provider
 - `modal-EmbodiedGen` → https://github.com/xiaoqianran/modal-EmbodiedGen
 - `modal-build` → https://github.com/xiaoqianran/modal-build
 
-当前导入基线：
+当前同步基线：
 
-- `modal-EmbodiedGen`: `b75e7309bba6e290ae1157e8ee3a59d4ad139e61`（standalone `master`，EmbodiedGen v2.1.0）；
-- `modal-build`: `d79194632cba6af72b4854ef9125ddd4bfa941e4`（standalone `master`）。该提交新增的 `integrations/embodiedgen` 仅是历史备份；monorepo 不导入这份重复 production code，EmbodiedGen 的唯一真值仍是 `modal-EmbodiedGen/modal/`。其余 `modal-build` 内容与该最新 `master` 保持一致。
+- `modal-2D` (`main`): `f1ebf6222c5299ad497ca53a3e415ddbfade1d0f`；
+- `modal-2D-client` (`main`): `afc52f27e0064e99a37fa34304ba447c20378e7b`；
+- `modal-3D` (`master`): `7cb8097410a5357f38ddfcfc1c5639ec69e36f2a`；
+- `modal-3D-client` (`main`): `986dc6cb5769787895437dcdbf919fe9adceac78`；
+- `modal-gen-client` (`main`): `6c777c4e68c65879936db654663c65e3c3543f89`；
+- `modal-EmbodiedGen` (`master`): `b75e7309bba6e290ae1157e8ee3a59d4ad139e61`（EmbodiedGen v2.1.0）；
+- `modal-build` (`master`): `1dd19dd55c62b1a8d7eb01dcefb69fc37e135da8`。该版本已移除 `integrations/embodiedgen` 历史备份；EmbodiedGen production code 的唯一真值是 `modal-EmbodiedGen/modal/`。
+
+以上 standalone 源码树（忽略各仓库独立 `.github` 与本地缓存）均与本 monorepo 对应目录逐文件一致。
 
 同步规则：
 
