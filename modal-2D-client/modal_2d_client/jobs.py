@@ -25,7 +25,7 @@ from modal.exception import ConnectionError as ModalConnectionError
 from modal.exception import TimeoutError as ModalTimeoutError
 
 from . import artifacts, capabilities
-from .constants import APP_NAME, WORKER_CLASS
+from .constants import WORKERS
 from .contracts import ContractError, normalize_batch_request, normalize_request, validate_artifact
 from .modal_session import NotConnectedError, client
 from .storage import data_dir
@@ -46,13 +46,13 @@ _RECOVERABLE = (
 
 
 def _worker_method(model_id: str, is_batch: bool):
-    """按 model 直接实例化 GPU Worker 方法，不经过 CPU 中转 Function。
-
-    Modal 每多一层 Function 就多一次独立冷启动。生成热路径上唯一需要冷启动的
-    应该只有 GPU Worker 那一层，所以这里直接 lookup `SanaSprintWorker`。
-    """
-    worker = modal.Cls.from_name(APP_NAME, WORKER_CLASS, client=client())(model_id=model_id)
-    return worker.generate_batch if is_batch else worker.generate
+    """Resolve the model-specific GPU worker without a forwarding Function."""
+    try:
+        app_name, class_name, generate_method, batch_method = WORKERS[model_id]
+    except KeyError as exc:
+        raise ContractError(f"unsupported model: {model_id}") from exc
+    worker = modal.Cls.from_name(app_name, class_name, client=client())(model_id=model_id)
+    return getattr(worker, batch_method if is_batch else generate_method)
 
 
 def default_db_path() -> Path:

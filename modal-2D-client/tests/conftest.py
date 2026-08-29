@@ -6,20 +6,17 @@ import pytest
 @pytest.fixture
 def capability_doc():
     return {
-        "contract": "modal-2d.generation.v1",
+        "contract": "modal-2d.generation.v2",
         "provider": "modal-2d",
         "kind": "image.generate",
         "operation": "modal-2d.image.text_to_image.v1",
         "generation": {
-            "app": "modal-2d",
-            "worker_class": "SanaSprintWorker",
-            "generate_method": "generate",
-            "batch_generate_method": "generate_batch",
+            "control_app": "modal-2d",
             "batch_max_size": 8,
             "artifact_function": "read_artifact",
             "artifact_volume": "modal-2d-artifacts",
             "artifact_path_field": "remote_path",
-            "job_transport": "modal-function-call",
+            "job_transport": "modal.FunctionCall",
         },
         "outputs": [{"role": "primary-image", "mediaType": "image/png"}],
         "input": {"prompt": {"type": "string"}, "size": {"width": 1024, "height": 1024}},
@@ -40,6 +37,12 @@ def capability_doc():
                 "width": 1024,
                 "height": 1024,
                 "profiles": [{"id": "recommended", "steps": 2, "guidance": 4.5}],
+                "generation_entrypoint": {
+                    "app": "modal-2d-sana-sprint",
+                    "class_name": "Model",
+                    "generate_method": "generate",
+                    "batch_generate_method": "generate_batch",
+                },
             }
         ],
     }
@@ -54,10 +57,7 @@ def png_artifact():
         "role": "primary-image",
         "mediaType": "image/png",
         "digest": f"sha256:{sha256}",
-        "producer": {
-            "provider": "modal-2d",
-            "operation": "modal-2d.image.text_to_image.v1",
-        },
+        "producer": {"provider": "modal-2d", "operation": "modal-2d.image.text_to_image.v1"},
         "mime": "image/png",
         "format": "png",
         "bytes": len(data),

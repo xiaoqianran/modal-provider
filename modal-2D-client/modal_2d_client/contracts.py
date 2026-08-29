@@ -10,16 +10,14 @@ from .constants import (
     ARTIFACT_MIME,
     ARTIFACT_ROLE,
     ARTIFACT_VOLUME,
-    BATCH_GENERATE_METHOD,
     CONTRACT,
     DEFAULT_MODEL,
-    GENERATE_METHOD,
     JOB_TRANSPORT,
     MAX_BATCH_SIZE,
     MAX_PROMPT_CHARS,
     MAX_SEED,
     OPERATION,
-    WORKER_CLASS,
+    WORKERS,
 )
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -40,12 +38,10 @@ def validate_capabilities(value: Any) -> dict[str, object]:
     outputs = doc.get("outputs")
     if outputs is not None and outputs != [{"role": ARTIFACT_ROLE, "mediaType": ARTIFACT_MIME}]:
         raise ContractError("incompatible modal-2D capability outputs")
+
     generation = _mapping(doc.get("generation"), "generation")
     required_generation = {
-        "app": APP_NAME,
-        "worker_class": WORKER_CLASS,
-        "generate_method": GENERATE_METHOD,
-        "batch_generate_method": BATCH_GENERATE_METHOD,
+        "control_app": APP_NAME,
         "artifact_function": ARTIFACT_FUNCTION,
         "job_transport": JOB_TRANSPORT,
     }
@@ -57,6 +53,7 @@ def validate_capabilities(value: Any) -> dict[str, object]:
         raise ContractError("incompatible modal-2D batch size")
     if generation.get("artifact_path_field") not in (None, "remote_path"):
         raise ContractError("incompatible modal-2D artifact path field")
+
     artifact = _mapping(doc.get("artifact"), "artifact")
     if (
         artifact.get("role") != ARTIFACT_ROLE
@@ -64,6 +61,7 @@ def validate_capabilities(value: Any) -> dict[str, object]:
         or artifact.get("lossless") is not True
     ):
         raise ContractError("modal-2D artifact contract must be lossless primary-image PNG")
+
     models = doc.get("models")
     if not isinstance(models, list) or not models:
         raise ContractError("capabilities.models must be a non-empty array")
@@ -78,14 +76,31 @@ def validate_capabilities(value: Any) -> dict[str, object]:
         _text(item.get("hf_id"), f"models[{index}].hf_id")
         if item.get("width") != 1024 or item.get("height") != 1024:
             raise ContractError(f"model {model_id} must produce 1024x1024")
-        if item.get("steps") != 2:
-            raise ContractError(f"model {model_id} must use exactly 2 steps")
+        steps = item.get("steps")
+        if not isinstance(steps, int) or isinstance(steps, bool) or steps <= 0:
+            raise ContractError(f"model {model_id} steps must be a positive integer")
         profiles = item.get("profiles")
         if not isinstance(profiles, list) or len(profiles) != 1:
             raise ContractError(f"model {model_id} requires one recommended profile")
         profile = _mapping(profiles[0], f"models[{index}].profiles[0]")
-        if profile.get("id") != "recommended" or profile.get("steps") != 2:
+        if profile.get("id") != "recommended" or profile.get("steps") != steps:
             raise ContractError(f"model {model_id} profile is incompatible")
+        route = _mapping(
+            item.get("generation_entrypoint"),
+            f"models[{index}].generation_entrypoint",
+        )
+        expected_route = WORKERS.get(model_id)
+        if expected_route is None:
+            raise ContractError(f"client has no worker route for model: {model_id}")
+        app_name, class_name, generate_method, batch_method = expected_route
+        expected_entrypoint = {
+            "app": app_name,
+            "class_name": class_name,
+            "generate_method": generate_method,
+            "batch_generate_method": batch_method,
+        }
+        if any(route.get(key) != expected for key, expected in expected_entrypoint.items()):
+            raise ContractError(f"model {model_id} worker route is incompatible")
     return doc
 
 

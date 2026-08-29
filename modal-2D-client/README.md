@@ -45,7 +45,7 @@ Sana Sprint Worker   Artifact Volume
 ## 设计原则
 
 - Modal token 只驻留进程内存，不写 SQLite、不写日志、不进入 Job。
-- 提交时按 `model_id` 直接 lookup `SanaSprintWorker` 并 spawn `generate` / `generate_batch`，中间没有 CPU 中转 Function：Modal 每多一层 Function 就多一次独立冷启动，中转层会让首次请求先等 CPU 容器、再等 GPU 容器。
+- 提交时按 `model_id` 直接 lookup 对应模型专属 GPU Worker 并 spawn `generate` / `generate_batch`；SANA、Qwen-Image、Z-Image、HiDream 各自使用独立 Worker App 和依赖镜像，中间没有 CPU 中转 Function。
 - SQLite 只保存可恢复 Job 镜像和 `remote_call_id`。
 - 成功 Job 先返回远端 Artifact descriptor；PNG 只有被读取时才下载。Batch Job 使用同一个 `remote_call_id` 保存 `artifacts[]`，不新增第二套 Job lifecycle。
 - Artifact 读取优先走 `modal-2d-artifacts` 命名 Volume；旧 `read_artifact` Function 只做 transport fallback。

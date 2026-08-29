@@ -52,7 +52,7 @@ class FakeCapabilities:
     """替代 modal_2d_client.capabilities，不触网。"""
 
     DOC = {
-        "contract": "modal-2d.generation.v1",
+        "contract": "modal-2d.generation.v2",
         "provider": "modal-2d",
         "kind": "image.generate",
         "operation": "modal-2d.image.text_to_image.v1",
@@ -70,16 +70,13 @@ class FakeCapabilities:
         "outputs": [{"role": "primary-image", "mediaType": "image/png"}],
         "execution": {"mode": "async", "cancellable": True},
         "generation": {
-            "app": "modal-2d",
-            "worker_class": "SanaSprintWorker",
-            "generate_method": "generate",
-            "batch_generate_method": "generate_batch",
+            "control_app": "modal-2d",
             "prefetch_function": "prefetch",
             "batch_max_size": 8,
             "artifact_function": "read_artifact",
             "artifact_volume": "modal-2d-artifacts",
             "artifact_path_field": "remote_path",
-            "job_transport": "modal-function-call",
+            "job_transport": "modal.FunctionCall",
         },
         "input": {"prompt": {"type": "string"}, "size": {"width": 1024, "height": 1024}},
         "artifact": {
@@ -99,6 +96,12 @@ class FakeCapabilities:
                 "width": 1024,
                 "height": 1024,
                 "profiles": [{"id": "recommended", "steps": 2, "guidance": 4.5}],
+                "generation_entrypoint": {
+                    "app": "modal-2d-sana-sprint",
+                    "class_name": "Model",
+                    "generate_method": "generate",
+                    "batch_generate_method": "generate_batch",
+                },
             },
             {
                 "id": "sana-sprint-0.6b",
@@ -110,6 +113,12 @@ class FakeCapabilities:
                 "width": 1024,
                 "height": 1024,
                 "profiles": [{"id": "recommended", "steps": 2, "guidance": 4.5}],
+                "generation_entrypoint": {
+                    "app": "modal-2d-sana-sprint",
+                    "class_name": "Model",
+                    "generate_method": "generate",
+                    "batch_generate_method": "generate_batch",
+                },
             },
         ],
     }

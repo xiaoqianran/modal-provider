@@ -1,5 +1,4 @@
 import pytest
-import pytest
 
 
 def test_provider_connect_rolls_back_when_capability_refresh_fails(monkeypatch):

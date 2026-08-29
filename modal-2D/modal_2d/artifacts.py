@@ -5,15 +5,15 @@ import os
 import uuid
 from pathlib import Path
 
-from .contracts import (
+from .constants import (
     ARTIFACT_FORMAT,
     ARTIFACT_MIME,
     ARTIFACT_ROLE,
     IMAGE_SIZE,
     OPERATION,
     PROVIDER,
-    validate_artifact_id,
 )
+from .contracts import validate_artifact_id
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 IHDR = b"IHDR"
