@@ -32,6 +32,14 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
     source = source.replace(processor_old, processor_new, 1)
     source = source.replace(model_old, model_new, 1)
 
+    sor_query_old = "    dists, _ = tree.query(points, k=nb_neighbors + 1)\n"
+    sor_query_new = (
+        "    dists, _ = tree.query(points, k=nb_neighbors + 1, workers=-1)\n"
+    )
+    if source.count(sor_query_old) != 1:
+        raise RuntimeError("expected pinned single-threaded SOR query not found")
+    source = source.replace(sor_query_old, sor_query_new, 1)
+
     import_marker = "import subprocess\n"
     if source.count(import_marker) != 1:
         raise RuntimeError("expected pinned retrieval_wm import block not found")
