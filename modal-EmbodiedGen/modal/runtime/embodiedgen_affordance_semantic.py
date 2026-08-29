@@ -90,15 +90,22 @@ def _require_sha256(value: str, label: str) -> str:
     return digest
 
 
+def _valid_job_id(value: str) -> bool:
+    return (
+        isinstance(value, str)
+        and value.startswith("job-")
+        and len(value) == 36
+        and all(ch in "0123456789abcdef" for ch in value[4:])
+    )
+
+
 def validate_semantic_input_manifest(payload: dict) -> dict:
     if not isinstance(payload, dict) or payload.get("version") != SEMANTIC_INPUT_VERSION:
         raise ValueError("semantic input manifest must be version=1")
     source_job_id = str(payload.get("sourceJobId") or "").strip()
     output_job_id = str(payload.get("outputJobId") or "").strip()
     for label, job_id in (("sourceJobId", source_job_id), ("outputJobId", output_job_id)):
-        if not job_id.startswith("job-") or len(job_id) != 36 or any(
-            ch not in "0123456789abcdef" for ch in job_id[4:]
-        ):
+        if not _valid_job_id(job_id):
             raise ValueError(f"invalid {label}: {job_id!r}")
     category = str(payload.get("category") or "unknown object").strip()
     if not category or len(category) > 160:
@@ -316,7 +323,7 @@ def _semantic_client():
 )
 def annotate_semantics(job_id: str, input_path: str = str(SEMANTIC_INPUT_PATH)) -> dict:
     """Annotate immutable semantic inputs. Safe to retry without rerunning geometry stages."""
-    if not job_id.startswith("job-") or len(job_id) != 36:
+    if not _valid_job_id(job_id):
         raise ValueError("invalid API job id")
     relative_input = safe_job_relative_path(input_path)
     artifacts.reload()

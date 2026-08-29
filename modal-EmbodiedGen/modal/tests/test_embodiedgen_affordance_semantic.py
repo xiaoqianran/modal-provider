@@ -63,6 +63,16 @@ class AffordanceSemanticContractTest(unittest.TestCase):
         self.assertNotIn('torch', source.lower())
         self.assertNotIn('nvcc', source.lower())
 
+    def test_job_id_validation_rejects_path_components(self):
+        self.assertTrue(semantic._valid_job_id("job-" + "a" * 32))
+        malicious = "job-../" + "a" * 29
+        self.assertEqual(len(malicious), 36)
+        self.assertFalse(semantic._valid_job_id(malicious))
+        bad = self.manifest()
+        bad["outputJobId"] = malicious
+        with self.assertRaisesRegex(ValueError, "invalid outputJobId"):
+            semantic.validate_semantic_input_manifest(bad)
+
     def test_manifest_is_hash_bound_and_path_safe(self):
         normalized = semantic.validate_semantic_input_manifest(self.manifest())
         self.assertEqual([x["id"] for x in normalized["parts"]], ["0", "1"])
