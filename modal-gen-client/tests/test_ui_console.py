@@ -272,7 +272,7 @@ def test_toast_resolves_its_host_before_append() -> None:
     import subprocess
     from pathlib import Path
 
-    source = Path("modal_gen/ui/assets/app.js").read_text()
+    source = Path("modal_gen/ui/assets/app.js").read_text(encoding="utf-8")
     match = re.search(
         r'export function toast\(message, kind = ""\) \{.*?\n\}',
         source,
