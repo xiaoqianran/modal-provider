@@ -49,3 +49,24 @@ def test_stage3_patch_is_image_build_time_and_legacy_hot_patch_removed():
     section = app[start:end]
     assert "patch_worldstereo_wrapper" not in section
     assert "retrieval_source.replace" not in section
+
+
+def test_stage3_worker_preserves_upstream_worldgen_cwd():
+    source = Path("modal_world/stage3_app.py").read_text()
+    enter = source[source.index("def load_models") : source.index("def _stage3_manifest")]
+    assert "os.chdir(worldgen_root)" in enter
+    assert 'find_spec("worldrecon.pipeline")' in enter
+
+
+def test_stage3_worker_skips_existing_trajectory_results_but_updates_memory():
+    source = Path("modal_world/stage3_app.py").read_text()
+    generate = source[source.index("def generate") :]
+    assert "if not force and result_path.is_file():" in generate
+    assert 'timer.track("[IO] Reload existing result for memory update")' in generate
+    skip_block = generate[
+        generate.index("if not force and result_path.is_file():") : generate.index(
+            'with timer.track("Memory Retrieval")'
+        )
+    ]
+    assert "memory_bank.update_memory" in skip_block
+    assert "continue" in skip_block

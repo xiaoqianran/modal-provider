@@ -69,6 +69,15 @@ class WorldStereoWorker:
             sys.path.insert(0, worldgen_root)
         if HYWORLD2_SOURCE not in sys.path:
             sys.path.insert(0, HYWORLD2_SOURCE)
+        # Preserve upstream video_gen.py cwd semantics. PanoramaMemoryBank invokes
+        # ``torchrun -m worldrecon.pipeline`` with cwd="..", which must resolve
+        # from hyworld2/worldgen to hyworld2 so the sibling package is importable.
+        os.chdir(worldgen_root)
+
+        import importlib.util
+
+        if importlib.util.find_spec("worldrecon.pipeline") is None:
+            raise RuntimeError("Stage 3 worker cannot import worldrecon.pipeline")
 
         import torch
         import torch.distributed as dist
@@ -240,6 +249,20 @@ class WorldStereoWorker:
                 tar_ks = torch.from_numpy(np.array(target_cameras["intrinsic"])).to(
                     dtype=torch.float32, device=self.device
                 )
+                result_path = (
+                    target / f"render_results/{view_id}/{traj_id}/{_MODEL_TYPE}_result.mp4"
+                )
+                if not force and result_path.is_file():
+                    with timer.track("[IO] Reload existing result for memory update"):
+                        gen_frames = load_video(str(result_path))
+                    memory_bank.update_memory(
+                        gen_frames=gen_frames,
+                        tar_w2cs_full=tar_w2cs,
+                        tar_Ks_full=tar_ks,
+                        view_id=view_id,
+                        traj_id=traj_id,
+                    )
+                    continue
 
                 with timer.track("Memory Retrieval"):
                     retrieved_frames, ref_index, ref_index_dict, ref_w2cs, _ = (
@@ -298,9 +321,6 @@ class WorldStereoWorker:
 
                 gc.collect()
                 torch.cuda.empty_cache()
-                result_path = (
-                    target / f"render_results/{view_id}/{traj_id}/{_MODEL_TYPE}_result.mp4"
-                )
                 with timer.track("[IO] Save Results"):
                     output_np = output.permute(0, 2, 3, 1).cpu().numpy()
                     export_to_video(output_np, str(result_path), fps=16)
