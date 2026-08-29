@@ -70,6 +70,15 @@ def get_job(job_id: str) -> dict | None:
     return _jobs().get(job_id)
 
 
+def list_jobs(limit: int = 100) -> list[dict]:
+    """Return recent persisted jobs, newest first."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    jobs = [dict(state or {"job_id": job_id}) for job_id, state in _jobs().items()]
+    jobs.sort(key=lambda state: float(state.get("created_epoch", 0) or 0), reverse=True)
+    return jobs[:limit]
+
+
 def _put_job(job_id: str, **changes) -> dict:
     jobs = _jobs()
     state = dict(jobs.get(job_id) or {"job_id": job_id})
@@ -171,7 +180,12 @@ def upload_image(image_path: str | Path, job_id: str | None = None) -> str:
 def generate_image3d(image_path: str | Path, profile: str = "auto") -> dict:
     job_id = upload_image(image_path)
     selected = select_profile(profile)
-    _put_job(job_id, profile=selected, requested_profile=profile)
+    _put_job(
+        job_id,
+        profile=selected,
+        requested_profile=profile,
+        workflow="image_to_3d",
+    )
     rembg, sam3d, mesh, lite, finalize = apply_profile(selected)
     timings: dict[str, float] = {}
     _run_stage(job_id, "rembg", lambda: rembg.prepare.remote(job_id), timings)
@@ -205,6 +219,7 @@ def generate_text3d(prompt: str, seed: int = 0, profile: str = "auto") -> dict:
         "stage": "queued",
         "profile": selected,
         "requested_profile": profile,
+        "workflow": "text_to_3d",
         "created_epoch": now,
         "created_at": datetime.fromtimestamp(now, UTC).isoformat(),
         "input": {"type": "text", "prompt_chars": len(prompt), "seed": seed},
