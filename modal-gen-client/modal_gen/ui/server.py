@@ -130,7 +130,7 @@ class LiveGateway:
 
     def __init__(self) -> None:
         self.token: str | None = None
-        self.session: dict | None = None
+        self.session_data: dict | None = None
         self.snapshot: dict | None = None
         self._lock = threading.Lock()
 
@@ -191,7 +191,7 @@ class LiveGateway:
             headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
         )
         self.token = None
-        self.session = None
+        self.session_data = None
         self.snapshot = None
         return result
 
@@ -202,7 +202,7 @@ class LiveGateway:
             headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
         )
         self.token = None
-        self.session = None
+        self.session_data = None
         self.snapshot = None
         return result
 
@@ -219,11 +219,11 @@ class LiveGateway:
         return {"status": "approved"}
 
     def session(self) -> dict:
-        if self.token and self.session:
-            return {"status": "paired", "token": self.token, "session": self.session}
+        if self.token and self.session_data:
+            return {"status": "paired", "token": self.token, "session": self.session_data}
         with self._lock:
-            if self.token and self.session:
-                return {"status": "paired", "token": self.token, "session": self.session}
+            if self.token and self.session_data:
+                return {"status": "paired", "token": self.token, "session": self.session_data}
             body = {
                 "clientIdentity": "agentscape",
                 "contractVersion": "1",
@@ -247,7 +247,7 @@ class LiveGateway:
             if second.get("status") != "paired":
                 raise RuntimeError("session not established")
             self.token = second["token"]
-            self.session = second["session"]
+            self.session_data = second["session"]
             return second
 
     def _ensure_session(self) -> None:
