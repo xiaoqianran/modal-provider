@@ -218,7 +218,13 @@ def _glb_accessor_array(doc: dict, bin_chunk: bytes, accessor_index: int):
         raise RuntimeError("sparse GLB accessors are not supported for segmentation alignment")
     if "bufferView" not in accessor:
         raise RuntimeError("segmentation alignment requires buffer-backed GLB accessors")
-    view = views[accessor["bufferView"]]
+    try:
+        view_index = int(accessor["bufferView"])
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"invalid GLB bufferView index: {accessor.get(bufferView)!r}") from exc
+    if not (0 <= view_index < len(views)):
+        raise RuntimeError(f"invalid GLB bufferView index: {view_index}")
+    view = views[view_index]
     if view.get("buffer", 0) != 0:
         raise RuntimeError("segmentation alignment only supports the GLB BIN buffer")
 
@@ -241,14 +247,22 @@ def _glb_accessor_array(doc: dict, bin_chunk: bytes, accessor_index: int):
     count = int(accessor.get("count", 0))
     if count <= 0:
         raise RuntimeError("GLB accessor count must be positive")
-    byte_offset = int(view.get("byteOffset", 0)) + int(accessor.get("byteOffset", 0))
+    view_offset = int(view.get("byteOffset", 0))
+    view_length = int(view.get("byteLength", -1))
+    accessor_offset = int(accessor.get("byteOffset", 0))
+    if view_offset < 0 or view_length < 0 or view_offset + view_length > len(bin_chunk):
+        raise RuntimeError("GLB bufferView extends outside BIN chunk")
+    if accessor_offset < 0:
+        raise RuntimeError("GLB accessor byteOffset must be non-negative")
+    byte_offset = view_offset + accessor_offset
     packed_stride = dtype.itemsize * width
     stride = int(view.get("byteStride", packed_stride))
     if stride < packed_stride:
         raise RuntimeError(f"invalid GLB accessor stride: {stride} < {packed_stride}")
     end = byte_offset + (count - 1) * stride + packed_stride
-    if byte_offset < 0 or end > len(bin_chunk):
-        raise RuntimeError("GLB accessor extends outside BIN chunk")
+    view_end = view_offset + view_length
+    if byte_offset < view_offset or end > view_end:
+        raise RuntimeError("GLB accessor extends outside its bufferView")
     array = np.ndarray(
         shape=(count, width),
         dtype=dtype,
