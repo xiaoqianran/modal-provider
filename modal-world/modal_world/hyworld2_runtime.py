@@ -4,6 +4,8 @@ from typing import Any
 
 import modal
 
+from .stage2_patch import patch_stage2_single_gpu
+
 ARTIFACT_VOLUME_NAME = "modal-build-artifacts"
 GPU = "RTX-PRO-6000"
 PYTHON = "3.11"
@@ -132,6 +134,7 @@ hyworld2_worldmirror_image = (
 
 hyworld2_worldgen_stage1_image = (
     hyworld2_worldmirror_image.apt_install("ffmpeg", "libgomp1")
+    .run_function(patch_stage2_single_gpu, args=(HYWORLD2_SOURCE,))
     .pip_install(
         "transformers==5.2.0",
         "accelerate>=1.10,<2",

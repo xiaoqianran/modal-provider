@@ -524,6 +524,11 @@ def worldgen_case000_stage2() -> dict:
     os.environ["HUGGINGFACE_HUB_CACHE"] = "/models/huggingface/hub"
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["CUDA_CACHE_PATH"] = "/models/cuda-cache"
+    os.environ["CUDA_CACHE_MAXSIZE"] = str(4 * 1024**3)
+    os.environ["TORCH_EXTENSIONS_DIR"] = "/models/torch-extensions"
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/models/torchinductor"
+    os.environ["TRITON_CACHE_DIR"] = "/models/triton"
 
     import torch
 
@@ -574,10 +579,6 @@ def worldgen_case000_stage2() -> dict:
             "-X",
             "faulthandler",
             "-u",
-            "-m",
-            "torch.distributed.run",
-            "--standalone",
-            "--nproc_per_node=1",
             "traj_render.py",
             "--target_path",
             str(target),
@@ -611,6 +612,7 @@ def worldgen_case000_stage2() -> dict:
             "returncode": completed.returncode,
         }
         timing_path.write_text(json.dumps(timing, indent=2) + "\n")
+        model_cache.commit()
         worldgen_outputs.commit()
         if completed.returncode != 0:
             tail = log_path.read_text(errors="replace")[-24000:]
@@ -1109,7 +1111,9 @@ def worldgen_case000_stage4() -> dict:
                 "depth_count": len(depths),
                 "normal_count": len(normals),
                 "points_bytes": points_path.stat().st_size,
-                "sky_points_bytes": sky_points_path.stat().st_size,
+                "sky_points_bytes": (
+                    sky_points_path.stat().st_size if sky_points_path.is_file() else 0
+                ),
             }
 
     worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
