@@ -22,3 +22,6 @@ pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
+
+[project.entry-points."modal_gen.providers"]
+modal-3d = "modal_3d_client.provider:create_provider"

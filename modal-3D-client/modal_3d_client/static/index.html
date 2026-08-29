@@ -7,7 +7,7 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/ui/">M<span>3</span></a>
+    <a class="brand" href="/ui/" aria-label="modal-3D 首页">M<span>3</span></a>
     <div class="brand-copy"><strong>modal-3D</strong><small>Asset Studio</small></div>
     <div class="top-actions"><span class="status" id="agent-status"><i></i><span>检测中</span></span><button class="icon-btn" id="open-settings" type="button">设置</button></div>
   </header>
@@ -26,15 +26,15 @@
         <label><span>Seed</span><input id="seed" type="number" min="0" max="4294967295" value="42"></label>
       </div>
       <details class="advanced"><summary>高级输入</summary><div class="advanced-body"><label><span>可选 Mask</span><input id="mask-file" type="file" accept="image/png,image/jpeg,image/webp"></label><label><span>自定义 Job ID</span><input id="job-id" placeholder="留空自动生成"></label></div></details>
-      <div class="generate-row"><p id="form-message">输入 Modal Token 并选择图片后即可生成。</p><button class="generate" id="generate" type="button"><span>生成 GLB</span><kbd>⌘ ↵</kbd></button></div>
+      <div class="generate-row"><p id="form-message">输入 Modal Token 并选择图片后即可生成。</p><button class="generate" id="generate" type="button"><span class="btn-spinner" aria-hidden="true"></span><span id="generate-label">生成 GLB</span><kbd id="kbd-hint">⌘ ↵</kbd></button></div>
     </section>
     <section class="result panel">
       <div class="section-title compact"><div><span class="kicker">RESULT</span><h2>3D 资产</h2></div><span class="job-state" id="job-state">等待生成</span></div>
       <div class="stage">
         <div class="empty" id="result-empty"><div class="cube">◇</div><strong>GLB 资产会显示在这里</strong><span>上传图片开始生成</span></div>
-        <div class="progress" id="result-progress" hidden><i></i><strong>正在构建 3D 资产</strong><span id="progress-copy">准备输入图片</span></div>
+        <div class="progress" id="result-progress" hidden><i></i><strong id="progress-title">正在构建 3D 资产</strong><span id="progress-copy">准备输入图片</span></div>
         <model-viewer id="glb-viewer" camera-controls touch-action="pan-y" auto-rotate shadow-intensity="1" environment-image="neutral" alt="生成的 3D GLB 资产" hidden></model-viewer>
-        <div class="complete" id="result-complete" hidden><div><strong>GLB 已生成</strong><span id="artifact-meta">产物已通过完整性校验</span></div><div class="viewer-actions"><button class="secondary" id="reset-camera" type="button">重置视角</button><button class="generate" id="download" type="button">下载 GLB</button></div></div>
+        <div class="complete" id="result-complete" hidden><div><strong>GLB 已生成</strong><span id="artifact-meta">产物已通过完整性校验</span></div><div class="viewer-actions"><button class="secondary" id="reset-camera" type="button">重置视角</button><button class="generate" id="download" type="button"><span class="btn-spinner" aria-hidden="true"></span><span>下载 GLB</span></button></div></div>
       </div>
       <div class="pipeline"><span data-step="upload">上传</span><i></i><span data-step="preprocess">预处理</span><i></i><span data-step="generate">生成</span><i></i><span data-step="artifact">GLB</span></div>
     </section>
@@ -47,19 +47,20 @@
       <div class="job-list" id="job-list"><div class="list-empty">还没有生成任务</div></div>
     </section>
   </main>
-  <aside class="drawer" id="settings" aria-hidden="true">
-    <div class="drawer-head"><div><span class="kicker">SETTINGS</span><h2>连接 Modal</h2></div><button class="close" id="close-settings" type="button">×</button></div>
+  <aside class="drawer" id="settings" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true" inert>
+    <div class="drawer-head"><div><span class="kicker">SETTINGS</span><h2 id="drawer-title">连接 Modal</h2></div><button class="close" id="close-settings" type="button" aria-label="关闭设置">×</button></div>
     <p class="drawer-copy">凭据只保存在当前 Client 进程内存中，不写入 Job、数据库或日志。</p>
     <label><span>粘贴 modal token set 命令</span><input id="token-command" type="password" autocomplete="off" placeholder="modal token set --token-id ak-... --token-secret as-..."></label>
     <p class="parse-hint" id="parse-hint">粘贴后自动提取 ID 和 Secret。</p>
     <label><span>Modal Token ID</span><input id="token-id" autocomplete="off" placeholder="ak-..."></label>
     <label><span>Modal Token Secret</span><input id="token-secret" type="password" autocomplete="off" placeholder="as-..."></label>
     <label><span>本地 Client Session（可选）</span><input id="session-token" type="password" autocomplete="off" placeholder="X-Modal-3D-Session"></label>
-    <div class="drawer-actions"><button class="secondary" id="disconnect" type="button">断开</button><button class="generate" id="connect" type="button">连接 Modal</button></div>
+    <div class="drawer-actions"><button class="secondary" id="disconnect" type="button">断开</button><button class="generate" id="connect" type="button"><span class="btn-spinner" aria-hidden="true"></span><span>连接 Modal</span></button></div>
     <p class="drawer-status" id="drawer-status"></p>
     <details><summary>API 调试信息</summary><pre id="debug-log">尚无请求</pre></details>
   </aside>
-  <div class="scrim" id="scrim" hidden></div><div class="toasts" id="toasts"></div>
+  <div class="scrim" id="scrim" hidden></div>
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js"></script>
   <script src="/ui/app.js" defer></script>
 </body>

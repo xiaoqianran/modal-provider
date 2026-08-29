@@ -1,8 +1,21 @@
 "use strict";
 const $=s=>document.querySelector(s);
-const state={token:localStorage.getItem("m3d.session")||"",config:null,connected:false,models:[],jobs:[],job:null,file:null,preview:null,artifactBlob:null,artifactJobId:null,poll:null};
+const state={token:localStorage.getItem("m3d.session")||"",config:null,connected:false,models:[],jobs:[],job:null,file:null,preview:null,artifactBlob:null,artifactJobId:null,poll:null,busy:false};
 const terminal=new Set(["succeeded","failed","cancelled","expired"]);
+const STATUS_LABEL={queued:"排队中",submitting:"提交中",running:"生成中",succeeded:"已完成",failed:"失败",cancelled:"已取消",expired:"已过期"};
+const META_KEY="m3d.jobmeta",META_MAX=200;
 function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function truncate(v,n){const s=String(v??"");return s.length>n?`${s.slice(0,n)}…`:s}
+function statusLabel(status){return STATUS_LABEL[status]||String(status||"未知")}
+function fmt(v){if(!v)return"";const d=new Date(v);return Number.isNaN(d.getTime())?"":d.toLocaleString("zh-CN",{hour12:false})}
+function relTime(v){if(!v)return"";const d=new Date(v),t=d.getTime();if(Number.isNaN(t))return"";const diff=Date.now()-t,min=60000,hour=3600000,day=86400000;if(diff<0)return fmt(v);if(diff<min)return"刚刚";if(diff<hour)return`${Math.floor(diff/min)} 分钟前`;if(diff<day)return`${Math.floor(diff/hour)} 小时前`;if(diff<day*7)return`${Math.floor(diff/day)} 天前`;return d.toLocaleDateString("zh-CN",{month:"numeric",day:"numeric"})}
+function modelLabel(id){const m=state.models.find(x=>x.id===id);if(m)return m.name||m.id;return id||"3D 任务"}
+function readMeta(){try{return JSON.parse(localStorage.getItem(META_KEY))||{}}catch{return{}}}
+function rememberJob(id,meta){
+  if(!id)return;const all=readMeta();all[id]=meta;
+  const keys=Object.keys(all);if(keys.length>META_MAX)keys.slice(0,keys.length-META_MAX).forEach(k=>delete all[k]);
+  try{localStorage.setItem(META_KEY,JSON.stringify(all))}catch{}
+}
 function toast(message,kind=""){const el=document.createElement("div");el.className=`toast ${kind}`;el.textContent=message;$("#toasts").append(el);setTimeout(()=>el.remove(),3500)}
 function debug(method,path,status,data){$("#debug-log").textContent=`${method} ${path}\nHTTP ${status}\n\n${typeof data==="string"?data:JSON.stringify(data,null,2)}`}
 async function request(path,options={}){
@@ -14,29 +27,149 @@ async function request(path,options={}){
   if(!res.ok){const err=new Error(data&&data.detail?data.detail:`HTTP ${res.status}`);err.status=res.status;throw err}return{data,res};
 }
 function setAgent(mode,text){const el=$("#agent-status");el.dataset.state=mode;el.lastElementChild.textContent=text}
+function setBusy(btn,busy){btn.classList.toggle("is-busy",busy);btn.disabled=busy}
 function setConnected(value){state.connected=value||Boolean(state.config?.demo);setAgent(state.connected?"ok":"warn",state.config?.demo?"演示模式":state.connected?"Modal 已连接":"Modal 未连接");$("#form-message").textContent=state.connected?"选择图片后即可提交生成。":"请先在设置中输入 Modal Token。";$("#drawer-status").textContent=state.connected?"已连接 Modal":"尚未连接"}
-function openSettings(){$("#settings").classList.add("open");$("#settings").setAttribute("aria-hidden","false");$("#scrim").hidden=false}
-function closeSettings(){$("#settings").classList.remove("open");$("#settings").setAttribute("aria-hidden","true");$("#scrim").hidden=true}
+function updateJobState(job){const el=$("#job-state");el.textContent=`${statusLabel(job.status)} · ${truncate(job.id,12)}`;el.title=job.id}
+let lastFocus=null;
+function openSettings(){
+  if($("#settings").classList.contains("open"))return;
+  lastFocus=document.activeElement;
+  const drawer=$("#settings");
+  drawer.classList.add("open");drawer.setAttribute("aria-hidden","false");drawer.removeAttribute("inert");
+  $("#scrim").hidden=false;document.body.style.overflow="hidden";
+  setTimeout(()=>$("#token-command").focus(),80);
+}
+function closeSettings(){
+  const drawer=$("#settings");
+  if(!drawer.classList.contains("open"))return;
+  drawer.classList.remove("open");drawer.setAttribute("aria-hidden","true");drawer.setAttribute("inert","");
+  $("#scrim").hidden=true;document.body.style.overflow="";
+  if(lastFocus&&typeof lastFocus.focus==="function")lastFocus.focus();
+}
 function parseTokenCommand(value){const id=value.match(/(?:^|\s)--token-id(?:=|\s+)(?:["']([^"']+)["']|(\S+))/i),secret=value.match(/(?:^|\s)--token-secret(?:=|\s+)(?:["']([^"']+)["']|(\S+))/i),hint=$("#parse-hint");if(!value.trim()){hint.className="parse-hint";hint.textContent="粘贴后自动提取 ID 和 Secret。";return}if(!id||!secret){hint.className="parse-hint error";hint.textContent="未识别到完整的 --token-id 和 --token-secret。";return}$("#token-id").value=id[1]||id[2];$("#token-secret").value=secret[1]||secret[2];hint.className="parse-hint ok";hint.textContent="已提取 Token ID 和 Secret，可以直接连接。"}
 async function boot(){try{state.config=(await request("/ui/config")).data}catch(e){toast(e.message,"error")}try{const{data}=await request("/health");setConnected(Boolean(data.modal_connected))}catch{setAgent("bad","Client 不可达")}await Promise.all([loadModels(),loadJobs()]);if(!state.connected)openSettings()}
-async function connect(){const token_id=$("#token-id").value.trim(),token_secret=$("#token-secret").value.trim();state.token=$("#session-token").value.trim();localStorage.setItem("m3d.session",state.token);if(!token_id||!token_secret){toast("请填写 Token ID 和 Secret","error");return}const btn=$("#connect");btn.disabled=true;try{await request("/modal/connect",{method:"POST",body:{token_id,token_secret}});setConnected(true);$("#token-secret").value="";closeSettings();toast("Modal 连接成功")}catch(e){$("#drawer-status").textContent=`连接失败：${e.message}`;toast(`连接失败：${e.message}`,"error")}finally{btn.disabled=false}}
+async function connect(){
+  const token_id=$("#token-id").value.trim(),token_secret=$("#token-secret").value.trim();
+  state.token=$("#session-token").value.trim();localStorage.setItem("m3d.session",state.token);
+  if(!token_id||!token_secret){toast("请填写 Token ID 和 Secret","error");return}
+  const btn=$("#connect");setBusy(btn,true);
+  try{
+    await request("/modal/connect",{method:"POST",body:{token_id,token_secret}});
+    setConnected(true);
+    $("#token-secret").value="";$("#token-command").value="";parseTokenCommand("");
+    closeSettings();toast("Modal 连接成功");
+  }catch(e){$("#drawer-status").textContent=`连接失败：${e.message}`;toast(`连接失败：${e.message}`,"error")}
+  finally{setBusy(btn,false)}
+}
 async function disconnect(){try{await request("/modal/connect",{method:"DELETE"});setConnected(Boolean(state.config?.demo));toast("已断开 Modal")}catch(e){toast(e.message,"error")}}
 async function loadModels(){try{const{data}=await request("/v1/models");state.models=(data.models||[]).filter(m=>m.status!=="disabled");const select=$("#model");select.innerHTML=state.models.map(m=>`<option value="${esc(m.id)}">${esc(m.name||m.id)}</option>`).join("");renderModels();syncProfiles()}catch(e){$("#model-grid").innerHTML=`<div class="list-empty">模型加载失败：${esc(e.message)}</div>`}}
 function syncProfiles(){const model=state.models.find(m=>m.id===$("#model").value);const profiles=model?.profiles||[{id:"recommended",name:"recommended"}];$("#profile").innerHTML=profiles.map(p=>`<option value="${esc(p.id)}">${esc(p.name||p.id)}</option>`).join("");renderModels()}
-function renderModels(){const root=$("#model-grid");if(!state.models.length){root.innerHTML='<div class="list-empty">没有可用模型</div>';return}root.innerHTML=state.models.map(m=>`<article class="model-card ${m.id===$("#model").value?"selected":""}" data-model="${esc(m.id)}"><strong>${esc(m.name||m.id)}</strong><span>${esc(m.description||m.output||"GLB asset")}</span></article>`).join("")}
+function renderModels(){
+  const root=$("#model-grid");
+  if(!state.models.length){root.innerHTML='<div class="list-empty">没有可用模型</div>';return}
+  const current=$("#model").value;
+  root.innerHTML=state.models.map(m=>`<article class="model-card ${m.id===current?"selected":""}" data-model="${esc(m.id)}" tabindex="0" role="button" aria-pressed="${m.id===current}"><strong>${esc(m.name||m.id)}</strong><span>${esc(m.description||m.output||"GLB asset")}</span></article>`).join("");
+}
 function chooseFile(file){if(!file)return;if(!["image/png","image/jpeg","image/webp"].includes(file.type)){toast("仅支持 PNG、JPEG、WebP","error");return}if(state.config?.source?.maxBytes&&file.size>state.config.source.maxBytes){toast("图片超过大小限制","error");return}state.file=file;if(state.preview)URL.revokeObjectURL(state.preview);state.preview=URL.createObjectURL(file);$("#source-preview").src=state.preview;$("#source-preview").hidden=false;$("#drop-copy").hidden=true;$("#remove-file").hidden=false;$("#form-message").textContent=`${file.name} · ${Math.round(file.size/1024)} KB`}
-function removeFile(){state.file=null;$("#source-file").value="";if(state.preview)URL.revokeObjectURL(state.preview);state.preview=null;$("#source-preview").hidden=true;$("#drop-copy").hidden=false;$("#remove-file").hidden=true}
-async function generate(){if(!state.connected){openSettings();toast("请先连接 Modal","error");return}if(!state.file){toast("请先选择一张图片","error");return}const form=new FormData();form.append("file",state.file);form.append("model",$("#model").value);form.append("profile",$("#profile").value);form.append("seed",$("#seed").value||"42");const jobId=$("#job-id").value.trim();if(jobId)form.append("job_id",jobId);const mask=$("#mask-file").files[0];if(mask)form.append("mask",mask);const btn=$("#generate");btn.disabled=true;setPipeline("upload");showProgress("正在上传并处理输入图片");try{const{data}=await request("/v1/jobs",{method:"POST",body:form});state.job=data;$("#job-state").textContent=`${data.status} · ${data.id}`;setPipeline("preprocess");await loadJobs();startPolling();toast("3D 任务已提交")}catch(e){showEmpty();toast(`提交失败：${e.message}`,"error")}finally{btn.disabled=false}}
-function hideViewer(){const viewer=$("#glb-viewer");viewer.hidden=true;viewer.removeAttribute("src")}function showProgress(copy){hideViewer();$("#result-empty").hidden=true;$("#result-complete").hidden=true;$("#result-progress").hidden=false;$("#progress-copy").textContent=copy}function showEmpty(){hideViewer();$("#result-empty").hidden=false;$("#result-progress").hidden=true;$("#result-complete").hidden=true}
+function removeFile(){state.file=null;$("#source-file").value="";if(state.preview)URL.revokeObjectURL(state.preview);state.preview=null;$("#source-preview").hidden=true;$("#drop-copy").hidden=false;$("#remove-file").hidden=true;$("#form-message").textContent=state.connected?"选择图片后即可提交生成。":"请先在设置中输入 Modal Token。"}
+async function generate(){
+  if(state.busy)return;
+  if(!state.connected){openSettings();toast("请先连接 Modal","error");return}
+  if(!state.file){toast("请先选择一张图片","error");return}
+  const form=new FormData();form.append("file",state.file);form.append("model",$("#model").value);form.append("profile",$("#profile").value);form.append("seed",$("#seed").value||"42");
+  const jobId=$("#job-id").value.trim();if(jobId)form.append("job_id",jobId);
+  const mask=$("#mask-file").files[0];if(mask)form.append("mask",mask);
+  const btn=$("#generate");state.busy=true;setBusy(btn,true);
+  setPipeline("upload");showProgress("正在上传并处理输入图片","上传中");
+  try{
+    const{data}=await request("/v1/jobs",{method:"POST",body:form});
+    state.job=data;updateJobState(data);
+    rememberJob(data.id,{file:state.file.name,model:$("#model").value,profile:$("#profile").value,seed:$("#seed").value||"42"});
+    setPipeline("preprocess");await loadJobs();startPolling();toast("3D 任务已提交");
+  }catch(e){showEmpty();toast(`提交失败：${e.message}`,"error")}
+  finally{state.busy=false;setBusy(btn,false)}
+}
+function hideViewer(){const viewer=$("#glb-viewer");viewer.hidden=true;viewer.removeAttribute("src")}
+function showProgress(copy,title){hideViewer();$("#result-empty").hidden=true;$("#result-complete").hidden=true;$("#result-progress").hidden=false;$("#progress-title").textContent=title||"正在构建 3D 资产";$("#progress-copy").textContent=copy}
+function showEmpty(){hideViewer();$("#result-empty").hidden=false;$("#result-progress").hidden=true;$("#result-complete").hidden=true}
 function setPipeline(active){const order=["upload","preprocess","generate","artifact"],index=order.indexOf(active);document.querySelectorAll(".pipeline span").forEach(el=>{const i=order.indexOf(el.dataset.step);el.className=i<index?"done":i===index?"active":""})}
-async function poll(){if(!state.job)return;try{const{data}=await request(`/v1/jobs/${encodeURIComponent(state.job.id)}`);state.job=data;$("#job-state").textContent=`${data.status} · ${data.id}`;if(data.status==="succeeded"){stopPolling();setPipeline("artifact");await showComplete();await loadJobs()}else if(terminal.has(data.status)){stopPolling();showEmpty();toast(`任务结束：${data.status}`,"error")}else{setPipeline("generate");showProgress(data.status==="submitting"?"正在预处理并提交 GPU":"GPU 正在生成 3D 资产")}}catch(e){stopPolling();toast(`轮询失败：${e.message}`,"error")}}
+async function poll(){
+  if(!state.job)return;
+  try{
+    const{data}=await request(`/v1/jobs/${encodeURIComponent(state.job.id)}`);state.job=data;updateJobState(data);
+    if(data.status==="succeeded"){stopPolling();setPipeline("artifact");await showComplete();await loadJobs()}
+    else if(terminal.has(data.status)){stopPolling();showEmpty();renderJobs();toast(`任务结束：${statusLabel(data.status)}`,"error")}
+    else{setPipeline("generate");showProgress(data.status==="submitting"?"正在预处理并提交 GPU":"GPU 正在生成 3D 资产",statusLabel(data.status))}
+  }catch(e){stopPolling();toast(`轮询失败：${e.message}`,"error")}
+}
 function startPolling(){stopPolling();poll();state.poll=setInterval(poll,2200)}function stopPolling(){if(state.poll)clearInterval(state.poll);state.poll=null}
-async function ensureArtifact(){if(!state.job)throw new Error("尚未选择任务");if(state.artifactBlob&&state.artifactJobId===state.job.id)return state.artifactBlob;const{data,res}=await request(`/v1/jobs/${encodeURIComponent(state.job.id)}/artifact`);if(!(data instanceof Blob))throw new Error("产物不是 GLB");const art=state.job.result?.artifact,actual=res.headers.get("x-artifact-sha256");if(art?.sha256&&actual&&art.sha256.toLowerCase()!==actual.toLowerCase())throw new Error("GLB SHA-256 校验失败");if(state.artifactBlob)URL.revokeObjectURL(state.artifactBlob);state.artifactBlob=URL.createObjectURL(data);state.artifactJobId=state.job.id;return state.artifactBlob}
-async function showComplete(){const art=state.job?.result?.artifact;showProgress("正在加载 GLB 在线预览");try{const src=await ensureArtifact(),viewer=$("#glb-viewer");viewer.src=src;viewer.hidden=false;$("#result-progress").hidden=true;$("#result-empty").hidden=true;$("#result-complete").hidden=false;$("#artifact-meta").textContent=art?`${Math.round((art.bytes||0)/1024)} KB · SHA-256 ${String(art.sha256||"").slice(0,12)}…`:"GLB 已校验，可旋转和缩放查看"}catch(e){showEmpty();toast(`预览加载失败：${e.message}`,"error")}}
-async function download(){if(!state.job)return;const btn=$("#download");btn.disabled=true;try{const src=await ensureArtifact(),art=state.job.result?.artifact,a=document.createElement("a");a.href=src;a.download=`${art?.id||state.job.id}.glb`;a.click();toast("GLB 已下载并完成校验")}catch(e){toast(`下载失败：${e.message}`,"error")}finally{btn.disabled=false}}
+async function ensureArtifact(){
+  if(!state.job)throw new Error("尚未选择任务");
+  if(state.artifactBlob&&state.artifactJobId===state.job.id)return state.artifactBlob;
+  const{data,res}=await request(`/v1/jobs/${encodeURIComponent(state.job.id)}/artifact`);
+  if(!(data instanceof Blob))throw new Error("产物不是 GLB");
+  const art=state.job.result?.artifact,actual=res.headers.get("x-artifact-sha256");
+  if(art?.sha256&&actual&&art.sha256.toLowerCase()!==actual.toLowerCase())throw new Error("GLB SHA-256 校验失败");
+  if(state.artifactBlob)URL.revokeObjectURL(state.artifactBlob);
+  state.artifactBlob=URL.createObjectURL(data);state.artifactJobId=state.job.id;return state.artifactBlob;
+}
+async function showComplete(){
+  const art=state.job?.result?.artifact;
+  showProgress("正在加载 GLB 在线预览","加载中");
+  try{
+    const src=await ensureArtifact(),viewer=$("#glb-viewer");
+    viewer.src=src;viewer.hidden=false;$("#result-progress").hidden=true;$("#result-empty").hidden=true;$("#result-complete").hidden=false;
+    $("#artifact-meta").textContent=art?`${Math.round((art.bytes||0)/1024)} KB · SHA-256 ${String(art.sha256||"").slice(0,12)}…`:"GLB 已校验，可旋转和缩放查看";
+    renderJobs();
+  }catch(e){showEmpty();toast(`预览加载失败：${e.message}`,"error")}
+}
+async function download(){
+  if(!state.job)return;
+  const btn=$("#download");setBusy(btn,true);
+  try{
+    const src=await ensureArtifact(),art=state.job.result?.artifact,a=document.createElement("a");
+    a.href=src;a.download=`${art?.id||state.job.id}.glb`;a.click();toast("GLB 已下载并完成校验");
+  }catch(e){toast(`下载失败：${e.message}`,"error")}
+  finally{setBusy(btn,false)}
+}
 async function loadJobs(){try{const{data}=await request("/v1/jobs?limit=12");state.jobs=Array.isArray(data.jobs)?data.jobs:[];renderJobs();if(!state.job){const latest=state.jobs.find(job=>job.status==="succeeded");if(latest)selectJob(latest.id)}}catch(e){$("#job-list").innerHTML=`<div class="list-empty">任务加载失败：${esc(e.message)}</div>`}}
-function renderJobs(){const root=$("#job-list");if(!state.jobs.length){root.innerHTML='<div class="list-empty">还没有生成任务</div>';return}root.innerHTML=state.jobs.map(j=>`<article class="job-card" data-id="${esc(j.id)}"><strong>${esc(j.model||"3D 任务")}</strong><b data-state="${esc(j.status)}">${esc(j.status)}</b><span>${esc(j.id)}</span><span>${fmt(j.created_at)}</span></article>`).join("")}
-function selectJob(id){const job=state.jobs.find(j=>j.id===id);if(!job)return;state.job=job;$("#job-state").textContent=`${job.status} · ${job.id}`;if(job.status==="succeeded"){setPipeline("artifact");showComplete()}else if(!terminal.has(job.status)){showProgress("GPU 正在生成 3D 资产");startPolling()}else showEmpty()}
-function fmt(v){if(!v)return"";const d=new Date(v);return Number.isNaN(d.getTime())?"":d.toLocaleString("zh-CN",{hour12:false})}
+function renderJobs(){
+  const root=$("#job-list");
+  if(!state.jobs.length){root.innerHTML='<div class="list-empty">还没有生成任务</div>';return}
+  const meta=readMeta(),activeId=state.job?state.job.id:null;
+  root.innerHTML=state.jobs.map(j=>{
+    const m=meta[j.id]||{},source=m.file||"";
+    return `<article class="job-card${j.id===activeId?" active":""}" data-id="${esc(j.id)}" tabindex="0" role="button" aria-label="查看任务 ${esc(truncate(j.id,16))}" title="${esc(fmt(j.created_at))}">
+      <div class="job-top"><span class="job-status" data-state="${esc(j.status)}">${esc(statusLabel(j.status))}</span><time class="job-time" datetime="${esc(j.created_at||"")}">${esc(relTime(j.created_at))}</time></div>
+      <p class="job-source${source?"":" is-empty"}">${esc(source||"本地无该任务的源文件记录")}</p>
+      <div class="job-foot"><span class="job-model">${esc(modelLabel(j.model))}</span><span class="job-id">${esc(truncate(j.id,14))}</span></div>
+    </article>`;
+  }).join("");
+}
+function selectJob(id){
+  const job=state.jobs.find(j=>j.id===id);if(!job)return;
+  state.job=job;updateJobState(job);renderJobs();
+  if(job.status==="succeeded"){setPipeline("artifact");showComplete()}
+  else if(!terminal.has(job.status)){setPipeline("generate");showProgress("GPU 正在生成 3D 资产",statusLabel(job.status));startPolling()}
+  else{setPipeline("");showEmpty()}
+}
+function syncShortcutHint(){$("#kbd-hint").textContent=/Mac|iPhone|iPad|iPod/.test(navigator.platform||navigator.userAgent)?"⌘ ↵":"Ctrl ↵"}
 $("#open-settings").onclick=openSettings;$("#close-settings").onclick=closeSettings;$("#scrim").onclick=closeSettings;$("#connect").onclick=connect;$("#disconnect").onclick=disconnect;$("#generate").onclick=generate;$("#download").onclick=download;$("#reset-camera").onclick=()=>{const viewer=$("#glb-viewer");viewer.resetTurntableRotation?.();viewer.jumpCameraToGoal?.()};$("#refresh-models").onclick=loadModels;$("#refresh-jobs").onclick=loadJobs;$("#model").onchange=syncProfiles;$("#source-file").onchange=e=>chooseFile(e.target.files[0]);$("#remove-file").onclick=e=>{e.preventDefault();removeFile()};$("#token-command").oninput=e=>parseTokenCommand(e.target.value);$("#token-command").onpaste=e=>setTimeout(()=>parseTokenCommand(e.target.value),0);
-$("#dropzone").ondragover=e=>{e.preventDefault();e.currentTarget.classList.add("drag")};$("#dropzone").ondragleave=e=>e.currentTarget.classList.remove("drag");$("#dropzone").ondrop=e=>{e.preventDefault();e.currentTarget.classList.remove("drag");chooseFile(e.dataTransfer.files[0])};$("#model-grid").onclick=e=>{const card=e.target.closest("[data-model]");if(card){$("#model").value=card.dataset.model;syncProfiles()}};$("#job-list").onclick=e=>{const card=e.target.closest("[data-id]");if(card)selectJob(card.dataset.id)};document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")generate();if(e.key==="Escape")closeSettings()});$("#session-token").value=state.token;boot();
+$("#dropzone").ondragover=e=>{e.preventDefault();e.currentTarget.classList.add("drag")};$("#dropzone").ondragleave=e=>e.currentTarget.classList.remove("drag");$("#dropzone").ondrop=e=>{e.preventDefault();e.currentTarget.classList.remove("drag");chooseFile(e.dataTransfer.files[0])};
+$("#model-grid").onclick=e=>{const card=e.target.closest("[data-model]");if(card){$("#model").value=card.dataset.model;syncProfiles()}};
+$("#model-grid").onkeydown=e=>{if(e.key!=="Enter"&&e.key!==" ")return;const card=e.target.closest("[data-model]");if(card){e.preventDefault();$("#model").value=card.dataset.model;syncProfiles()}};
+$("#job-list").onclick=e=>{const card=e.target.closest("[data-id]");if(card)selectJob(card.dataset.id)};
+$("#job-list").onkeydown=e=>{if(e.key!=="Enter"&&e.key!==" ")return;const card=e.target.closest("[data-id]");if(card){e.preventDefault();selectJob(card.dataset.id)}};
+$("#settings").addEventListener("keydown",e=>{
+  if(e.key!=="Tab")return;
+  const nodes=Array.from($("#settings").querySelectorAll("input,button,select,summary,[tabindex]:not([tabindex='-1'])")).filter(n=>!n.disabled&&n.offsetParent!==null);
+  if(!nodes.length)return;
+  const first=nodes[0],last=nodes[nodes.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
+});
+document.addEventListener("keydown",e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){e.preventDefault();if(!$("#generate").disabled)generate()}
+  if(e.key==="Escape")closeSettings();
+});
+$("#session-token").value=state.token;syncShortcutHint();boot();
