@@ -53,11 +53,6 @@ class Modal2DProvider:
 
     def connect(self, token_id: str, token_secret: str) -> dict[str, object]:
         modal_session.connect(token_id, token_secret)
-        try:
-            capabilities.document(refresh_remote=True)
-        except Exception:
-            modal_session.disconnect()
-            raise
         return self.connection_status()
 
     def disconnect(self) -> dict[str, object]:

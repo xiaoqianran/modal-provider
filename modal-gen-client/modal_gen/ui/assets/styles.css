@@ -325,6 +325,43 @@ body {
 .flow__arrow { display: flex; align-items: center; color: var(--text-3); font-size: var(--fs-20); }
 .flow__step-num { width: 18px; height: 18px; border-radius: var(--r3); background: var(--accent-w); color: var(--accent-ink); font-size: var(--fs-11); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; margin-right: var(--s2); }
 
+
+/* ---- modal connection ------------------------------------------------- */
+.connect-card {
+  margin-bottom: var(--s5); border: 1px solid var(--border-strong); border-radius: 12px;
+  background: var(--surface); overflow: hidden;
+}
+.connect-card__head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s4);
+  padding: 20px 22px; border-bottom: 1px solid var(--border); background: var(--surface-2);
+}
+.connect-card__eyebrow { font: 600 10px/1.2 var(--mono); letter-spacing: .12em; color: var(--text-3); margin-bottom: 7px; }
+.connect-card__title { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+.connect-card__copy { margin: 6px 0 0; color: var(--text-2); font-size: var(--fs-12); }
+.connect-card__body { padding: 22px; display: grid; gap: 18px; }
+.connect-status-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.connect-provider { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--r2); background: var(--surface-2); }
+.connect-provider__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); flex: none; box-shadow: 0 0 0 3px var(--surface); }
+.connect-provider__dot.is-on { background: var(--ok); }
+.connect-provider div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.connect-provider strong { font-size: var(--fs-12); }
+.connect-provider span:last-child { font: 10px/1.2 var(--mono); color: var(--text-3); }
+.connect-section { display: grid; gap: 7px; }
+.connect-section__label { font-size: var(--fs-12); font-weight: 600; color: var(--text-2); }
+.connect-command { min-height: 72px; font-size: var(--fs-12); }
+.connect-hint { min-height: 16px; font-size: var(--fs-11); color: var(--text-3); }
+.connect-hint--ok { color: var(--ok); }
+.connect-hint--error { color: var(--danger); }
+.connect-credentials { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.connect-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); padding-top: 2px; }
+.connect-footer__note { color: var(--text-3); font-size: var(--fs-11); }
+.connect-action { min-width: 128px; justify-content: center; }
+@media (max-width: 680px) {
+  .connect-card__head, .connect-footer { align-items: stretch; flex-direction: column; }
+  .connect-status-grid, .connect-credentials { grid-template-columns: 1fr; }
+  .connect-footer .row { justify-content: flex-end; }
+}
+
 /* ---- artifacts grid --------------------------------------------------- */
 .art-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--s4); }
 .art-card { border: 1px solid var(--border); border-radius: var(--r2); overflow: hidden; background: var(--surface); }

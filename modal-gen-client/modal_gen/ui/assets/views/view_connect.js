@@ -100,46 +100,58 @@ function hubOverview(snapshot, connections) {
 
 function connectionPanel(connections) {
   const command = h("textarea", {
-    class: "input input--mono",
+    class: "textarea input--mono connect-command",
     rows: "3",
     autocomplete: "off",
     spellcheck: "false",
-    placeholder: "粘贴 modal token set --token-id ... --token-secret ...",
+    placeholder: "modal token set --token-id ak-... --token-secret as-...",
   });
   const tokenId = h("input", {
     class: "input input--mono",
     type: "text",
     autocomplete: "off",
-    placeholder: "Modal token id",
+    placeholder: "ak-...",
   });
   const tokenSecret = h("input", {
     class: "input input--mono",
     type: "password",
     autocomplete: "off",
-    placeholder: "Modal token secret",
+    placeholder: "as-...",
   });
-  const status = h("div", { class: "field__hint" }, "可直接粘贴完整 Modal CLI 命令自动识别。凭证只用于当前进程内存，不写入 Connector DB。");
-  const connect = h("button", { class: "btn btn--primary", type: "button" }, "连接 2D + 3D");
+  const status = h("div", { class: "connect-hint" },
+    "粘贴完整 Modal CLI 命令会自动提取凭证。Secret 仅保存在当前进程内存。"
+  );
+  const connect = h("button", { class: "btn btn--primary connect-action", type: "button" },
+    icon("plug", 15), "连接 Modal"
+  );
   const disconnect = h("button", { class: "btn", type: "button" }, "断开全部");
 
   command.addEventListener("input", () => {
     const parsed = parseModalTokenCommand(command.value);
+    status.className = "connect-hint";
     if (!parsed) {
-      if (command.value.trim()) status.textContent = "尚未识别到完整的 --token-id / --token-secret。";
+      status.textContent = command.value.trim()
+        ? "未识别到完整的 --token-id 和 --token-secret。"
+        : "粘贴完整 Modal CLI 命令会自动提取凭证。Secret 仅保存在当前进程内存。";
       return;
     }
     tokenId.value = parsed.tokenId;
     tokenSecret.value = parsed.tokenSecret;
-    status.textContent = "已自动识别 Token ID / Secret，可直接连接。";
+    status.className = "connect-hint connect-hint--ok";
+    status.textContent = "已识别 Token ID / Secret，可以直接连接。";
   });
 
   connect.addEventListener("click", async () => {
     if (!tokenId.value.trim() || !tokenSecret.value.trim()) {
-      status.textContent = "Token ID / Secret 均不能为空。";
+      status.className = "connect-hint connect-hint--error";
+      status.textContent = "Token ID 和 Token Secret 都不能为空。";
       return;
     }
     connect.disabled = true;
-    connect.replaceChildren(h("span", { class: "spinner" }), "连接中…");
+    disconnect.disabled = true;
+    connect.replaceChildren(h("span", { class: "spinner" }), "正在连接…");
+    status.className = "connect-hint";
+    status.textContent = "正在验证 Modal 凭证…";
     try {
       await apiPost("providers/connect", {
         tokenId: tokenId.value.trim(),
@@ -147,13 +159,17 @@ function connectionPanel(connections) {
       });
       tokenSecret.value = "";
       command.value = "";
-      toast("2D / 3D Provider 已连接 Modal", "ok");
-      location.reload();
+      status.className = "connect-hint connect-hint--ok";
+      status.textContent = "Modal 已连接。";
+      toast("2D / 3D 已连接 Modal", "ok");
+      setTimeout(() => location.reload(), 250);
     } catch (e) {
       tokenSecret.value = "";
+      status.className = "connect-hint connect-hint--error";
       status.textContent = String(e.message || e);
       connect.disabled = false;
-      connect.textContent = "连接 2D + 3D";
+      disconnect.disabled = false;
+      connect.replaceChildren(icon("plug", 15), "连接 Modal");
     }
   });
 
@@ -161,28 +177,54 @@ function connectionPanel(connections) {
     disconnect.disabled = true;
     try {
       await apiPost("providers/disconnect", {});
-      toast("Provider 已断开 Modal", "ok");
-      location.reload();
+      toast("2D / 3D 已断开 Modal", "ok");
+      setTimeout(() => location.reload(), 200);
     } catch (e) {
+      status.className = "connect-hint connect-hint--error";
       status.textContent = String(e.message || e);
       disconnect.disabled = false;
     }
   });
 
-  const count = connections.filter((item) => item.connected).length;
-  return h("div", { class: "panel", style: "margin-bottom: var(--s4)" },
-    h("div", { class: "panel__head" },
-      h("h2", { class: "panel__title" }, "Modal 连接"),
-      h("span", { class: `badge badge--${count ? "ok" : "neutral"}` }, `${count} connected`)
+  const managed = connections.filter((item) => item.managed !== false);
+  const count = managed.filter((item) => item.connected).length;
+  const allConnected = managed.length > 0 && count === managed.length;
+
+  return h("section", { class: "connect-card" },
+    h("div", { class: "connect-card__head" },
+      h("div", {},
+        h("div", { class: "connect-card__eyebrow" }, "MODAL CONNECTION"),
+        h("h2", { class: "connect-card__title" }, "连接 Modal Workspace"),
+        h("p", { class: "connect-card__copy" }, "一组凭证同时用于本机 2D / 3D Provider。")
+      ),
+      h("span", { class: `badge badge--${allConnected ? "ok" : count ? "warn" : "neutral"}` },
+        h("span", { class: "badge__dot" }),
+        allConnected ? `${count}/${managed.length} 已连接` : count ? `${count}/${managed.length} 部分连接` : "未连接"
+      )
     ),
-    h("div", { class: "panel__body stack" },
-      field("Modal CLI 命令", command),
-      h("div", { class: "grid-2" },
+    h("div", { class: "connect-card__body" },
+      h("div", { class: "connect-status-grid" },
+        ...managed.map((item) => h("div", { class: "connect-provider" },
+          h("span", { class: `connect-provider__dot ${item.connected ? "is-on" : ""}` }),
+          h("div", {},
+            h("strong", {}, item.id === "modal-2d" ? "Modal 2D" : item.id === "modal-3d" ? "Modal 3D" : item.id),
+            h("span", {}, item.connected ? "Connected" : "Disconnected")
+          )
+        ))
+      ),
+      h("div", { class: "connect-section" },
+        h("div", { class: "connect-section__label" }, "Modal CLI 命令"),
+        command,
+        status
+      ),
+      h("div", { class: "connect-credentials" },
         field("Token ID", tokenId),
         field("Token Secret", tokenSecret)
       ),
-      h("div", { class: "row" }, connect, disconnect),
-      status
+      h("div", { class: "connect-footer" },
+        h("span", { class: "connect-footer__note" }, "凭证不会写入数据库或前端存储。"),
+        h("div", { class: "row" }, disconnect, connect)
+      )
     )
   );
 }

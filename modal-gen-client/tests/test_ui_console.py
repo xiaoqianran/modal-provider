@@ -237,3 +237,21 @@ if (parseModalTokenCommand("modal token set --token-id only")) process.exit(2);
         capture_output=True,
         text=True,
     )
+
+
+def test_live_gateway_uses_longer_timeout_for_provider_connect(monkeypatch) -> None:
+    from modal_gen.ui.server import LiveGateway
+
+    gateway = LiveGateway()
+    captured = {}
+
+    def fake_req(method, path, **kwargs):
+        captured.update({"method": method, "path": path, **kwargs})
+        return {"providers": []}
+
+    monkeypatch.setattr(gateway, "_req", fake_req)
+    gateway.connect_providers("ak-demo", "as-demo")
+
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/v1/providers/connect"
+    assert captured["timeout"] == 30.0

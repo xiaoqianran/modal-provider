@@ -135,7 +135,16 @@ class LiveGateway:
         self._lock = threading.Lock()
 
     # -- low level ---------------------------------------------------------- #
-    def _req(self, method: str, path: str, *, json_body=None, headers=None, token=None):
+    def _req(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body=None,
+        headers=None,
+        token=None,
+        timeout: float = 5.0,
+    ):
         import httpx
 
         url = f"{_CONNECTOR_URL}{path}"
@@ -147,7 +156,7 @@ class LiveGateway:
             hdrs["Content-Type"] = "application/json"
         try:
             resp = httpx.request(
-                method, url, json=json_body, headers=hdrs, timeout=5.0, follow_redirects=False
+                method, url, json=json_body, headers=hdrs, timeout=timeout, follow_redirects=False
             )
         except httpx.RequestError as exc:
             raise RuntimeError(f"connector unreachable: {exc}") from exc
@@ -191,6 +200,7 @@ class LiveGateway:
             "/v1/providers/connect",
             json_body={"tokenId": token_id, "tokenSecret": token_secret},
             headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+            timeout=30.0,
         )
         self.token = None
         self.session_data = None
