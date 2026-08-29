@@ -6,6 +6,7 @@ import modal
 
 from .hyworld2_runtime import (
     GPU,
+    HYWORLD2_REVISION,
     HYWORLD2_SOURCE,
     hyworld2_artifact_image,
     hyworld2_worldgen_stage1_image,
@@ -14,6 +15,14 @@ from .hyworld2_runtime import (
     hyworld2_worldmirror_image,
 )
 from .service import capabilities as local_capabilities
+from .worldgen_job import (
+    build_stage_manifest,
+    fingerprint_files,
+    manifest_matches,
+    resolve_worldgen_job_root,
+    stage_manifest_path,
+    write_stage_manifest,
+)
 
 app = modal.App("modal-world")
 
@@ -510,7 +519,7 @@ def worldgen_case000_stage1() -> dict:
     secrets=[hf_secret],
     timeout=2 * 60 * 60,
 )
-def worldgen_case000_stage2() -> dict:
+def worldgen_case000_stage2(job_id: str = "case000") -> dict:
     """Render Stage 1 trajectories and caption them with local Qwen3-VL."""
     import json
     import os
@@ -535,13 +544,31 @@ def worldgen_case000_stage2() -> dict:
     sys.path.insert(0, HYWORLD2_SOURCE)
     from modal_world.qwen_vlm_server import Qwen3VLEngine, start_openai_server
 
-    target = Path("/worldgen/case000")
+    target = resolve_worldgen_job_root(job_id)
     if not (target / "camera_trajectory/target_camera.json").is_file():
         raise RuntimeError("Stage 1 camera trajectory is missing")
     if not (target / "render_results/global_pcd.ply").is_file():
         raise RuntimeError("Stage 1 global point cloud is missing")
 
     camera_files = sorted(target.glob("render_results/view*/traj*/camera.json"))
+    stage2_inputs = [
+        target / "camera_trajectory/target_camera.json",
+        target / "render_results/global_pcd.ply",
+        *camera_files,
+    ]
+    stage2_manifest = build_stage_manifest(
+        job_id=job_id,
+        stage="stage2",
+        hyworld_revision=HYWORLD2_REVISION,
+        input_fingerprint=fingerprint_files(stage2_inputs, root=target),
+        config={
+            "profile": "single-gpu-v2",
+            "llm": "Qwen/Qwen3-VL-8B-Instruct",
+            "render_radius": 0.008,
+            "points_per_pixel": 20,
+            "slice_size": 4,
+        },
+    )
     renders = sorted(target.glob("render_results/view*/traj*/render.mp4"))
     masks = sorted(target.glob("render_results/view*/traj*/render_mask.mp4"))
     captions = sorted(target.glob("render_results/view*/traj*/traj_caption.json"))
@@ -550,14 +577,21 @@ def worldgen_case000_stage2() -> dict:
             payload = json.loads(caption.read_text())
             if not str(payload.get("prompt", "")).strip():
                 raise RuntimeError(f"empty Stage 2 caption: {caption}")
-        return {
-            "resumed": True,
-            "stage2_s": 0.0,
-            "render_count": len(renders),
-            "mask_count": len(masks),
-            "caption_count": len(captions),
-            "render_bytes": sum(path.stat().st_size for path in renders),
-        }
+        manifest_ok = manifest_matches(target, "stage2", stage2_manifest)
+        legacy_adopted = job_id == "case000" and not stage_manifest_path(target, "stage2").exists()
+        if manifest_ok or legacy_adopted:
+            if legacy_adopted:
+                write_stage_manifest(target, "stage2", stage2_manifest)
+                worldgen_outputs.commit()
+            return {
+                "resumed": True,
+                "manifest_adopted": legacy_adopted,
+                "stage2_s": 0.0,
+                "render_count": len(renders),
+                "mask_count": len(masks),
+                "caption_count": len(captions),
+                "render_bytes": sum(path.stat().st_size for path in renders),
+            }
 
     torch.cuda.reset_peak_memory_stats()
     vlm_started = time.perf_counter()
@@ -631,6 +665,7 @@ def worldgen_case000_stage2() -> dict:
     if not captions:
         raise RuntimeError("Stage 2 completed without trajectory captions")
 
+    write_stage_manifest(target, "stage2", stage2_manifest)
     worldgen_outputs.commit()
     return {
         "gpu": torch.cuda.get_device_name(),
@@ -1066,7 +1101,7 @@ def worldgen_case000_stage3() -> dict:
     secrets=[hf_secret],
     timeout=60 * 60,
 )
-def worldgen_case000_stage4() -> dict:
+def worldgen_case000_stage4(job_id: str = "case000") -> dict:
     """Prepare official HYWorld2 3DGS training data on one RTX PRO 6000."""
     import json
     import os
@@ -1083,7 +1118,7 @@ def worldgen_case000_stage4() -> dict:
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-    target = Path("/worldgen/case000")
+    target = resolve_worldgen_job_root(job_id)
     generation_bank = target / "render_results/generation_bank_worldstereo-memory-dmd"
     required_stage3 = [generation_bank / "global_pcd.ply", generation_bank / "aligned_pcd.ply"]
     missing_stage3 = [
@@ -1091,6 +1126,18 @@ def worldgen_case000_stage4() -> dict:
     ]
     if missing_stage3:
         raise RuntimeError(f"Stage 3 incomplete: missing {missing_stage3}")
+
+    stage4_inputs = [*required_stage3]
+    pcd_info = generation_bank / "pcd_info.json"
+    if pcd_info.is_file():
+        stage4_inputs.append(pcd_info)
+    stage4_manifest = build_stage_manifest(
+        job_id=job_id,
+        stage="stage4",
+        hyworld_revision=HYWORLD2_REVISION,
+        input_fingerprint=fingerprint_files(stage4_inputs, root=target),
+        config={"save_normal": True, "split_sky": True, "split_align": False},
+    )
 
     gs_data = target / "gs_data"
     cameras_path = gs_data / "cameras.json"
@@ -1103,18 +1150,27 @@ def worldgen_case000_stage4() -> dict:
         depths = sorted((gs_data / "depths").glob("*.png"))
         normals = sorted((gs_data / "normals").glob("*.png"))
         if camera_count and len(images) == camera_count and len(normals) == camera_count:
-            return {
-                "resumed": True,
-                "stage4_s": 0.0,
-                "camera_count": camera_count,
-                "image_count": len(images),
-                "depth_count": len(depths),
-                "normal_count": len(normals),
-                "points_bytes": points_path.stat().st_size,
-                "sky_points_bytes": (
-                    sky_points_path.stat().st_size if sky_points_path.is_file() else 0
-                ),
-            }
+            manifest_ok = manifest_matches(target, "stage4", stage4_manifest)
+            legacy_adopted = (
+                job_id == "case000" and not stage_manifest_path(target, "stage4").exists()
+            )
+            if manifest_ok or legacy_adopted:
+                if legacy_adopted:
+                    write_stage_manifest(target, "stage4", stage4_manifest)
+                    worldgen_outputs.commit()
+                return {
+                    "resumed": True,
+                    "manifest_adopted": legacy_adopted,
+                    "stage4_s": 0.0,
+                    "camera_count": camera_count,
+                    "image_count": len(images),
+                    "depth_count": len(depths),
+                    "normal_count": len(normals),
+                    "points_bytes": points_path.stat().st_size,
+                    "sky_points_bytes": (
+                        sky_points_path.stat().st_size if sky_points_path.is_file() else 0
+                    ),
+                }
 
     worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
     script_path = worldgen_root / "gen_gs_data.py"
@@ -1220,6 +1276,8 @@ def worldgen_case000_stage4() -> dict:
             f"normals={len(normals)} depths={len(depths)}"
         )
 
+    write_stage_manifest(target, "stage4", stage4_manifest)
+    worldgen_outputs.commit()
     return {
         **timing,
         "points_bytes": points_path.stat().st_size,

@@ -5,7 +5,7 @@ from modal_world.stage2_patch import patch_stage2_single_gpu
 
 def test_stage2_uses_single_process_and_persistent_cuda_caches():
     source = Path("modal_world/app.py").read_text()
-    start = source.index("def worldgen_case000_stage2()")
+    start = source.index('def worldgen_case000_stage2(job_id: str = "case000")')
     end = source.index("\n\n@app.function(", start)
     section = source[start:end]
     assert '"torch.distributed.run"' not in section
@@ -41,7 +41,7 @@ def test_stage2_patch_matches_pinned_upstream(tmp_path: Path):
 
 def test_stage4_resume_allows_missing_sky_points():
     source = Path("modal_world/app.py").read_text()
-    start = source.index("def worldgen_case000_stage4()")
+    start = source.index('def worldgen_case000_stage4(job_id: str = "case000")')
     end = source.index("\n\n@app.function(", start)
     section = source[start:end]
     assert "sky_points_path.stat().st_size if sky_points_path.is_file() else 0" in section
