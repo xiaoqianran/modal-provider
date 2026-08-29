@@ -134,6 +134,8 @@ export const apiPost = (p, b) => api("POST", p, b);
 
 // ------------------------------------------------------------------ toast
 export function toast(message, kind = "") {
+  const host = document.getElementById("toast-host");
+  if (!host) return;
   const el = h("div", { class: `toast ${kind ? "toast--" + kind : ""}` }, message);
   host.append(el);
   setTimeout(() => { el.style.opacity = "0"; el.style.transform = "translateY(6px)"; }, 2600);

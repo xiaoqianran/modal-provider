@@ -265,3 +265,34 @@ def test_ui_shell_matches_provider_client_studio(ui_server: str) -> None:
     assert 'id="open-settings"' in body
     assert 'id="nav"' in body
     assert 'class="rail"' not in body
+
+
+def test_toast_resolves_its_host_before_append() -> None:
+    import re
+    import subprocess
+    from pathlib import Path
+
+    source = Path("modal_gen/ui/assets/app.js").read_text()
+    match = re.search(
+        r'export function toast\(message, kind = ""\) \{.*?\n\}',
+        source,
+        re.DOTALL,
+    )
+    assert match is not None
+    toast_source = match.group(0).replace("export function", "function", 1)
+    script = f"""
+const appended = [];
+const host = {{ append(value) {{ appended.push(value); }} }};
+globalThis.document = {{ getElementById(id) {{ return id === "toast-host" ? host : null; }} }};
+globalThis.h = (tag, attrs, message) => ({{ tag, attrs, message, style: {{}}, remove() {{}} }});
+globalThis.setTimeout = () => 0;
+{toast_source}
+toast("connected", "ok");
+if (appended.length !== 1 || appended[0].message !== "connected") process.exit(1);
+"""
+    subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
