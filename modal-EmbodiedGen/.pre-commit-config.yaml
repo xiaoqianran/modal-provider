@@ -1,0 +1,56 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.2.0  # Use the ref you want to point at
+    hooks:
+      - id: trailing-whitespace
+      - id: check-added-large-files
+        name: Check for added large files
+        description: Prevent giant files from being committed
+        entry: check-added-large-files
+        language: python
+        exclude: ^(docs/|apps/assets/)
+        args: ["--maxkb=1024"]
+  - repo: local
+    hooks:
+      - id: cpplint-cpp-source
+        name: cpplint
+        description: Check cpp code style.
+        entry: python3 scripts/lint_src/lint.py
+        language: system
+        exclude: (?x)(^tools/|^thirdparty/|^patch_files/)
+        files: \.(c|cc|cxx|cpp|cu|h|hpp)$
+        args: [--project=embodied_gen, --path]
+  - repo: local
+    hooks:
+      - id: ruff-check-python
+        name: ruff-check
+        description: Check and fix python lint issues.
+        entry: ruff check --fix
+        language: system
+        exclude: (?x)(^docs/|^thirdparty/|^scripts/build/)
+        files: \.(py)$
+        types: [file, python]
+        args: [--config=pyproject.toml]
+
+
+  # pre-commit install --hook-type commit-msg to enable it
+  # - repo: local
+  #   hooks:
+  #     - id: commit-check
+  #       name: check for commit msg format
+  #       language: pygrep
+  #       entry: '\A(?!(feat|fix|docs|style|refactor|perf|test|chore)\(.*\): (\[[a-zA-Z][a-zA-Z0-9_]+-[1-9][0-9]*\]|\[cr_id_skip\]) [A-Z]+.*)'
+  #       args: [--multiline]
+  #       stages: [commit-msg]
+
+  - repo: local
+    hooks:
+      - id: ruff-format-python
+        name: ruff-format
+        description: Format python code.
+        entry: ruff format
+        language: system
+        exclude: (?x)(^docs/|^thirdparty/)
+        files: \.(py)$
+        types: [file, python]
+        args: [--config=pyproject.toml]

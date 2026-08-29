@@ -1,10 +1,85 @@
-__pycache__/
-*.py[cod]
-.venv/
+build/
+dummy/
+!scripts/build
+builddir/
+conan-deps/
+distribute/
+lib/
+bin/
 dist/
-wheelhouse/
+deps/*
+docs/build
+python/dist/
+docs/index.rst
+python/MANIFEST.in
+*.egg-info
+*.pyc
+*.pyi
+*.json
+!embodied_gen/skills/claude_plugin/.claude-plugin/marketplace.json
+!embodied_gen/skills/claude_plugin/plugins/embodiedgen/.claude-plugin/plugin.json
+*.bak
 *.zip
-*.sha256
-.env
+wheels*/
 
-.codegraph/
+# Compiled Object files
+*.slo
+*.lo
+*.o
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+
+.cproject
+.project
+.settings/
+*.db
+*.bak
+.arcconfig
+.vscode/
+.cursor/
+
+# files
+*.pack
+*.pcd
+*.html
+*.ply
+*.mp4
+# node
+node_modules
+
+# site build artifacts (mkdocs build + assembled publish dir)
+/site/
+/public/
+
+# local files
+.DS_Store
+build.sh
+__pycache__/
+output*
+*.log
+scripts/tools/
+weights
+apps/sessions/
+apps/gradio_cache/
+.gradio/*
+CLAUDE.md
+AGENTS.md
+.github/copilot-instructions.md
+
+# Project landing page (docs/landing) — keep its otherwise-ignored site files tracked
+!docs/landing/**/*.html
+!docs/landing/**/*.mp4
+!docs/landing/**/*.json
+
+# Keep this fork's Modal integration build/environment sources tracked.
+!modal/build/
+!modal/build/*.py
+!modal/env/
+!modal/env/*.json

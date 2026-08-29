@@ -1,0 +1,28 @@
+[submodule "thirdparty/TRELLIS"]
+	path = thirdparty/TRELLIS
+	url = https://github.com/microsoft/TRELLIS.git
+	branch = main
+	shallow = true
+[submodule "thirdparty/pano2room"]
+	path = thirdparty/pano2room
+	url = https://github.com/TrickyGo/Pano2Room.git
+	branch = main
+	shallow = true
+[submodule "thirdparty/sam3d"]
+	path = thirdparty/sam3d
+	url = https://github.com/HochCC/sam-3d-objects.git
+	branch = main
+	shallow = true
+[submodule "thirdparty/GraspGen"]
+	path = thirdparty/GraspGen
+	url = https://github.com/NVlabs/GraspGen.git
+	branch = main
+	shallow = true
+[submodule "thirdparty/Hunyuan3D-Part"]
+	path = thirdparty/Hunyuan3D-Part
+	url = https://github.com/Tencent-Hunyuan/Hunyuan3D-Part.git
+	branch = main
+	shallow = true
+[submodule "thirdparty/infinigen"]
+	path = thirdparty/infinigen
+	url = https://github.com/princeton-vl/infinigen.git

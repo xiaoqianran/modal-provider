@@ -1,0 +1,83 @@
+name: Deploy Site (landing + docs)
+
+# Publishes to gh-pages:
+#   /        -> docs/landing  (the EmbodiedGen V2 project landing page)
+#   /docs/   -> MkDocs documentation (built from docs/documentation)
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install mkdocs-material mkdocstrings[python] mkdocs-git-revision-date-localized-plugin
+
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$(pwd)" >> $GITHUB_ENV
+
+      - name: Build docs (validation)
+        run: mkdocs build --strict
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install mkdocs-material mkdocstrings[python] mkdocs-git-revision-date-localized-plugin
+
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$(pwd)" >> $GITHUB_ENV
+
+      - name: Build docs -> site/
+        run: mkdocs build
+
+      - name: Assemble publish dir (landing at root, docs under /docs/)
+        run: |
+          rm -rf public
+          mkdir -p public/docs
+          cp -a docs/landing/. public/
+          rm -rf public/tools public/README.md   # build tooling / readme are not part of the published site
+          cp -a site/. public/docs/
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Publish to gh-pages
+        run: ghp-import -n -p -f -m "Deploy landing + docs ${GITHUB_SHA}" public

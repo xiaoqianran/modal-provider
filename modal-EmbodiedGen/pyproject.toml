@@ -1,8 +1,82 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["embodied_gen*"]
+namespaces = true
+
+[tool.setuptools.exclude-package-data]
+"*" = ["__pycache__/*", "*.py[cod]"]
+
 [project]
-name = "modal-build"
-version = "0.1.0"
-requires-python = ">=3.11"
-dependencies = ["modal>=1.5,<2", "pillow>=11.3,<12"]
+name = "embodied_gen"
+version = "v2.1.0"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+
+dependencies = []
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dev = [
+    "cpplint",
+    "pre-commit",
+    "ruff",
+    "pytest",
+    "pytest-mock",
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+    "mkdocs-git-revision-date-localized-plugin",
+    "pycodestyle",
+]
+
+[project.scripts]
+drender-cli = "embodied_gen.data.differentiable_render:entrypoint"
+backproject-cli = "embodied_gen.data.backproject_v2:entrypoint"
+img3d-cli = "embodied_gen.scripts.imageto3d:entrypoint"
+text3d-cli = "embodied_gen.scripts.textto3d:text_to_3d"
+texture-cli = "embodied_gen.scripts.gen_texture:entrypoint"
+scene3d-cli = "embodied_gen.scripts.gen_scene3d:entrypoint"
+layout-cli = "embodied_gen.scripts.gen_layout:entrypoint"
+sim-cli = "embodied_gen.scripts.simulate_sapien:entrypoint"
+room-cli = "embodied_gen.scripts.gen_room:entrypoint"
+affordance-cli = "embodied_gen.scripts.affordance_annot.affordance_annot:entrypoint"
 
 [tool.ruff]
-line-length = 100
+line-length = 79
+target-version = "py310"
+extend-exclude = ["thirdparty"]
+
+[tool.ruff.lint]
+select = ["D", "E", "F", "I", "W"]
+ignore = [
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D107",
+    "D202",
+    "E203",
+    "E251",
+    "E402",
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"embodied_gen/scripts/gen_texture.py" = ["F841"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["embodied_gen"]
+known-third-party = ["thirdparty"]
+no-lines-before = ["first-party"]
+
+[tool.ruff.format]
+quote-style = "preserve"

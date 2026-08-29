@@ -1,0 +1,27 @@
+# config.yaml
+agent_type: "gpt-5.4" # gpt-4o, gpt-5.4 or gemma-4-31b or codex
+
+gpt-4o:
+  endpoint: https://xxx.openai.azure.com
+  api_key: xxx
+  api_version: 2025-xx-xx
+  model_name: yfb-gpt-4o
+
+gpt-5.4:
+  endpoint: https://yfb-openai-sweden.openai.azure.com/
+  api_key: xxx
+  api_version: 2024-12-01-preview
+  model_name: gpt-5.4
+
+gemma-4-31b:
+  endpoint: https://openrouter.ai/api/v1
+  api_key: sk-or-v1-xxx
+  api_version: null
+  model_name: google/gemma-4-31b-it:free
+
+codex:
+  provider: codex
+  endpoint: null
+  api_key: null
+  api_version: null
+  model_name: null

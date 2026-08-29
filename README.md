@@ -1,6 +1,6 @@
 # modal-provider
 
-`modal-provider` 是 AgentScape 的 **Modal Provider monorepo**。过去分散在多个独立仓库中的 Gateway、2D/3D Provider、Reference Sidecar 与 EmbodiedGen build/runtime integration 已统一收敛到这里。
+`modal-provider` 是 AgentScape 的 **Modal Provider monorepo**。过去分散在多个独立仓库中的 Gateway、2D/3D Provider、Reference Sidecar、EmbodiedGen fork 与可复现 CUDA build tooling 已统一收敛到这里。
 
 ## Repository role
 
@@ -14,10 +14,11 @@ modal-provider
 ├─ modal-2D/              image generation Provider
 ├─ modal-3D-client/       3D Reference Sidecar
 ├─ modal-3D/              3D generation Provider
-└─ modal-EmbodiedGen/     EmbodiedGen build/runtime integration
+├─ modal-EmbodiedGen/     EmbodiedGen fork；其 modal/ 仅负责 EmbodiedGen 的 Modal 集成
+└─ modal-build/           通用 CUDA/PyTorch 可复现构建与 release artifacts
 ```
 
-这些目录是 **monorepo 内部 package / deployment unit**。其中 `modal-2D-client`、`modal-3D-client`、`modal-gen-client` 同时维护独立 Git 仓库，用于单独查看、CI、发布和分发；代码真值仍以本 monorepo 为准。
+这些目录是 **monorepo 内部 package / integration / build boundary**。其中 `modal-2D-client`、`modal-3D-client`、`modal-gen-client` 同时维护独立 Git 仓库，用于单独查看、CI、发布和分发；代码真值仍以本 monorepo 为准。
 
 ## Ownership
 
@@ -29,7 +30,8 @@ modal-provider
 - Reference Sidecar restore/cache；
 - local pairing/session/security gateway；
 - 2D/3D input conditioning and model execution；
-- EmbodiedGen upstream pin、build artifacts、compatibility patches、production runtime。
+- EmbodiedGen fork 与其 `modal/` 下的 EmbodiedGen-specific build/runtime/control plane；
+- FastSAM3D、Hunyuan3D、TRELLIS、Pixal3D、BiRefNet、HY-World 等通用 CUDA/PyTorch build artifacts。
 
 `modal-provider` does **not** own：
 
@@ -52,15 +54,26 @@ modal-provider
 
 ## EmbodiedGen
 
-`modal-EmbodiedGen` 取代旧的 standalone `modal-build`/AgentScape-owned EmbodiedGen workspace 边界。它按需要 pin/clone 上游 `HorizonRobotics/EmbodiedGen`，构建可复现 CUDA/PyTorch artifacts、应用兼容 patch 并部署 Modal runtime。上游源代码是 dependency，不是本系统的独立产品仓库。
+`modal-EmbodiedGen` 保持完整的 EmbodiedGen fork 形态，当前目标为 EmbodiedGen v2.1.0。EmbodiedGen 自身源码、apps、tests 与 thirdparty submodule 声明留在该目录；所有 **只与 EmbodiedGen 有关** 的 Modal build/runtime/patch/tests 收敛在 `modal-EmbodiedGen/modal/`。
+
+通用构建能力属于独立的 `modal-build/`：FastSAM3D、Hunyuan3D、Hermit/TRELLIS2、Pixal3D、trellis.cpp、BiRefNet、HY-World 等 build recipes 与环境 manifest 不再混入 `modal-EmbodiedGen`。`modal-build` 也不再保存 EmbodiedGen production code 的副本。
 
 ## Standalone package repositories
 
 本 monorepo 是代码真值源，同时维护以下独立 package 仓库：
 
+- `modal-2D` → https://github.com/xiaoqianran/modal-2D
 - `modal-2D-client` → https://github.com/xiaoqianran/modal-2D-client
+- `modal-3D` → https://github.com/xiaoqianran/modal-3D
 - `modal-3D-client` → https://github.com/xiaoqianran/modal-3D-client
 - `modal-gen-client` → https://github.com/xiaoqianran/modal-gen-client
+- `modal-EmbodiedGen` → https://github.com/xiaoqianran/modal-EmbodiedGen
+- `modal-build` → https://github.com/xiaoqianran/modal-build
+
+当前导入基线：
+
+- `modal-EmbodiedGen`: `b75e7309bba6e290ae1157e8ee3a59d4ad139e61`（standalone `master`，EmbodiedGen v2.1.0）；
+- `modal-build`: `d79194632cba6af72b4854ef9125ddd4bfa941e4`（standalone `master`）。该提交新增的 `integrations/embodiedgen` 仅是历史备份；monorepo 不导入这份重复 production code，EmbodiedGen 的唯一真值仍是 `modal-EmbodiedGen/modal/`。其余 `modal-build` 内容与该最新 `master` 保持一致。
 
 同步规则：
 
@@ -78,7 +91,7 @@ modal-provider monorepo
 standalone package repositories
 ```
 
-旧的 standalone `modal-build` 不再作为当前产品边界；Kaggle Provider 与独立 `modal-lab` 也不属于本 monorepo 的目标运行时架构。
+`modal-build` 作为构建工具边界存在，不是运行时 Provider；EmbodiedGen production code 则只属于 `modal-EmbodiedGen`。Kaggle Provider 与独立 `modal-lab` 不属于本 monorepo 的目标运行时架构。
 
 ## Development
 

@@ -1,196 +1,327 @@
-# modal-EmbodiedGen
+# *EmbodiedGen V2*: An Agentic, Simulation-Ready 3D World Engine for Embodied AI
 
-`modal-EmbodiedGen` is the EmbodiedGen/build-runtime package inside the `modal-provider` monorepo. It owns reproducible CUDA/PyTorch build artifacts, upstream compatibility pins/patches, and production reference runtimes used by Modal 3D/Embodied workers.
+[![🌐 Project Page](https://img.shields.io/badge/🌐-Project_Page-blue)](https://horizonrobotics.github.io/EmbodiedGen/)
+[![📖 Documentation](https://img.shields.io/badge/📖-Documentation-blue)](https://horizonrobotics.github.io/EmbodiedGen/docs/)
+[![GitHub](https://img.shields.io/badge/GitHub-EmbodiedGen-black?logo=github)](https://github.com/HorizonRobotics/EmbodiedGen)
+[![📄 arXiv](https://img.shields.io/badge/📄-arXiv_v1-b31b1b)](https://arxiv.org/abs/2506.10600)
+[![📄 arXiv](https://img.shields.io/badge/📄-arXiv_v2-b31b1b)](https://arxiv.org/abs/2607.07459)
+[![🎥 Video](https://img.shields.io/badge/🎥-Video-red)](https://youtu.be/MIkJJSVM8L4)
+[![中文介绍](https://img.shields.io/badge/中文介绍-07C160?logo=wechat&logoColor=white)](https://mp.weixin.qq.com/s/RbMPX3vTTSwrW0MjwjeXuA)
+[![用户群](https://img.shields.io/badge/用户群-07C160?logo=wechat&logoColor=white)](https://horizonrobotics.feishu.cn/wiki/Q9XnwYTTGiPpe7kA5eucLewpnje)
 
-Large binary artifacts are stored as **GitHub Release assets**, not committed into Git history.
-Each release is keyed by Python/CUDA/PyTorch/CUDA-architecture compatibility and ships:
+[![🤗 Dataset](https://img.shields.io/badge/🤗-Dataset-blue)](https://huggingface.co/datasets/HorizonRobotics/EmbodiedGenData)
+[![🤗 Hugging Face](https://img.shields.io/badge/🤗-EmbodiedGen_Asset_Gallery-blue)](https://huggingface.co/spaces/HorizonRobotics/EmbodiedGen-Gallery-Explorer)
+[![🤗 Hugging Face](https://img.shields.io/badge/🤗-Image_to_3D_Demo-blue)](https://huggingface.co/spaces/HorizonRobotics/EmbodiedGen-Image-to-3D)
+[![🤗 Hugging Face](https://img.shields.io/badge/🤗-Text_to_3D_Demo-blue)](https://huggingface.co/spaces/HorizonRobotics/EmbodiedGen-Text-to-3D)
+[![🤗 Hugging Face](https://img.shields.io/badge/🤗-Texture_Gen_Demo-blue)](https://huggingface.co/spaces/HorizonRobotics/EmbodiedGen-Texture-Gen)
 
-- `*.wheels.zip` — prebuilt wheels
-- `*.manifest.json` — exact environment and per-wheel SHA256
-- `*.sha256` — archive checksum
+> **From intent to executable 3D worlds.**
+> ***EmbodiedGen*** compiles language, images, and edit commands into **policy-ready 3D worlds** — physically plausible assets, large-scale scenes, and task-driven interactive environments, deployable across major simulators.
 
+<img src="docs/landing/assets/img/overview.jpg" alt="EmbodiedGen V2 Overview" width="800"/>
 
-## Package layers
+---
 
-This package separates three different lifecycle stages. They are related, but they do not call
-each other directly at runtime:
+## Modal production fork
 
-```text
-modal_build/                 offline artifact builders
-    embodiedgen.py           builds/publishes pinned wheels and CUDA extension archives
+This fork keeps the upstream EmbodiedGen source layout intact. Modal-specific build, runtime,
+control-plane, environment, patch, and regression-test code lives under [`modal/`](modal/README.md).
+The Modal production source now targets EmbodiedGen v2.1.0. See `modal/UPSTREAM.md` for the
+compatibility and validation status.
 
-patches/                     source/runtime compatibility overlays
-    embodiedgen-v2.0.0/
-        production/          only files consumed by the current production runtime
-        legacy/              historical experiments kept for reproduction only
+## ✨ What's New in V2
 
-runtime/                     deployable Modal applications
-    embodiedgen_v2_l40s.py   current EmbodiedGen Image→3D / Text→3D / Retexture runtime/API
-    legacy/                  historical runtime variants
+- 💬 **3D Vibe Coding** — build and edit sim-ready scenes through natural-language dialogue via Claude Code slash commands (`/embodiedgen:*`), each edit a bounded, physics-validated skill call.
+- 🏠 **Large-scale scene generation** — multi-room, navigable, instance-editable houses at controllable complexity tiers (`minimalist` → `detail`).
+- 📦 **One world, every simulator** — a standardized layout loads with consistent geometry, collision, and physics across **SAPIEN, Isaac Sim, Isaac Gym, MuJoCo, Genesis, and PyBullet**.
+- 🧩 **Pluggable 3D backends** — switch between **SAM3D**, **TRELLIS**, and the **Hunyuan3D Pro** cloud API with a single flag.
+- 🧥 **Beyond rigid bodies** — text-conditioned garments deploy as deformable meshes in Genesis.
+- 🕹️ **Part-level affordance** — functional part segmentation, per-part semantics, and simulation-validated 6-DoF grasp poses for any generated asset.
+- 🤖 **Closed-loop robot learning** — policies trained purely in EmbodiedGen-generated worlds transfer to real robots (task success **9.7 → 79.8%** in sim, **21.7 → 75.0%** on real robots, from [sim2real RL paper](https://arxiv.org/abs/2603.18532)).
+
+## 📋 Table of Contents
+
+- [🚀 Quick Start](#quick-start)
+- [🖥️ Services — Local Gradio Apps](#services)
+- [🧱 Generate — Sim-Ready 3D Assets](#generate-assets)
+- [🏠 Scale — Large-Scale Scenes](#scale-scenes)
+- [🌍 Compose — Task-Driven Worlds](#compose-worlds)
+- [💬 Edit — 3D Vibe Coding](#vibe-coding)
+- [📦 Export — Any Simulators](#any-simulators)
+- [🤖 Train — Robot Learning](#robot-learning)
+- [⚙️ Articulated Object Generation](#articulated-object-generation)
+- [🧩 3D Scene Completion](#3d-scene-completion)
+- [🔄 Sim-to-Real Reinforcement Learning](#sim-to-real-reinforcement-learning)
+
+---
+
+<h2 id="quick-start">🚀 Quick Start</h2>
+
+```sh
+git clone https://github.com/HorizonRobotics/EmbodiedGen.git
+cd EmbodiedGen
+git checkout v2.1.0
+conda create -n embodiedgen python=3.10.13 -y
+conda activate embodiedgen
+# Manually install one CUDA toolkit when needed. cu126 remains the default.
+# bash install.sh cu126 # RTX 40-series.
+# bash install.sh cu128 # RTX 50-series / Blackwell.
+conda deactivate && conda activate embodiedgen
+bash install.sh basic # around 10 mins
 ```
 
-For EmbodiedGen, the lifecycle is:
+Set up one GPT agent backend (required by most pipelines):
 
-```text
-modal_build/embodiedgen.py
-        │
-        └── build binary artifacts (CPU host + nvcc, no paid GPU)
-                │
-                ▼
-        GitHub Release assets
-                │
-────────────────┼────────────────────────────────────
-                │
-                ▼
-runtime/embodiedgen_v2_l40s.py
-        │
-        ├── clone exact upstream EmbodiedGen commit
-        ├── verify/download the prebuilt Release artifacts
-        ├── apply patches/embodiedgen-v2.0.0/production/*
-        └── deploy the Modal production workers/API
+- **Azure OpenAI / OpenRouter:** select the backend and update its API key in
+  `embodied_gen/utils/gpt_config.yaml`.
+- **Codex CLI:** run `codex login`, then set `agent_type: codex` in
+  `embodied_gen/utils/gpt_config.yaml`; no project API key is required.
+
+See the [GPT Agent Setup guide](docs/documentation/gpt_agent.md) for complete
+configuration, environment variables, and deployment recommendations.
+
+Then generate your first sim-ready asset:
+
+```sh
+img3d-cli --image_path apps/assets/example_image/sample_00.jpg \
+    --n_retry 2 --output_root outputs/imageto3d
+# → outputs/imageto3d/sample_00/result: URDF + mesh(.obj/.glb) + 3DGS(.ply) + video
 ```
 
-`modal_build/embodiedgen.py` intentionally does **not** import or execute files from `patches/`:
-the builder produces reusable binary artifacts, while the production runtime consumes those
-artifacts and applies runtime compatibility patches in a later image-build stage.
+➡️ Full guide: [Installation & Setup](https://horizonrobotics.github.io/EmbodiedGen/docs/install.html) · [Docker](docker/README.md)
 
-The milestone tag `embodiedgen-v2.0.0-image-to-3d-modal-v1` marks completion of the validated
-Image→3D production pipeline. It is a Git tag only, not a GitHub Release.
+---
 
-The production EmbodiedGen API now also exposes `POST /text-jobs`: a pinned public Kolors
-Text→Image L40S stage generates the conditioning image and then reuses the exact validated
-Image→3D pipeline. A full authenticated production Text→3D E2E has passed with GLB/video/validation
-HTTP downloads and zero traceback/OOM/runtime-warning matches. See `docs/embodiedgen.md` for the
-pinned model revision, timings and measured cold validation cost.
+<h2 id="services">🖥️ Services — Local Gradio Apps</h2>
 
-It also exposes `POST /jobs/{source_job_id}/retexture` for prompt-driven appearance edits of an
-existing successful asset. Retexture reuses the pinned Kolors snapshot plus only ~393 MiB of pinned
-RoboAssetGen ControlNet/RealESRGAN weights, preserves geometry, and has passed an authenticated
-production E2E with OBJ/MTL/texture/GLB/video downloads and zero GPT-init/UV/traceback/OOM warnings.
+After installation, launch an interactive service and open its local URL:
 
-## TRELLIS2 / L40S
-
-Environment: `hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v2`
-
-- Python 3.11
-- Ubuntu 22.04
-- CUDA 12.4.1
-- PyTorch 2.6.0
-- torchvision 0.21.0
-- CUDA arch 8.9 (Ada / L40S)
-
-Build and publish from Modal:
-
-```bash
-modal run -m modal_build.hermit_trellis2_plus_plus_v2::build
+```sh
+python apps/image_to_3d.py    # http://localhost:8081
+python apps/text_to_3d.py     # http://localhost:8082
+python apps/texture_edit.py   # http://localhost:8083
+python apps/visualize_asset.py  # http://localhost:8088
 ```
 
-The v2 builder is hard-limited to one L40S container and writes a SHA256-manifested wheel bundle to
-the `modal-build-artifacts` Volume. The published Release with the same tag contains the validated
-`flash-attn`, `nvdiffrast`, `nvdiffrec`, `CuMesh`, `FlexGEMM`, and `o-voxel` wheels. Runtime
-projects install the released wheels with `uv`, avoiding repeated CUDA compilation.
+Models are downloaded automatically on first use. ➡️ [Service documentation](https://horizonrobotics.github.io/EmbodiedGen/docs/services/)
 
+---
 
+<h2 id="generate-assets">🧱 Generate — Sim-Ready 3D Assets</h2>
 
-## FastSAM3D PyTorch3D / L40S
+Turn a **single image** or a **text prompt** into a simulation-ready asset: metric geometry, convex collision proxy, VLM-inferred physical properties (scale, mass, friction), quality-checked with automatic retries — packaged as URDF + mesh + 3DGS.
 
-Environment: `fastsam3d-pytorch3d-py311-cu121-torch251-sm89-v1`
+<img src="docs/documentation/assets/image_to_3d.jpg" alt="Image to 3D" width="700">
 
-- Python 3.11 / CUDA 12.1.1 / PyTorch 2.5.1 / torchvision 0.20.1
-- CUDA arch 8.9 (Ada / L40S)
-- PyTorch3D pinned to `facebookresearch/pytorch3d@75ebeeaea0908c5527e7b1e305fbc7681382db47`
-- SHA256-manifested wheel bundle, validated by importing the renderer on L40S
+```sh
+# Image → 3D (backends: SAM3D | TRELLIS | HUNYUAN3D, via --image3d_model)
+img3d-cli --image_path apps/assets/example_image/sample_01.jpg --output_root outputs/imageto3d
 
-Build it with:
+# Text → 3D (backends: SAM3D | TRELLIS | HUNYUAN3D, via --image3d_model)
+text3d-cli --prompts "small bronze figurine of a lion" --output_root outputs/textto3d
 
-```bash
-modal run -m modal_build.fastsam3d_pytorch3d::build
+# Re-texture an existing mesh (Chinese & English prompts)
+texture-cli --mesh_path apps/assets/example_texture/meshes/horse.obj \
+    --prompt "A gray horse head with flying mane and brown eyes" --output_root outputs/texture_gen
 ```
 
-The production FastSAM3D worker installs this released wheel bundle instead of compiling PyTorch3D
-during every image build, cutting repeated CUDA build work out of normal deployments.
+The same generate-and-export path reaches **soft bodies**: text-conditioned garments deploy as deformable meshes in Genesis.
 
-## Hunyuan3D 2.1 Paint / L40S
+Any generated URDF can be further annotated with **part-level affordances** — functional part segmentation, per-part semantics, and simulation-validated 6-DoF grasps (requires `bash install.sh affordance`):
 
-Environment: `hunyuan3d-2.1-paint-py311-cu124-torch251-sm89-v2`
-
-- Python 3.11 / CUDA 12.4.1 / PyTorch 2.5.1 / torchvision 0.20.1
-- CUDA arch 8.9 (Ada / L40S)
-- Source pinned to `Archerkattri/hunyuan2.1-plus-plus@9efd760fbec8ab490e68b330225ea1fab10de7fd`
-- Bundle contains the `custom_rasterizer` CUDA wheel plus the native `mesh_inpaint_processor` extension
-- Every binary and the release archive are SHA256-manifested
-
-Build the exact runtime-native bundle:
-
-```bash
-modal run -m modal_build.hunyuan3d21_paint_v2::build
+```sh
+affordance-cli --urdf-paths apps/assets/example_affordance/ear_hear/sample.urdf \
+    --output-dirs outputs/affordance_annotation/ear_hear
 ```
 
-The resulting bundle is stored in `modal-build-artifacts` and mirrored to the GitHub Release with
-the same tag. The production `modal-3D` Hunyuan worker consumes this bundle directly, so neither
-CUDA rasterization nor mesh inpainting is compiled during a cold image build.
+➡️ Full guides: [Image-to-3D](https://horizonrobotics.github.io/EmbodiedGen/docs/tutorials/image_to_3d.html) · [Text-to-3D](https://horizonrobotics.github.io/EmbodiedGen/docs/tutorials/text_to_3d.html) · [Texture Generation](https://horizonrobotics.github.io/EmbodiedGen/docs/tutorials/texture_edit.html) · [Soft-Body Simulation](https://horizonrobotics.github.io/EmbodiedGen/docs/tutorials/soft_body.html) · [Affordance](https://horizonrobotics.github.io/EmbodiedGen/docs/tutorials/affordance.html)
 
-## EmbodiedGen v2.0.0 / L40S
+---
 
-Environment: `embodiedgen-v2.0.0-py310-cu126-torch280-sm89-v1`
+<h2 id="scale-scenes">🏠 Scale — Large-Scale Scenes</h2>
 
-- Python 3.10 / Ubuntu 22.04
-- CUDA 12.6.3
-- PyTorch 2.8.0 / torchvision 0.23.0
-- CUDA arch 8.9 (Ada / L40S)
-- PyTorch3D pinned to `75ebeeaea0908c5527e7b1e305fbc7681382db47`
-- nvdiffrast pinned to `729261d`
-- gsplat 1.5.3 O3 SM89 torch-extension cache
-- SAM3D model weights are intentionally kept outside release assets
+Go beyond tabletops: generate **multi-room, navigable, instance-editable houses** as sim-ready backgrounds at a controllable complexity tier, or create photo-realistic **3DGS background scenes** from a text prompt.
 
-The build itself is **CPU-only**: the CUDA devel image provides `nvcc`, and
-`TORCH_CUDA_ARCH_LIST=8.9` targets L40S without renting a GPU.  A real L40S is used only for the
-end-to-end validation run.  The validated production runtime patches are under
-`patches/embodiedgen-v2.0.0/production/`, with the Modal runner under
-`runtime/embodiedgen_v2_l40s.py`. Historical patch/runtime variants are isolated under `legacy/`.
+<img src="docs/documentation/assets/worlds.gif" alt="Large-scale multi-room scenes" width="600">
 
-Build and publish:
+```sh
+# Room / house from a natural-language description (requires `bash install.sh room`)
+room-cli -m embodied_gen.scripts.room_gen.gen_room \
+    --output-root outputs/rooms --prompt "Wipe the table in a simple dining room"
+# or specify the profile explicitly: --room-type Kitchen --seed 42 --complexity simple
 
-```bash
-modal run -m modal_build.embodiedgen::build_and_release
+# 3DGS background scene from text (requires `bash install.sh scene3d`)
+CUDA_VISIBLE_DEVICES=0 scene3d-cli --prompts "Art studio with easel and canvas" --output_dir outputs/bg_scenes/ --seed 0
 ```
 
-The release contains both normal wheels and the precompiled torch-extension cache.  Extract the
-cache archive into `~/.cache/torch_extensions/` on an identical Python/Torch/CUDA/SM89 runtime to
-avoid rebuilding gsplat/nvdiffrast on the paid GPU worker.
+➡️ Full guides: [Room Generation](https://horizonrobotics.github.io/EmbodiedGen/docs/tutorials/room_gen.html) · [3D Scene Generation](https://horizonrobotics.github.io/EmbodiedGen/docs/tutorials/scene_gen.html)
 
-Validation completed with `VALIDATION_OK`: 95,004 PLY Gaussians, 516,271 OBJ vertices,
-891,420 OBJ faces, one valid GLB geometry, resolvable URDF mesh references, and a valid MP4.
+---
 
-## Policy
+<h2 id="compose-worlds">🌍 Compose — Task-Driven Worlds</h2>
 
-Do not publish model weights, gated Hugging Face assets, secrets, or artifacts without clear
-redistribution permission. This package is for build tooling and redistributable wheels inside `modal-provider`.
+From a natural-language task description, EmbodiedGen parses a **scene graph** and composes a physically stable, directly loadable **interactive 3D world** — background, context objects, manipulated targets, distractors, and robot.
 
-## trellis.cpp / L40S
+<table>
+  <tr>
+    <td><img src="docs/documentation/assets/layout1.gif" alt="layout1" width="320"/></td>
+    <td><img src="docs/documentation/assets/layout2.gif" alt="layout2" width="320"/></td>
+  </tr>
+</table>
 
-Environment: `trellis.cpp-pynone-cu129-torchnone-sm89-v2`
+```sh
+layout-cli --task_descs "Put the cup on the wooden tray on the desk" \
+    --bg_list "outputs/example_gen_scenes/scene_part_list.txt" \
+    --output_root "outputs/layouts_gen" --insert_robot
 
-- Native C++17 / GGML runtime (no Python or PyTorch at inference time)
-- Ubuntu 22.04
-- CUDA 12.9.1
-- CUDA arch 8.9 (Ada / L40S)
-- Source pinned to `pwilkin/trellis.cpp@16f3109e82f3922033bfa62b83c42899678b7b6f`
+# Load the generated layout into SAPIEN simulation
+sim-cli --layout_path "outputs/layouts_gen/task_0000/layout.json" \
+    --output_dir "outputs/layouts_gen/task_0000/sapien_render" --insert_robot
+```
 
-The release bundle contains the resident HTTP server, CLI, and GGML shared libraries. CUDA runtime
-libraries are supplied by the pinned NVIDIA runtime image, while `libcuda.so.1` is provided by the
-NVIDIA driver / Modal GPU host at container startup. Model GGUF files are intentionally stored
-separately in Modal Volume.
+➡️ Full guide: [Layout Generation](https://horizonrobotics.github.io/EmbodiedGen/docs/tutorials/layout_gen.html) (background download, batch generation, layout randomization)
 
-## Pixal3D / L40S
+---
 
-Environment: `pixal3d-py310-cu124-torch260-sm89-v1`
+<h2 id="vibe-coding">💬 Edit — 3D Vibe Coding</h2>
 
-- Python 3.10
-- CUDA 12.4.1
-- PyTorch 2.6.0 / torchvision 0.21.0 / Triton 3.2.0
-- CUDA arch 8.9 (Ada / L40S)
-- NATTEN 0.21.0
-- Source-built `nvdiffrast`, `nvdiffrec_render`, `flex_gemm`, `cumesh`, `o_voxel`, `natten`
+Build and edit sim-ready 3D worlds **through dialogue**. EmbodiedGen ships a Claude Code plugin whose slash commands wrap the generation and spatial-computing skills — each instruction is a bounded, physics-validated skill call that preserves a deployable world state.
 
-Runtime workers consume the Release zip with `uv`; they do not compile CUDA extensions.
+<img src="docs/documentation/assets/vibe_coding.gif" alt="3D Vibe Coding: editing a sim-ready world through dialogue" width="600">
+
+```sh
+bash install/install_agent_plugin.sh  # register the plugin in Claude Code
+```
+
+| Command | What it does |
+|---------|--------------|
+| `/embodiedgen:gen_assets` | Generate 3D assets from images or text |
+| `/embodiedgen:gen_indoor` | Generate rooms or multi-room houses |
+| `/embodiedgen:gen_bg` | Generate 3DGS background scenes |
+| `/embodiedgen:gen_layout` | Compose task-driven interactive worlds |
+| `/embodiedgen:vibe3d` | Insert / remove / place objects in a scene via natural language |
+| `/embodiedgen:sim` | Render layouts in SAPIEN simulation |
+| `/embodiedgen:convert` | Export assets to USD / MJCF / URDF |
+| `/embodiedgen:process` | Scale or rotate existing assets |
+
+➡️ Full guide: [3D Vibe Coding](https://horizonrobotics.github.io/EmbodiedGen/docs/tutorials/vibe_coding.html)
+
+---
+
+<h2 id="any-simulators">📦 Export — Any Simulators</h2>
+
+One standardized asset, six engines, zero manual adaptation — consistent geometry, collision, textures, and physical metadata everywhere.
+
+| Simulator | How to use EmbodiedGen assets |
+|-----------|------------------------------|
+| [SAPIEN](https://github.com/haosulab/SAPIEN) / [IsaacGym](https://github.com/isaac-sim/IsaacGymEnvs) / [PyBullet](https://github.com/bulletphysics/bullet3) | Generated `.urdf` used **directly** |
+| [MuJoCo](https://github.com/google-deepmind/mujoco) / [Genesis](https://github.com/Genesis-Embodied-AI/Genesis) | `MeshtoMJCFConverter` → MJCF |
+| [IsaacSim](https://github.com/isaac-sim/IsaacSim) | `MeshtoUSDConverter` → USD |
+
+<img src="docs/documentation/assets/simulators_collision.jpg" alt="simulators_collision" width="500">
+
+➡️ Full guide: [Any Simulators](https://horizonrobotics.github.io/EmbodiedGen/docs/tutorials/any_simulators.html) (conversion API & examples)
+
+---
+
+<h2 id="robot-learning">🤖 Train — Robot Learning</h2>
+
+Generated worlds are not just viewable — they are **online training environments**. Spin up parallel `gym` environments from a generated layout, record sensor and trajectory data, and evaluate grasp quality of generated assets.
+
+<table>
+  <tr>
+    <td><img src="docs/documentation/assets/parallel_sim.gif" alt="parallel_sim1" width="290"/></td>
+    <td><img src="docs/documentation/assets/parallel_sim2.gif" alt="parallel_sim2" width="290"/></td>
+  </tr>
+</table>
+
+```sh
+# Parallel simulation environments from a generated layout
+python embodied_gen/scripts/parallel_sim.py \
+    --layout_file "outputs/layouts_gen/task_0000/layout.json" \
+    --output_dir "outputs/parallel_sim/task_0000" --num_envs 16
+
+# Grasp-quality evaluation of a generated URDF (ManiSkill + SAPIEN)
+python embodied_gen/scripts/eval_collision_success.py \
+    --urdf-path outputs/imageto3d/sample_00/result/sample_00.urdf --num-trials 4
+```
+
+In a companion [sim-to-real RL study](https://arxiv.org/abs/2603.18532), policies trained purely in EmbodiedGen-generated worlds reached **79.8%** simulation and **75.0%** real-robot task success.
+
+➡️ Full guide: [Robot Learning](https://horizonrobotics.github.io/EmbodiedGen/docs/tutorials/robot_learning.html)
+
+---
+
+<h2 id="articulated-object-generation">⚙️ Articulated Object Generation</h2>
+
+See our paper **DIPO** published in NeurIPS 2025:
+[[arXiv]](https://arxiv.org/abs/2505.20460) | [[Gradio Demo]](https://huggingface.co/spaces/HorizonRobotics/DIPO) | [[Code]](https://github.com/RQ-Wu/DIPO)
+
+<img src="docs/documentation/assets/articulate.gif" alt="articulate" width="500">
+
+---
+
+<h2 id="3d-scene-completion">🧩 3D Scene Completion</h2>
+
+See our paper **3D-Fixer** published in CVPR 2026:
+[[arXiv]](https://arxiv.org/abs/2604.04406) | [[Project Page]](https://zx-yin.github.io/3dfixer/) | [[Online Demo]](https://huggingface.co/spaces/HorizonRobotics/3D-Fixer) | [[Code]](https://github.com/HorizonRobotics/3D-Fixer)
+
+<img src="https://raw.githubusercontent.com/HorizonRobotics/3D-Fixer/main/assets/doc/teaser.png" alt="3D-Fixer" width="600">
+
+---
+
+<h2 id="sim-to-real-reinforcement-learning">🔄 Sim-to-Real Reinforcement Learning</h2>
+
+See our paper **Scaling Sim-to-Real Reinforcement Learning for Robot VLAs with Generative 3D Worlds** [[link]](https://arxiv.org/abs/2603.18532).
+
+<img src="docs/documentation/assets/sim2real_work.jpg" alt="Sim-to-real reinforcement learning with EmbodiedGen-generated worlds" width="600">
+
+---
+
+## For Developer
+
+```sh
+pip install -e .[dev] && pre-commit install
+python -m pytest # Pass all unit-test are required.
+```
+
+## 📚 Citation
+
+If you use EmbodiedGen in your research or projects, please cite:
+
+```bibtex
+@misc{wang2025embodiedgengenerative3dworld,
+  title         = {EmbodiedGen: Towards a Generative 3D World Engine for Embodied Intelligence},
+  author        = {Xinjie Wang and Liu Liu and Yu Cao and Ruiqi Wu and Wenkang Qin and Dehui Wang and Wei Sui and Zhizhong Su},
+  year          = {2025},
+  eprint        = {2506.10600},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.RO},
+  url           = {https://arxiv.org/abs/2506.10600}
+}
+```
+
+```bibtex
+@misc{wang2026embodiedgenv2agenticsimulationready,
+      title={EmbodiedGen V2: An Agentic, Simulation-Ready 3D World Engine for Embodied AI},
+      author={Xinjie Wang and Liu Liu and Taojun Ding and Andrew Choi and Chaodong Huang and Mengao Zhao and Ziang Li and Jackson Jiang and Chunlei Yu and Shengxiang Liu and Wei Xu and Zhizhong Su},
+      year={2026},
+      eprint={2607.07459},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2607.07459},
+}
+```
+
+---
+
+## 🙌 Acknowledgement
+
+EmbodiedGen builds upon the following amazing projects and models:
+🌟 [Trellis](https://github.com/microsoft/TRELLIS) | 🌟 [Hunyuan-Delight](https://huggingface.co/tencent/Hunyuan3D-2/tree/main/hunyuan3d-delight-v2-0) | 🌟 [Hunyuan3D-Part](https://github.com/Tencent-Hunyuan/Hunyuan3D-Part) | 🌟 [GraspGen](https://github.com/NVlabs/GraspGen) | 🌟 [Segment Anything](https://github.com/facebookresearch/segment-anything) | 🌟 [Rembg](https://github.com/danielgatis/rembg) | 🌟 [RMBG-1.4](https://huggingface.co/briaai/RMBG-1.4) | 🌟 [Stable Diffusion x4](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler) | 🌟 [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) | 🌟 [Kolors](https://github.com/Kwai-Kolors/Kolors) | 🌟 [ChatGLM3](https://github.com/THUDM/ChatGLM3) | 🌟 [Aesthetic Score](http://captions.christoph-schuhmann.de/aesthetic_viz_laion_sac+logos+ava1-l14-linearMSE-en-2.37B.html) | 🌟 [Pano2Room](https://github.com/TrickyGo/Pano2Room) | 🌟 [Diffusion360](https://github.com/ArcherFMY/SD-T2I-360PanoImage) | 🌟 [Kaolin](https://github.com/NVIDIAGameWorks/kaolin) | 🌟 [diffusers](https://github.com/huggingface/diffusers) | 🌟 [gsplat](https://github.com/nerfstudio-project/gsplat) | 🌟 [QWEN-2.5VL](https://github.com/QwenLM/Qwen2.5-VL) | 🌟 [SD3.5](https://huggingface.co/stabilityai/stable-diffusion-3.5-medium) | 🌟 [ManiSkill](https://github.com/haosulab/ManiSkill) | 🌟 [SAM3D](https://github.com/facebookresearch/sam-3d-objects) | 🌟 [infinigen](https://github.com/princeton-vl/infinigen)
+
+---
+
+## ⚖️ License
+
+This project is licensed under the [Apache License 2.0](LICENSE). See the `LICENSE` file for details.
