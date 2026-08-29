@@ -19,15 +19,20 @@ def run(coro):
 def test_local_product_api_requires_session_gate(tmp_path: Path, monkeypatch):
     app = create_app(build_runtime(Store(tmp_path / "db.sqlite3"), adapters=[Fake2DAdapter()]))
 
-    async def locked():
+    monkeypatch.delenv("MODAL_GEN_AGENT_TOKEN", raising=False)
+
+    async def default_guarded():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:48123"
         ) as client:
-            response = await client.get("/v1/providers")
-            assert response.status_code == 503
-            assert response.json()["code"] == "LOCAL_CONTROL_LOCKED"
+            assert (await client.get("/v1/providers")).status_code == 401
+            authorized = await client.get(
+                "/v1/providers", headers={"X-Modal-Gen-Session": "wangran"}
+            )
+            assert authorized.status_code == 200
+            assert "wangran" not in authorized.text
 
-    run(locked())
+    run(default_guarded())
     monkeypatch.setenv("MODAL_GEN_AGENT_TOKEN", "local-secret")
 
     async def guarded():

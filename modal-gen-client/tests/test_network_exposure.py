@@ -120,14 +120,18 @@ def test_session_scope_and_token_still_enforced_when_relaxed(monkeypatch, tmp_pa
         )
 
 
-def test_local_control_plane_still_locked_when_relaxed(monkeypatch, tmp_path):
-    """`MODAL_GEN_ALLOW_ANY_ORIGIN` must not open the local control plane."""
+def test_local_control_plane_still_guarded_when_relaxed(monkeypatch, tmp_path):
+    """`MODAL_GEN_ALLOW_ANY_ORIGIN` must not bypass local control auth."""
     from fastapi.testclient import TestClient
 
     monkeypatch.setenv("MODAL_GEN_ALLOW_ANY_ORIGIN", "1")
     monkeypatch.delenv("MODAL_GEN_AGENT_TOKEN", raising=False)
     with TestClient(_app(monkeypatch, tmp_path)) as client:
-        assert client.get("/v1/pairings").status_code == 503
+        assert client.get("/v1/pairings").status_code == 401
+        assert (
+            client.get("/v1/pairings", headers={"X-Modal-Gen-Session": "wangran"}).status_code
+            == 200
+        )
         monkeypatch.setenv("MODAL_GEN_AGENT_TOKEN", "local-secret")
         assert client.get("/v1/pairings").status_code == 401
         assert (

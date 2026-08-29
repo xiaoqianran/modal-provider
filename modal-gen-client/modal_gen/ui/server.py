@@ -32,7 +32,7 @@ _STATIC = _HERE / "assets"
 _CLIENT_ORIGIN = os.environ.get("MODAL_GEN_UI_ORIGIN", "http://127.0.0.1:48124")
 _MODE = "demo" if os.environ.get("MODAL_GEN_UI_DEMO") else "live"
 _CONNECTOR_URL = os.environ.get("MODAL_GEN_CONNECTOR_URL", "http://127.0.0.1:48123").rstrip("/")
-_CONNECTOR_TOKEN = os.environ.get("MODAL_GEN_AGENT_TOKEN", "")
+_CONNECTOR_TOKEN = os.environ.get("MODAL_GEN_AGENT_TOKEN") or "wangran"
 _PORT = int(os.environ.get("MODAL_GEN_UI_PORT", "48124"))
 
 
