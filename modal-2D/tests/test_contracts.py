@@ -29,10 +29,11 @@ def test_model_recipes_are_explicit_and_stable():
     assert model_spec("hidream-o1-image").steps == 50
     assert model_spec("hidream-o1-image").guidance == 5.0
     assert model_spec("qwen-image-2512").gpu == "RTX-PRO-6000"
+    assert model_spec("hidream-o1-image").gpu == "RTX-PRO-6000"
     assert all(
         model.gpu == "L40S"
         for model in MODELS
-        if model.id != "qwen-image-2512"
+        if model.id not in {"qwen-image-2512", "hidream-o1-image"}
     )
 
 

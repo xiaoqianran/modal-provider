@@ -112,7 +112,7 @@ MODELS: tuple[ModelSpec, ...] = (
         worker_app="modal-2d-hidream-o1",
         steps=50,
         guidance=5.0,
-        gpu="L40S",
+        gpu="RTX-PRO-6000",
         snapshot_file="config.json",
     ),
 )
