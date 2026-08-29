@@ -5,6 +5,7 @@ from typing import Any
 import modal
 
 from .stage2_patch import patch_stage2_single_gpu
+from .stage3_patch import patch_stage3_runtime
 
 ARTIFACT_VOLUME_NAME = "modal-build-artifacts"
 GPU = "RTX-PRO-6000"
@@ -161,10 +162,10 @@ hyworld2_worldgen_stage1_image = (
 )
 
 
-hyworld2_worldgen_stage3_image = hyworld2_worldgen_stage1_image.apt_install(
-    "build-essential", "ninja-build"
-).pip_install(
-    "imagesize==1.4.1",
+hyworld2_worldgen_stage3_image = (
+    hyworld2_worldgen_stage1_image.run_function(patch_stage3_runtime, args=(HYWORLD2_SOURCE,))
+    .apt_install("build-essential", "ninja-build")
+    .pip_install("imagesize==1.4.1")
 )
 
 hyworld2_worldgen_stage5_image = hyworld2_worldgen_stage3_image.pip_install(

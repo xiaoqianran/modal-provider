@@ -974,34 +974,6 @@ def worldgen_case000_stage3() -> dict:
             raise RuntimeError(f"empty Stage 2 caption: {caption}")
 
     worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
-    from modal_world.worldstereo_patch import patch_worldstereo_wrapper
-
-    patch_worldstereo_wrapper(worldgen_root / "models/worldstereo_wrapper.py")
-
-    retrieval_path = worldgen_root / "src/retrieval_wm.py"
-    retrieval_source = retrieval_path.read_text()
-    dino_processor_old = "            self.processor = AutoImageProcessor.from_pretrained(model_path, use_fast=True)\n"
-    dino_processor_new = (
-        "            self.processor = AutoImageProcessor.from_pretrained(\n"
-        "                model_path, use_fast=True, local_files_only=True\n"
-        "            )\n"
-    )
-    dino_model_old = (
-        "            self.model = AutoModel.from_pretrained(model_path).to(self.device)\n"
-    )
-    dino_model_new = (
-        "            self.model = AutoModel.from_pretrained(\n"
-        "                model_path, local_files_only=True\n"
-        "            ).to(self.device)\n"
-    )
-    if retrieval_source.count(dino_processor_old) != 1:
-        raise RuntimeError("expected pinned DINO processor loader not found")
-    if retrieval_source.count(dino_model_old) != 1:
-        raise RuntimeError("expected pinned DINO model loader not found")
-    retrieval_source = retrieval_source.replace(dino_processor_old, dino_processor_new, 1)
-    retrieval_source = retrieval_source.replace(dino_model_old, dino_model_new, 1)
-    retrieval_path.write_text(retrieval_source)
-
     log_path = target / "stage3.log"
     timing_path = target / "stage3_timing.json"
     command = [

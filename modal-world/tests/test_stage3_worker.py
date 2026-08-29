@@ -1,0 +1,51 @@
+from pathlib import Path
+
+from modal_world.stage3_patch import patch_stage3_runtime
+
+
+def test_stage3_runtime_patch_matches_pinned_upstream(tmp_path: Path):
+    src = Path("/tmp/hyworld2-src")
+    if not src.exists():
+        return
+    target = tmp_path / "source"
+    for rel in (
+        "hyworld2/worldgen/models/worldstereo_wrapper.py",
+        "hyworld2/worldgen/src/retrieval_wm.py",
+    ):
+        dst = target / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text((src / rel).read_text())
+    patch_stage3_runtime(target)
+    wrapper = (target / "hyworld2/worldgen/models/worldstereo_wrapper.py").read_text()
+    retrieval = (target / "hyworld2/worldgen/src/retrieval_wm.py").read_text()
+    assert "T5TokenizerFast.from_pretrained" in wrapper
+    assert "local_files_only=local_files_only" in wrapper
+    assert "model_path, use_fast=True, local_files_only=True" in retrieval
+    assert "model_path, local_files_only=True" in retrieval
+
+
+def test_stage3_worker_is_persistent_and_model_load_is_enter_only():
+    source = Path("modal_world/stage3_app.py").read_text()
+    assert 'app = modal.App("modal-world-stage3")' in source
+    assert "scaledown_window=15 * 60" in source
+    assert "max_containers=1" in source
+    assert "@modal.enter()" in source
+    assert "def load_models" in source
+    assert "WorldStereo.from_pretrained" in source
+    assert "@modal.method()" in source
+    assert "def generate" in source
+    generate = source[source.index("def generate") :]
+    assert "WorldStereo.from_pretrained" not in generate
+    assert "Sam3VideoModel.from_pretrained" not in generate
+    assert "MoGeModel.from_pretrained" not in generate
+
+
+def test_stage3_patch_is_image_build_time_and_legacy_hot_patch_removed():
+    runtime = Path("modal_world/hyworld2_runtime.py").read_text()
+    app = Path("modal_world/app.py").read_text()
+    assert ".run_function(patch_stage3_runtime" in runtime
+    start = app.index("def worldgen_case000_stage3()")
+    end = app.index("\n\n@app.function(", start)
+    section = app[start:end]
+    assert "patch_worldstereo_wrapper" not in section
+    assert "retrieval_source.replace" not in section
