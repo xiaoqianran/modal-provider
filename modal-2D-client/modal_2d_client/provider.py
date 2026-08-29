@@ -12,7 +12,6 @@ from .constants import (
     MAX_PROMPT_CHARS,
     MAX_SEED,
     OPERATION,
-    SUPPORTED_MODELS,
 )
 from .contracts import ContractError
 from .jobs import JobService
@@ -148,11 +147,15 @@ def _descriptor(*, model_ids: list[str], status: str, health: str) -> dict[str, 
                                 "minLength": 1,
                                 "maxLength": MAX_PROMPT_CHARS,
                             },
-                            "model": {
-                                "type": "string",
-                                "enum": model_ids or list(SUPPORTED_MODELS),
-                                "default": DEFAULT_MODEL,
-                            },
+                            "model": (
+                                {
+                                    "type": "string",
+                                    "enum": model_ids,
+                                    "default": DEFAULT_MODEL,
+                                }
+                                if DEFAULT_MODEL in model_ids
+                                else {"type": "string"}
+                            ),
                             "seed": {"type": "integer", "minimum": 0, "maximum": MAX_SEED},
                             "seeds": {
                                 "type": "array",
@@ -164,7 +167,7 @@ def _descriptor(*, model_ids: list[str], status: str, health: str) -> dict[str, 
                             "guidance": {"type": "number", "minimum": 0, "maximum": 20},
                         },
                     },
-                    "limits": {"width": 1024, "height": 1024, "steps": 2, "batch": MAX_BATCH_SIZE},
+                    "limits": {"width": 1024, "height": 1024, "batch": MAX_BATCH_SIZE},
                 },
                 "output": {
                     "roles": [ARTIFACT_ROLE],

@@ -51,6 +51,7 @@ def test_local_api_is_small_and_credentials_are_not_echoed(monkeypatch):
     monkeypatch.setattr(modal_session, "connect", connect)
     monkeypatch.setattr(modal_session, "disconnect", lambda: connected.update(value=False))
     monkeypatch.setattr(modal_session, "connected", lambda: connected["value"])
+    monkeypatch.setattr(capabilities, "refresh", lambda: {"models": []})
 
     async def scenario():
         async with await client_for(create_app(Service())) as client:
@@ -330,19 +331,26 @@ def test_api_accepts_batch_seeds_as_one_job():
     class BatchService(Service):
         def __init__(self):
             self.payload = None
+
         def submit(self, payload, *, job_id=None):
             self.payload = payload
             return {"id": job_id or "job_batch", "status": "running", "model": payload["model"]}
+
     service = BatchService()
+
     async def scenario():
         async with await client_for(create_app(service)) as client:
-            response = await client.post("/v1/jobs", json={
-                "prompt": "red apple",
-                "seeds": [42, 73, 104, 135],
-                "job_id": "job_batch",
-            })
+            response = await client.post(
+                "/v1/jobs",
+                json={
+                    "prompt": "red apple",
+                    "seeds": [42, 73, 104, 135],
+                    "job_id": "job_batch",
+                },
+            )
             assert response.status_code == 200
             assert service.payload["seeds"] == [42, 73, 104, 135]
             invalid = await client.post("/v1/jobs", json={"prompt": "x", "seed": 42, "seeds": [73]})
             assert invalid.status_code == 422
+
     run(scenario())

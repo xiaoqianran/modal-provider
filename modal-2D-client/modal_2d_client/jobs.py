@@ -25,7 +25,6 @@ from modal.exception import ConnectionError as ModalConnectionError
 from modal.exception import TimeoutError as ModalTimeoutError
 
 from . import artifacts, capabilities
-from .constants import WORKERS
 from .contracts import ContractError, normalize_batch_request, normalize_request, validate_artifact
 from .modal_session import NotConnectedError, client
 from .storage import data_dir
@@ -46,11 +45,8 @@ _RECOVERABLE = (
 
 
 def _worker_method(model_id: str, is_batch: bool):
-    """Resolve the model-specific GPU worker without a forwarding Function."""
-    try:
-        app_name, class_name, generate_method, batch_method = WORKERS[model_id]
-    except KeyError as exc:
-        raise ContractError(f"unsupported model: {model_id}") from exc
+    """Resolve the GPU worker from the cached runtime capability document."""
+    app_name, class_name, generate_method, batch_method = capabilities.worker_route(model_id)
     worker = modal.Cls.from_name(app_name, class_name, client=client())(model_id=model_id)
     return getattr(worker, batch_method if is_batch else generate_method)
 
@@ -118,15 +114,20 @@ class JobStore:
             if exists:
                 columns = db.execute("PRAGMA table_info(jobs)").fetchall()
                 required = {
-                    "id", "model", "remote_call_id", "status", "created_at", "updated_at",
-                    "result_json", "error_code", "retryable",
+                    "id",
+                    "model",
+                    "remote_call_id",
+                    "status",
+                    "created_at",
+                    "updated_at",
+                    "result_json",
+                    "error_code",
+                    "retryable",
                 }
                 present = {row[1] for row in columns}
                 missing = required - present
                 if missing:
-                    raise RuntimeError(
-                        f"Job DB schema is incompatible: missing {sorted(missing)}"
-                    )
+                    raise RuntimeError(f"Job DB schema is incompatible: missing {sorted(missing)}")
                 remote = next(row for row in columns if row[1] == "remote_call_id")
                 if remote[3]:
                     db.execute(
@@ -346,11 +347,7 @@ class JobService:
             )
         except RemoteError:
             if job.status == "cancel_requested":
-                return self._set(
-                    job, "cancelled", error_code="remote.cancelled", retryable=False
-                )
-            return self._set(job, "failed", error_code="remote.execution_failed", retryable=False)
-        except Exception:
+                return self._set(job, "cancelled", error_code="remote.cancelled", retryable=False)
             return self._set(job, "failed", error_code="remote.execution_failed", retryable=False)
 
         if not isinstance(value, dict) or value.get("model") != job.model:

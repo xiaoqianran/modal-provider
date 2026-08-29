@@ -5,6 +5,15 @@ import pytest
 from modal_2d_client import jobs
 
 
+@pytest.fixture(autouse=True)
+def capability_worker_route(monkeypatch):
+    monkeypatch.setattr(
+        jobs.capabilities,
+        "worker_route",
+        lambda _model: ("modal-2d-sana-sprint", "Model", "generate", "generate_batch"),
+    )
+
+
 class SpawnCall:
     object_id = "fc-remote-01"
 
@@ -64,7 +73,7 @@ class PollCall:
 
 class FailingPollCall:
     def get(self, timeout=0):
-        raise ValueError("provider rejected runtime input")
+        raise jobs.RemoteError("provider rejected runtime input")
 
 
 def test_job_submit_poll_and_persistence(tmp_path: Path, monkeypatch, png_artifact):
@@ -272,9 +281,7 @@ def test_v1_database_migrates_remote_call_id_to_nullable(tmp_path: Path):
     with sqlite3.connect(db_path) as db:
         assert db.execute("PRAGMA user_version").fetchone()[0] == 2
         remote = next(
-            row
-            for row in db.execute("PRAGMA table_info(jobs)")
-            if row[1] == "remote_call_id"
+            row for row in db.execute("PRAGMA table_info(jobs)") if row[1] == "remote_call_id"
         )
         assert remote[3] == 0
 
@@ -295,9 +302,7 @@ def test_incompatible_or_future_database_is_rejected(tmp_path: Path):
         jobs.JobStore(future)
 
 
-def test_cancel_during_spawn_preserves_intent_and_cancels_bound_remote(
-    tmp_path: Path, monkeypatch
-):
+def test_cancel_during_spawn_preserves_intent_and_cancels_bound_remote(tmp_path: Path, monkeypatch):
     poll = PollCall()
     service_holder = {}
 
@@ -310,12 +315,8 @@ def test_cancel_during_spawn_preserves_intent_and_cancels_bound_remote(
 
     monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
     monkeypatch.setattr(jobs, "client", lambda: object())
-    monkeypatch.setattr(
-        jobs.modal.Cls, "from_name", lambda *args, **kwargs: CancelDuringSpawn()
-    )
-    monkeypatch.setattr(
-        jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: poll
-    )
+    monkeypatch.setattr(jobs.modal.Cls, "from_name", lambda *args, **kwargs: CancelDuringSpawn())
+    monkeypatch.setattr(jobs.modal.FunctionCall, "from_id", lambda *args, **kwargs: poll)
 
     service = jobs.JobService(jobs.JobStore(tmp_path / "jobs.sqlite3"))
     service_holder["service"] = service
@@ -362,11 +363,13 @@ def test_batch_job_spawns_gpu_worker_directly_and_persists_multiple_artifacts(
     _, descriptor = png_artifact
     second = dict(descriptor, id="art_def", remote_path="generated/art_def.png")
     worker = WorkerClass()
-    poll = PollCall({
-        "model": "sana-sprint-1.6b",
-        "artifacts": [descriptor, second],
-        "timing": {"worker_load_ms": 5000.0, "batch_total_ms": 1200.0},
-    })
+    poll = PollCall(
+        {
+            "model": "sana-sprint-1.6b",
+            "artifacts": [descriptor, second],
+            "timing": {"worker_load_ms": 5000.0, "batch_total_ms": 1200.0},
+        }
+    )
     monkeypatch.setattr(jobs.capabilities, "ensure_model", lambda model: None)
     monkeypatch.setattr(jobs, "client", lambda: object())
     monkeypatch.setattr(jobs.modal.Cls, "from_name", lambda *args, **kwargs: worker)
@@ -387,10 +390,18 @@ def test_batch_artifact_fetch_requires_index(tmp_path: Path, monkeypatch, png_ar
     second = dict(descriptor, id="art_def", remote_path="generated/art_def.png")
     store = jobs.JobStore(tmp_path / "jobs.sqlite3")
     now = "2026-08-28T00:00:00+00:00"
-    store.save(jobs.Job(
-        id="job_batch", model="sana-sprint-1.6b", remote_call_id="fc-batch", status="succeeded",
-        created_at=now, updated_at=now, result={"artifacts": [descriptor, second]}, retryable=False,
-    ))
+    store.save(
+        jobs.Job(
+            id="job_batch",
+            model="sana-sprint-1.6b",
+            remote_call_id="fc-batch",
+            status="succeeded",
+            created_at=now,
+            updated_at=now,
+            result={"artifacts": [descriptor, second]},
+            retryable=False,
+        )
+    )
     paths = {"art_abc": tmp_path / "a.png", "art_def": tmp_path / "b.png"}
     for path in paths.values():
         path.write_bytes(b"png")

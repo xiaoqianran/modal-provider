@@ -106,6 +106,14 @@ def create_app(service: JobService | None = None) -> FastAPI:
             )
         except Exception as exc:
             raise HTTPException(status_code=401, detail="Modal authentication failed") from exc
+        try:
+            capabilities.refresh()
+        except ContractError as exc:
+            modal_session.disconnect()
+            raise HTTPException(status_code=502, detail="Incompatible modal-2D capability") from exc
+        except Exception as exc:
+            modal_session.disconnect()
+            raise HTTPException(status_code=502, detail="Modal capability unavailable") from exc
         return {"connected": True}
 
     @app.delete("/modal/connect")

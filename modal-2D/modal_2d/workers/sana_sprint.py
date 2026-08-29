@@ -8,7 +8,8 @@ from ..constants import ARTIFACT_VOLUME, MODELS_VOLUME
 from ..models import model_spec
 from .common import generate_many, generate_one
 
-APP_NAME = "modal-2d-sana-sprint"
+SPEC = model_spec("sana-sprint-1.6b")
+APP_NAME = SPEC.worker_app
 MODEL_ROOT = Path("/models")
 ARTIFACT_ROOT = Path("/artifacts")
 
@@ -63,7 +64,7 @@ def _infer(pipe, request: dict[str, object]):
 
 @app.cls(
     image=image,
-    gpu="L40S",
+    gpu=SPEC.gpu,
     timeout=15 * 60,
     max_containers=1,
     scaledown_window=300,

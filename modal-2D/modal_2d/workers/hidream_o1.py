@@ -9,8 +9,9 @@ from ..constants import ARTIFACT_VOLUME, MODELS_VOLUME
 from ..models import model_spec
 from .common import generate_many, generate_one
 
-APP_NAME = "modal-2d-hidream-o1"
 MODEL_ID = "hidream-o1-image"
+SPEC = model_spec(MODEL_ID)
+APP_NAME = SPEC.worker_app
 MODEL_ROOT = Path("/models")
 ARTIFACT_ROOT = Path("/artifacts")
 HIDREAM_SOURCE = "/opt/hidream-o1"
@@ -75,7 +76,7 @@ def _load(model_id: str, root: Path):
 
 def _infer(runtime, request: dict[str, object]):
     model, processor, generate_image = runtime
-    return generate_image(
+    image = generate_image(
         model=model,
         processor=processor,
         prompt=str(request["prompt"]),
@@ -89,11 +90,17 @@ def _infer(runtime, request: dict[str, object]):
         scheduler_name="default",
         seed=int(request["seed"]),
     )
+    expected = (int(request["width"]), int(request["height"]))
+    if image.size != expected:
+        from PIL import Image
+
+        image = image.resize(expected, Image.Resampling.LANCZOS)
+    return image
 
 
 @app.cls(
     image=image,
-    gpu="H100",
+    gpu=SPEC.gpu,
     timeout=30 * 60,
     max_containers=1,
     scaledown_window=300,

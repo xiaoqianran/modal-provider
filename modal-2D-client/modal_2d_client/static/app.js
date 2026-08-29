@@ -1,6 +1,6 @@
 "use strict";
 const $=s=>document.querySelector(s);
-const state={session:sessionStorage.getItem("modal2d.session")||"",connected:false,jobs:[],job:null,artifactIndex:0,blobUrl:null,poll:null,busy:false};
+const state={session:sessionStorage.getItem("modal2d.session")||"",connected:false,models:[],jobs:[],job:null,artifactIndex:0,blobUrl:null,poll:null,busy:false};
 const terminal=new Set(["succeeded","failed","cancelled","expired"]);
 const STATUS_LABEL={queued:"排队中",submitting:"提交中",running:"生成中",succeeded:"已完成",failed:"失败",cancelled:"已取消",expired:"已过期"};
 const META_KEY="modal2d.jobmeta",META_MAX=200;
@@ -78,7 +78,8 @@ async function connect(){
   finally{setBusy(btn,false)}
 }
 async function disconnect(){try{await request("/modal/connect",{method:"DELETE"});setConnected(false);toast("已断开 Modal")}catch(e){toast(e.message,"error")}}
-async function loadModels(){try{const{data}=await request("/v1/models");const models=Array.isArray(data.models)?data.models:[];if(models.length)$("#model").innerHTML=models.map(m=>`<option value="${esc(m.id)}">${esc(m.name||m.id)}</option>`).join("");renderJobs()}catch(e){if(e.status!==409)toast(`模型加载失败：${e.message}`,"error")}}
+function updateModelNote(){const model=state.models.find(m=>m.id===$("#model").value);const profile=model?.profiles?.[0];$("#model-note").textContent=model?`${model.width} × ${model.height}${profile?.steps?` · ${profile.steps} steps`:""}`:"1024 × 1024"}
+async function loadModels(){try{const{data}=await request("/v1/models");const models=Array.isArray(data.models)?data.models:[];state.models=models;if(models.length)$("#model").innerHTML=models.map(m=>`<option value="${esc(m.id)}">${esc(m.name||m.id)}</option>`).join("");updateModelNote();renderJobs()}catch(e){if(e.status!==409)toast(`模型加载失败：${e.message}`,"error")}}
 function parseSeeds(){const values=$("#seeds").value.split(/[\s,]+/).filter(Boolean).map(Number);if(!values.length||values.length>8||values.some(v=>!Number.isInteger(v)||v<0||v>4294967295)||new Set(values).size!==values.length)throw new Error("Seeds 需要 1–8 个不重复整数");return values}
 function payload(){const prompt=$("#prompt").value.trim();if(!prompt)throw new Error("请先描述你想生成的画面");const body={prompt,model:$("#model").value};if($("#batch-toggle").checked)body.seeds=parseSeeds();else{const seed=Number($("#seed").value);if(!Number.isInteger(seed)||seed<0||seed>4294967295)throw new Error("Seed 不合法");body.seed=seed}const guidance=$("#guidance").value.trim();if(guidance){const n=Number(guidance);if(!Number.isFinite(n)||n<0||n>20)throw new Error("Guidance 需在 0–20 之间");body.guidance=n}return body}
 async function generate(){
@@ -157,6 +158,7 @@ function download(){if(!state.blobUrl)return;const descriptor=descriptors()[stat
 function syncShortcutHint(){$("#kbd-hint").textContent=/Mac|iPhone|iPad|iPod/.test(navigator.platform||navigator.userAgent)?"⌘ ↵":"Ctrl ↵"}
 $("#open-settings").onclick=openSettings;$("#close-settings").onclick=closeSettings;$("#scrim").onclick=closeSettings;$("#connect").onclick=connect;$("#disconnect").onclick=disconnect;$("#generate").onclick=generate;$("#refresh-jobs").onclick=loadJobs;$("#download").onclick=download;
 $("#prompt").oninput=e=>$("#prompt-count").textContent=`${e.target.value.length} / 4000`;
+$("#model").onchange=updateModelNote;
 $("#token-command").addEventListener("input",e=>parseTokenCommand(e.target.value));
 $("#token-command").addEventListener("paste",e=>setTimeout(()=>parseTokenCommand(e.target.value),0));
 $("#batch-toggle").onchange=e=>{$("#batch-seeds-wrap").hidden=!e.target.checked;$("#seed-wrap").hidden=e.target.checked};

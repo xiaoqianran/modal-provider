@@ -17,7 +17,6 @@ from .constants import (
     MAX_PROMPT_CHARS,
     MAX_SEED,
     OPERATION,
-    WORKERS,
 )
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -89,18 +88,10 @@ def validate_capabilities(value: Any) -> dict[str, object]:
             item.get("generation_entrypoint"),
             f"models[{index}].generation_entrypoint",
         )
-        expected_route = WORKERS.get(model_id)
-        if expected_route is None:
-            raise ContractError(f"client has no worker route for model: {model_id}")
-        app_name, class_name, generate_method, batch_method = expected_route
-        expected_entrypoint = {
-            "app": app_name,
-            "class_name": class_name,
-            "generate_method": generate_method,
-            "batch_generate_method": batch_method,
-        }
-        if any(route.get(key) != expected for key, expected in expected_entrypoint.items()):
-            raise ContractError(f"model {model_id} worker route is incompatible")
+        for field in ("app", "class_name", "generate_method", "batch_generate_method"):
+            _text(route.get(field), f"models[{index}].generation_entrypoint.{field}")
+    if DEFAULT_MODEL not in seen:
+        raise ContractError(f"default model is unavailable: {DEFAULT_MODEL}")
     return doc
 
 
@@ -138,7 +129,6 @@ def normalize_request(value: Any) -> dict[str, object]:
     return result
 
 
-
 def normalize_batch_request(value: Any) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ContractError("batch generation request must be an object")
@@ -152,11 +142,12 @@ def normalize_batch_request(value: Any) -> dict[str, object]:
     normalized_seeds = [_integer(seed, "seed", 0, MAX_SEED) for seed in seeds]
     if len(set(normalized_seeds)) != len(normalized_seeds):
         raise ContractError("seeds must be unique")
-    single = normalize_request({
-        key: value[key] for key in ("prompt", "model", "guidance") if key in value
-    })
+    single = normalize_request(
+        {key: value[key] for key in ("prompt", "model", "guidance") if key in value}
+    )
     single.pop("seed")
     return {**single, "seeds": normalized_seeds}
+
 
 def validate_artifact(value: Any) -> dict[str, object]:
     artifact = _mapping(value, "artifact")
