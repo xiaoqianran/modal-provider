@@ -60,45 +60,71 @@ modal-provider
 
 ## Standalone package repositories
 
-本 monorepo 是代码真值源，同时维护以下独立 package 仓库：
+本 monorepo 是集成主仓，同时维护以下独立 package 仓库：
 
-- `modal-2D` → https://github.com/xiaoqianran/modal-2D
-- `modal-2D-client` → https://github.com/xiaoqianran/modal-2D-client
-- `modal-3D` → https://github.com/xiaoqianran/modal-3D
-- `modal-3D-client` → https://github.com/xiaoqianran/modal-3D-client
-- `modal-gen-client` → https://github.com/xiaoqianran/modal-gen-client
-- `modal-EmbodiedGen` → https://github.com/xiaoqianran/modal-EmbodiedGen
-- `modal-build` → https://github.com/xiaoqianran/modal-build
+- `modal-2D` (`main`) → https://github.com/xiaoqianran/modal-2D
+- `modal-2D-client` (`main`) → https://github.com/xiaoqianran/modal-2D-client
+- `modal-3D` (`master`) → https://github.com/xiaoqianran/modal-3D
+- `modal-3D-client` (`main`) → https://github.com/xiaoqianran/modal-3D-client
+- `modal-gen-client` (`main`) → https://github.com/xiaoqianran/modal-gen-client
+- `modal-EmbodiedGen` (`master`) → https://github.com/xiaoqianran/modal-EmbodiedGen
+- `modal-build` (`master`) → https://github.com/xiaoqianran/modal-build
 
-当前同步基线：
+### 同步前必须检查
 
-- `modal-2D` (`main`): `f1ebf6222c5299ad497ca53a3e415ddbfade1d0f`；
-- `modal-2D-client` (`main`): `afc52f27e0064e99a37fa34304ba447c20378e7b`；
-- `modal-3D` (`master`): `7cb8097410a5357f38ddfcfc1c5639ec69e36f2a`；
-- `modal-3D-client` (`main`): `986dc6cb5769787895437dcdbf919fe9adceac78`；
-- `modal-gen-client` (`main`): `6c777c4e68c65879936db654663c65e3c3543f89`；
-- `modal-EmbodiedGen` (`master`): `b75e7309bba6e290ae1157e8ee3a59d4ad139e61`（EmbodiedGen v2.1.0）；
-- `modal-build` (`master`): `1dd19dd55c62b1a8d7eb01dcefb69fc37e135da8`。该版本已移除 `integrations/embodiedgen` 历史备份；EmbodiedGen production code 的唯一真值是 `modal-EmbodiedGen/modal/`。
+不要依赖 README 中的固定 commit SHA 判断同步状态。每次修改、提交或推送前，先执行只读检查：
 
-以上 standalone 源码树（忽略各仓库独立 `.github` 与本地缓存）均与本 monorepo 对应目录逐文件一致。
-
-同步规则：
-
-1. 先在 `modal-provider` 完成修改、测试、commit 和 push。
-2. 如果改动涉及上述 package，再把对应目录同步到对应独立仓库。
-3. 独立仓库保留自己的 `.git`、`.github` 和历史。
-4. 默认使用普通 commit + fast-forward push；禁止 force push，除非明确要求。
-5. 推送后检查 monorepo 与对应独立仓库的 `main` HEAD，并确认 working tree clean。
-
-代码真值优先级：
-
-```text
-modal-provider monorepo
-    ↓ sync
-standalone package repositories
+```bash
+./scripts/check-standalone-sync.sh
 ```
 
-`modal-build` 作为构建工具边界存在，不是运行时 Provider；EmbodiedGen production code 则只属于 `modal-EmbodiedGen`。Kaggle Provider 与独立 `modal-lab` 不属于本 monorepo 的目标运行时架构。
+只检查本次涉及的 package：
+
+```bash
+./scripts/check-standalone-sync.sh modal-2D modal-2D-client modal-gen-client
+```
+
+输出含义：
+
+- `SYNC`：忽略独立 `.github` 与本地缓存后，两边源码树一致。
+- `DRIFT`：两边源码树不同，**必须停止自动同步并审查差异**。
+- `ERROR`：检查本身失败，不得继续声称仓库已同步。
+
+### 强制同步规则
+
+1. `modal-provider` 是最终集成主仓，但**不能假设它永远比 standalone 新**。独立仓库可能存在尚未合回 monorepo 的有效开发。
+2. 发现 `DRIFT` 时，先检查 standalone 最新历史和逐文件差异，判断哪一侧包含更新实现；不得直接覆盖任何一侧。
+3. 如果 standalone 含有 monorepo 不存在的新代码，必须先把这些变化审查、测试并合回 monorepo，再决定后续同步。
+4. 只有确认 monorepo 当前 package 快照是本次期望真值后，才允许同步到 standalone。
+5. 禁止在未完成第 2～4 步时执行机械 `rsync --delete`、目录覆盖、force push 或 history rewrite。
+6. standalone 必须保留自己的 `.git`、`.github`、目标分支和历史；正常同步使用普通 commit + fast-forward push。
+7. 推送前必须在**最新远端基线的干净 worktree**运行该 package 的 Ruff/tests/build/live smoke（按项目实际提供的检查项）。不要用旧分支、脏工作区或缓存结果代表远端健康状态。
+8. 推送后再次运行 `check-standalone-sync.sh <package...>`，并核对 monorepo `origin` HEAD、standalone HEAD 和 working tree 状态。
+9. 任一 push 返回非 0，即使日志看起来可能已推上去，也必须重新 fetch/ls-remote 验证后才能报告成功。
+
+推荐流程：
+
+```text
+fetch 最新远端
+    ↓
+检查 working tree
+    ↓
+check-standalone-sync.sh
+    ↓
+DRIFT ? ── yes → 审查 standalone-only / monorepo-only changes → 合并正确实现
+    │
+    no
+    ↓
+在最新干净基线测试
+    ↓
+commit + push monorepo
+    ↓
+同步对应 standalone（如需要）
+    ↓
+再次检查源码树 + remote HEAD
+```
+
+`modal-build` 是构建工具边界，不是运行时 Provider；EmbodiedGen production code 只属于 `modal-EmbodiedGen`。Kaggle Provider 与独立 `modal-lab` 不属于本 monorepo 的目标运行时架构。
 
 ## Development
 
