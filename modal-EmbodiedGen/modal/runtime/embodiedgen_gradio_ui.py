@@ -1,24 +1,22 @@
 """Small browser UI for the local/VPS EmbodiedGen Modal control plane."""
 from __future__ import annotations
 
-import json
 import threading
 import time
 from pathlib import Path
 
 import gradio as gr
-
 from embodiedgen_direct import (
     AFFORDANCE_DEFAULTS,
     AFFORDANCE_PROFILE,
     AFFORDANCE_SEMANTIC_PROFILE,
     download_result,
     generate_affordance,
-    submit_image3d,
-    submit_text3d,
     get_job,
     list_jobs,
     retexture,
+    submit_image3d,
+    submit_text3d,
 )
 
 RESULT_ROOT = Path("/workspace/embodiedgen-ui-results")

@@ -79,6 +79,31 @@ def _put_job(job_id: str, **changes) -> dict:
     return state
 
 
+def _run_stage(
+    job_id: str,
+    stage: str,
+    invoke: Callable[[], object],
+    timings: dict[str, float],
+) -> object:
+    _put_job(job_id, status="running", stage=stage)
+    started = time.perf_counter()
+    try:
+        result = invoke()
+    except Exception as exc:
+        timings[stage] = round(time.perf_counter() - started, 3)
+        _put_job(
+            job_id,
+            status="failed",
+            stage=stage,
+            stage_seconds=dict(timings),
+            error_type=type(exc).__name__,
+            error=str(exc)[:2000],
+        )
+        raise
+    timings[stage] = round(time.perf_counter() - started, 3)
+    return result
+
+
 def _compat_profile(requested: str) -> str:
     """Validate the old UI argument, but routing is now deployment-static."""
     if requested not in COMPAT_PROFILES:

@@ -1,5 +1,4 @@
 import importlib.util
-import re
 import unittest
 from pathlib import Path
 
