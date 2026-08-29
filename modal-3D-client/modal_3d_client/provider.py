@@ -4,7 +4,7 @@ import hashlib
 from collections.abc import Iterator
 from pathlib import Path
 
-from . import capabilities, models
+from . import capabilities, modal_session, models
 from .constants import OPERATION, OUTPUT_ROLE, SOURCE_MAX_BYTES
 from .contracts import ContractError
 from .jobs import JobService
@@ -32,6 +32,8 @@ class Modal3DProvider:
         return self._jobs
 
     def descriptor(self) -> dict[str, object]:
+        if self._jobs is None and not modal_session.connected():
+            return self.unavailable_descriptor()
         try:
             document = capabilities.capabilities_document()
         except capabilities.CapabilityError:
@@ -56,6 +58,18 @@ class Modal3DProvider:
             health="unavailable",
             revision="modal-3d.capabilities.v3",
         )
+
+    def connection_status(self) -> dict[str, object]:
+        connected = self._jobs is not None or modal_session.connected()
+        return {"connected": connected, "managed": self._jobs is None}
+
+    def connect(self, token_id: str, token_secret: str) -> dict[str, object]:
+        modal_session.connect(token_id, token_secret)
+        return self.connection_status()
+
+    def disconnect(self) -> dict[str, object]:
+        modal_session.disconnect()
+        return self.connection_status()
 
     def submit(
         self,
