@@ -33,6 +33,10 @@ class GlbAccessorBoundsTest(unittest.TestCase):
         value = runtime._glb_accessor_array(self._doc(), data, 0)
         np.testing.assert_array_equal(value, [[1.0, 2.0, 3.0]])
 
+    def test_non_integer_buffer_view_index_is_rejected_cleanly(self):
+        with self.assertRaisesRegex(RuntimeError, "invalid GLB bufferView index"):
+            runtime._glb_accessor_array(self._doc(buffer_view="not-an-index"), bytes(12), 0)
+
     def test_negative_buffer_view_index_is_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "invalid GLB bufferView index"):
             runtime._glb_accessor_array(self._doc(buffer_view=-1), bytes(12), 0)
