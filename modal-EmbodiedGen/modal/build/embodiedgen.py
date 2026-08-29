@@ -85,6 +85,12 @@ def build_and_release() -> dict:
             "Bump TAG for a new release."
         )
 
+    # Modal may reuse a warm builder container after a failed invocation. Clear
+    # ephemeral build state so retries cannot inherit stale wheels, archives, caches,
+    # or a half-cloned source tree from the previous attempt.
+    scratch_paths = (WHEELS, OUT, CACHE_ROOT, Path("/tmp/nvdiffrast"))
+    for path in scratch_paths:
+        shutil.rmtree(path, ignore_errors=True)
     WHEELS.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     CACHE_ROOT.mkdir(parents=True, exist_ok=True)
