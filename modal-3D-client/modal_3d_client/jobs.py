@@ -43,6 +43,23 @@ _RECOVERABLE = (
     TimeoutError,
 )
 
+_JOB_COLUMNS = (
+    "id",
+    "model",
+    "profile",
+    "seed",
+    "input_path",
+    "input_sha256",
+    "remote_call_id",
+    "status",
+    "created_at",
+    "updated_at",
+    "result_json",
+    "error_code",
+    "retryable",
+    "conditioning_json",
+)
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -105,30 +122,77 @@ class JobStore:
 
     def _initialize(self) -> None:
         with self._connect() as db:
-            db.execute(
-                """
-                CREATE TABLE IF NOT EXISTS jobs (
-                    id TEXT PRIMARY KEY,
-                    model TEXT NOT NULL,
-                    profile TEXT NOT NULL,
-                    seed INTEGER NOT NULL,
-                    input_path TEXT NOT NULL,
-                    input_sha256 TEXT NOT NULL,
-                    remote_call_id TEXT,
-                    status TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    result_json TEXT,
-                    error_code TEXT,
-                    retryable INTEGER
-                )
-                """
+            self._create_table(db, "jobs", if_not_exists=True)
+            schema = {row[1]: row for row in db.execute("PRAGMA table_info(jobs)")}
+            if not set(_JOB_COLUMNS) <= schema.keys() or schema["remote_call_id"][3]:
+                self._rebuild_legacy_table(db, schema)
+
+    @staticmethod
+    def _create_table(db: sqlite3.Connection, name: str, *, if_not_exists: bool = False) -> None:
+        guard = "IF NOT EXISTS " if if_not_exists else ""
+        db.execute(
+            f"""
+            CREATE TABLE {guard}{name} (
+                id TEXT PRIMARY KEY,
+                model TEXT NOT NULL,
+                profile TEXT NOT NULL,
+                seed INTEGER NOT NULL,
+                input_path TEXT NOT NULL,
+                input_sha256 TEXT NOT NULL,
+                remote_call_id TEXT,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                result_json TEXT,
+                error_code TEXT,
+                retryable INTEGER,
+                conditioning_json TEXT
             )
-            # Conditioning moved from the cloud to this process, so its evidence
-            # has to survive a restart like every other local job field.
-            columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)").fetchall()}
-            if "conditioning_json" not in columns:
-                db.execute("ALTER TABLE jobs ADD COLUMN conditioning_json TEXT")
+            """
+        )
+
+    def _rebuild_legacy_table(
+        self, db: sqlite3.Connection, schema: dict[str, tuple]
+    ) -> None:
+        """Atomically normalize every historical jobs schema to the current one."""
+
+        columns = set(schema)
+
+        def source(column: str, fallback: str) -> str:
+            return f'COALESCE("{column}", {fallback})' if column in columns else fallback
+
+        error_code = source("error_code", "NULL")
+        if "error" in columns:
+            error_code = f'COALESCE({error_code}, "error")'
+
+        # A process may have been killed during an earlier migration attempt.
+        # The canonical jobs table remains intact until the final rename, so a
+        # stale temporary table is always safe to discard and rebuild.
+        db.execute("DROP TABLE IF EXISTS jobs_migrated")
+        self._create_table(db, "jobs_migrated")
+        db.execute(
+            f"""
+            INSERT INTO jobs_migrated ({", ".join(_JOB_COLUMNS)})
+            SELECT
+                "id",
+                "model",
+                {source("profile", "'recommended'")},
+                {source("seed", "42")},
+                {source("input_path", "''")},
+                {source("input_sha256", "''")},
+                {source("remote_call_id", "NULL")},
+                {source("status", "'failed'")},
+                {source("created_at", "''")},
+                {source("updated_at", source("created_at", "''"))},
+                {source("result_json", "NULL")},
+                {error_code},
+                {source("retryable", "NULL")},
+                {source("conditioning_json", "NULL")}
+            FROM jobs
+            """
+        )
+        db.execute("DROP TABLE jobs")
+        db.execute("ALTER TABLE jobs_migrated RENAME TO jobs")
 
     def _load(self) -> None:
         with self._connect() as db:
@@ -161,7 +225,11 @@ class JobStore:
         with self._connect() as db:
             db.execute(
                 """
-                INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO jobs (
+                    id, model, profile, seed, input_path, input_sha256,
+                    remote_call_id, status, created_at, updated_at,
+                    result_json, error_code, retryable, conditioning_json
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                     model=excluded.model,
                     profile=excluded.profile,

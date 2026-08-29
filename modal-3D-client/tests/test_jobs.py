@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -43,6 +44,64 @@ class SequenceCall:
 
 def service(tmp_path: Path) -> jobs.JobService:
     return jobs.JobService(jobs.JobStore(tmp_path / "jobs.sqlite3"))
+
+
+def test_job_store_migrates_legacy_database_without_losing_jobs(tmp_path):
+    path = tmp_path / "jobs.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute(
+            """
+            CREATE TABLE jobs (
+                id TEXT PRIMARY KEY,
+                model TEXT NOT NULL,
+                remote_call_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT,
+                result_json TEXT,
+                error TEXT,
+                error_code TEXT,
+                retryable INTEGER,
+                artifact_remote_path TEXT,
+                remote_not_found_count INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        db.execute(
+            "INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "legacy_job",
+                "fastsam3d-plus-plus",
+                "fc_legacy",
+                "succeeded",
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:01+00:00",
+                None,
+                None,
+                None,
+                0,
+                "generated/legacy.glb",
+                0,
+            ),
+        )
+
+    store = jobs.JobStore(path)
+
+    restored = store.get("legacy_job")
+    assert restored.profile == "recommended"
+    assert restored.seed == 42
+    assert restored.input_path == ""
+    assert restored.input_sha256 == ""
+    assert restored.conditioning is None
+    with sqlite3.connect(path) as db:
+        schema = {row[1]: row for row in db.execute("PRAGMA table_info(jobs)")}
+    assert set(jobs._JOB_COLUMNS) == schema.keys()
+    assert schema["remote_call_id"][3] == 0
+
+    # Explicit INSERT columns keep writes stable if later migrations append
+    # more columns to the table.
+    store.save(restored)
+    assert store.get("legacy_job").public()["profile"] == "recommended"
 
 
 def upload_stub(data: bytes, *, mask: bytes | None = None) -> dict[str, object]:
