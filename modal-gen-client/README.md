@@ -159,7 +159,7 @@ Provider client 通过 Modal SDK 直接调用远程 App，不经过 gen-client H
 
 ## Local UI
 
-> 本机 loopback 模式默认控制 token 为 `wangran`。如果设置 `MODAL_GEN_HOST` 监听非 loopback 地址，则必须显式设置 `MODAL_GEN_AGENT_TOKEN`，不会使用默认 token。
+> 默认监听 `0.0.0.0`，方便 Docker / CNB / Codespaces 端口转发；默认允许任意浏览器 Origin。控制 token 未配置时仍为 `wangran`。生产环境建议显式设置 `MODAL_GEN_AGENT_TOKEN`，并可用 `MODAL_GEN_ALLOW_ANY_ORIGIN=0` 收紧 Origin。
 
 启动 Connector 与可视化控制台时，两者使用同一个本地控制 token：
 
@@ -197,4 +197,14 @@ http://127.0.0.1:48124/ui/
 
 ```bash
 MODAL_GEN_UI_DEMO=1 modal-gen-ui
+```
+
+网络默认值：
+
+```text
+MODAL_GEN_HOST=0.0.0.0
+MODAL_GEN_PORT=48123
+MODAL_GEN_UI_HOST=0.0.0.0
+MODAL_GEN_UI_PORT=48124
+MODAL_GEN_ALLOW_ANY_ORIGIN=1   # 默认行为；设置 0 可关闭
 ```

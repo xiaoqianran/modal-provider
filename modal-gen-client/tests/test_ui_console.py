@@ -86,7 +86,8 @@ def test_make_gateway_respects_mode(mode_env, monkeypatch) -> None:
 
 # ------------------------------------------------------------------- server
 @pytest.fixture()
-def ui_server():
+def ui_server(monkeypatch):
+    monkeypatch.setenv("MODAL_GEN_ALLOW_ANY_ORIGIN", "0")
     Handler.gateway = DemoGateway()
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     host, port = server.server_address[0], server.server_address[1]
@@ -142,13 +143,13 @@ def test_server_returns_404_for_unknown_artifact(ui_server: str) -> None:
 
 
 # ------------------------------------------------------- network exposure
-def test_ui_server_binds_loopback_by_default(monkeypatch):
+def test_ui_server_binds_all_interfaces_by_default(monkeypatch):
     import modal_gen.ui.server as ui_server
 
     monkeypatch.delenv("MODAL_GEN_UI_HOST", raising=False)
-    assert ui_server.ui_host() == "127.0.0.1"
-    monkeypatch.setenv("MODAL_GEN_UI_HOST", "0.0.0.0")
     assert ui_server.ui_host() == "0.0.0.0"
+    monkeypatch.setenv("MODAL_GEN_UI_HOST", "127.0.0.1")
+    assert ui_server.ui_host() == "127.0.0.1"
 
 
 def test_ui_server_json_reflects_origin(ui_server: str) -> None:
@@ -167,7 +168,7 @@ def test_ui_server_wildcard_origin_when_enabled(monkeypatch) -> None:
     monkeypatch.setattr(ui_server, "_allow_any_origin", ui_server._allow_any_origin)
     assert ui_server._allow_any_origin() is True
     monkeypatch.delenv("MODAL_GEN_ALLOW_ANY_ORIGIN")
-    assert ui_server._allow_any_origin() is False
+    assert ui_server._allow_any_origin() is True
 
 
 def test_ui_server_supports_options_preflight(ui_server: str) -> None:

@@ -24,16 +24,15 @@ _ANY_ORIGIN_ENV = "MODAL_GEN_ALLOW_ANY_ORIGIN"
 
 
 def allow_any_origin() -> bool:
-    """Opt-in relaxation of the origin boundary.
+    """Whether browser requests may come from any Origin.
 
-    The Connector normally pins every request to the Origin that was paired,
-    which is what stops an arbitrary site from driving a local session that
-    owns generation jobs and artifact bytes. Setting `MODAL_GEN_ALLOW_ANY_ORIGIN`
-    turns CORS into `*` and stops rejecting cross-origin requests.
-
-    Only enable it on a trusted network.
+    Defaults to enabled for container/CNB deployments. Set
+    `MODAL_GEN_ALLOW_ANY_ORIGIN=0` to restore strict paired-Origin enforcement.
+    Authentication remains required in either mode.
     """
     import os
 
-    value = os.environ.get(_ANY_ORIGIN_ENV, "").strip().lower()
-    return value in {"1", "true", "yes", "on", "*"}
+    value = os.environ.get(_ANY_ORIGIN_ENV)
+    if value is None:
+        return True
+    return value.strip().lower() in {"1", "true", "yes", "on", "*"}

@@ -12,6 +12,11 @@ from modal_gen.storage import Store
 from tests.test_connector_e2e import ORIGIN, SCOPES, Fake2DAdapter, make_request
 
 
+@pytest.fixture(autouse=True)
+def _strict_origin_mode(monkeypatch):
+    monkeypatch.setenv("MODAL_GEN_ALLOW_ANY_ORIGIN", "0")
+
+
 def run(coro):
     return asyncio.run(coro)
 

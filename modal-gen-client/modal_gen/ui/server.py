@@ -36,22 +36,18 @@ _CONNECTOR_TOKEN = os.environ.get("MODAL_GEN_AGENT_TOKEN") or "wangran"
 _PORT = int(os.environ.get("MODAL_GEN_UI_PORT", "48124"))
 
 
-# The console is loopback-only by default; it proxies a Connector that owns
-# pairing approvals, session tokens and artifact bytes. Set MODAL_GEN_UI_HOST
-# to expose it, and MODAL_GEN_ALLOW_ANY_ORIGIN=1 to allow any browser origin.
+# The console defaults to all interfaces for container/CNB port forwarding.
+# Authentication remains enforced by the Connector behind the UI gateway.
 def ui_host() -> str:
     """Resolved at call time so runtime configuration always applies."""
-    return os.environ.get("MODAL_GEN_UI_HOST") or "127.0.0.1"
+    return os.environ.get("MODAL_GEN_UI_HOST") or "0.0.0.0"
 
 
 def _allow_any_origin() -> bool:
-    return os.environ.get("MODAL_GEN_ALLOW_ANY_ORIGIN", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-        "*",
-    }
+    value = os.environ.get("MODAL_GEN_ALLOW_ANY_ORIGIN")
+    if value is None:
+        return True
+    return value.strip().lower() in {"1", "true", "yes", "on", "*"}
 
 
 # --------------------------------------------------------------------------- #

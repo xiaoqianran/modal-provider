@@ -5,6 +5,7 @@ import hashlib
 from pathlib import Path
 
 import httpx
+import pytest
 
 from modal_gen.app import build_runtime, create_app
 from modal_gen.identity import idempotency_key, request_hash
@@ -20,6 +21,11 @@ SCOPES = [
     "artifacts.read",
 ]
 PNG = b"\x89PNG\r\n\x1a\nbody"
+
+
+@pytest.fixture(autouse=True)
+def _strict_origin_mode(monkeypatch):
+    monkeypatch.setenv("MODAL_GEN_ALLOW_ANY_ORIGIN", "0")
 
 
 class Fake2DAdapter:

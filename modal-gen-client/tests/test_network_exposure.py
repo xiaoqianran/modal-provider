@@ -12,8 +12,8 @@ ORIGIN = "http://localhost:3000"
 
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch):
-    """Keep MODAL_GEN_ALLOW_ANY_ORIGIN from leaking into other tests."""
-    monkeypatch.delenv("MODAL_GEN_ALLOW_ANY_ORIGIN", raising=False)
+    """Use strict mode unless a test explicitly exercises the public default."""
+    monkeypatch.setenv("MODAL_GEN_ALLOW_ANY_ORIGIN", "0")
     yield
 
 
@@ -49,9 +49,9 @@ def _pair(client, monkeypatch, origin=ORIGIN):
 
 
 # --------------------------------------------------------------- default: locked
-def test_allow_any_origin_defaults_off(monkeypatch):
+def test_allow_any_origin_defaults_on(monkeypatch):
     monkeypatch.delenv("MODAL_GEN_ALLOW_ANY_ORIGIN", raising=False)
-    assert allow_any_origin() is False
+    assert allow_any_origin() is True
 
 
 @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", "*"])
@@ -60,7 +60,7 @@ def test_allow_any_origin_accepts_truthy_values(monkeypatch, value):
     assert allow_any_origin() is True
 
 
-def test_cors_reflects_paired_origin_by_default(monkeypatch, tmp_path):
+def test_cors_reflects_origin_in_strict_mode(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
     with TestClient(_app(monkeypatch, tmp_path)) as client:
@@ -68,16 +68,17 @@ def test_cors_reflects_paired_origin_by_default(monkeypatch, tmp_path):
         assert resp.headers["Access-Control-Allow-Origin"] == "https://site.example"
 
 
-def test_cross_origin_request_still_rejected_by_default(monkeypatch, tmp_path):
+def test_cross_origin_request_allowed_by_default(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
+    monkeypatch.delenv("MODAL_GEN_ALLOW_ANY_ORIGIN", raising=False)
     with TestClient(_app(monkeypatch, tmp_path)) as client:
         token = _pair(client, monkeypatch)
         resp = client.get(
             "/connector/v1/jobs",
-            headers={"Authorization": f"Bearer {token}", "Origin": "https://evil.example"},
+            headers={"Authorization": f"Bearer {token}", "Origin": "https://any.example"},
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 200
 
 
 # ------------------------------------------------------------- relaxed: wildcard
@@ -140,7 +141,7 @@ def test_local_control_plane_still_guarded_when_relaxed(monkeypatch, tmp_path):
         )
 
 
-def test_allow_any_origin_ignores_unrelated_values(monkeypatch):
+def test_allow_any_origin_can_be_disabled(monkeypatch):
     monkeypatch.setenv("MODAL_GEN_ALLOW_ANY_ORIGIN", "0")
     assert allow_any_origin() is False
     monkeypatch.setenv("MODAL_GEN_ALLOW_ANY_ORIGIN", "")
@@ -150,8 +151,8 @@ def test_allow_any_origin_ignores_unrelated_values(monkeypatch):
 def test_env_var_is_read_at_call_time(monkeypatch):
     """Must not be cached at import, or runtime configuration breaks."""
     monkeypatch.delenv("MODAL_GEN_ALLOW_ANY_ORIGIN", raising=False)
-    assert allow_any_origin() is False
+    assert allow_any_origin() is True
     monkeypatch.setenv("MODAL_GEN_ALLOW_ANY_ORIGIN", "1")
     assert allow_any_origin() is True
     monkeypatch.delenv("MODAL_GEN_ALLOW_ANY_ORIGIN")
-    assert allow_any_origin() is False
+    assert allow_any_origin() is True
