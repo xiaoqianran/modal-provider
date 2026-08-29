@@ -32,9 +32,7 @@ class ArtifactService:
     ) -> dict[str, object]:
         if provider_artifact.bytes <= 0 or provider_artifact.bytes > MAX_ARTIFACT_BYTES:
             raise ConnectorError("ARTIFACT_SIZE_INVALID", "Provider Artifact 大小超出限制", 502)
-        existing = self.store.get_artifact_for_provider(
-            str(job["id"]), provider_artifact.id
-        )
+        existing = self.store.get_artifact_for_provider(str(job["id"]), provider_artifact.id)
         if existing:
             if (
                 existing["provider_artifact_id"] != provider_artifact.id

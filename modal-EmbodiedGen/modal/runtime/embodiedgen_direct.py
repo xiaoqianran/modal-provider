@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import modal
@@ -46,7 +46,7 @@ def new_job_id() -> str:
 def _stamp(state: dict) -> dict:
     now = time.time()
     state["updated_epoch"] = now
-    state["updated_at"] = datetime.fromtimestamp(now, UTC).isoformat()
+    state["updated_at"] = datetime.fromtimestamp(now, timezone.utc).isoformat()
     return state
 
 
@@ -123,9 +123,9 @@ def _new_job(*, workflow: str, requested_profile: str, input_info: dict) -> str:
         "requested_profile": requested_profile,
         "runtime_policy": PIPELINE_POLICY,
         "created_epoch": now,
-        "created_at": datetime.fromtimestamp(now, UTC).isoformat(),
+        "created_at": datetime.fromtimestamp(now, timezone.utc).isoformat(),
         "updated_epoch": now,
-        "updated_at": datetime.fromtimestamp(now, UTC).isoformat(),
+        "updated_at": datetime.fromtimestamp(now, timezone.utc).isoformat(),
         "input": input_info,
     })
     return job_id
@@ -340,7 +340,7 @@ def generate_affordance(source_job_id: str, payload: dict | None = None) -> dict
                 "workflow": "asset.affordance",
                 "source_job_id": source_job_id,
                 "created_epoch": now,
-                "created_at": datetime.fromtimestamp(now, UTC).isoformat(),
+                "created_at": datetime.fromtimestamp(now, timezone.utc).isoformat(),
                 "input": {"type": "affordance", "source_job_id": source_job_id, "options": options},
             }
         ),

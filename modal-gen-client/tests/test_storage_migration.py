@@ -93,9 +93,7 @@ def test_v2_artifact_role_identity_migrates_to_provider_artifact_identity(tmp_pa
         unique = []
         for row in db.execute("PRAGMA index_list(artifacts)"):
             if row[2]:
-                columns = tuple(
-                    item[2] for item in db.execute(f"PRAGMA index_info({row[1]!r})")
-                )
+                columns = tuple(item[2] for item in db.execute(f"PRAGMA index_info({row[1]!r})"))
                 unique.append(columns)
     finally:
         db.close()

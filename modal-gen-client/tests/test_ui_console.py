@@ -214,7 +214,6 @@ def test_live_gateway_builds_current_connector_job_contract(monkeypatch) -> None
     verify_request_identity(captured)
 
 
-
 def test_modal_token_command_parser() -> None:
     import subprocess
 

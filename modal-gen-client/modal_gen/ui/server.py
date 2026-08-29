@@ -277,9 +277,7 @@ class LiveGateway:
                 refreshed.append(row)
                 continue
             try:
-                payload = self._req(
-                    "GET", f"/connector/v1/jobs/{row['id']}", token=self.token
-                )
+                payload = self._req("GET", f"/connector/v1/jobs/{row['id']}", token=self.token)
                 refreshed.append(payload.get("job") or row)
             except RuntimeError:
                 refreshed.append(row)
@@ -349,9 +347,7 @@ class LiveGateway:
 
     def cancel(self, job_id: str) -> dict:
         self._ensure_session()
-        payload = self._req(
-            "POST", f"/connector/v1/jobs/{job_id}/cancel", token=self.token
-        )
+        payload = self._req("POST", f"/connector/v1/jobs/{job_id}/cancel", token=self.token)
         return payload.get("job") if isinstance(payload, dict) else payload
 
     def artifacts(self) -> dict:
