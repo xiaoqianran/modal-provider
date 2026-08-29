@@ -1,0 +1,10 @@
+{
+  "name": "modal-gen-ui-checks",
+  "private": true,
+  "scripts": {
+    "lint": "eslint modal_gen/ui/assets/**/*.js"
+  },
+  "devDependencies": {
+    "eslint": "10.9.1"
+  }
+}

@@ -1,5 +1,5 @@
 // Screen: 产物 — Primary job: 核验并取回 Connector 产物（SHA-256 校验 + 下载）。
-import { h, icon, fmtTime, fmtBytes, apiGet, toast, hashChip, jobBadge, stateEmpty, store } from "../app.js";
+import { h, icon, fmtBytes, apiGet, toast, hashChip, jobBadge, stateEmpty, store } from "../app.js";
 
 export async function mountArtifacts(root) {
   root.append(
@@ -43,7 +43,7 @@ export async function mountArtifacts(root) {
     dlBtn.addEventListener("click", async () => {
       dlBtn.disabled = true;
       verifyBadge.className = "badge badge--info";
-      verifyBadge.replaceChildren(icon("spark" === "spark" ? "alert" : "alert", 12), "校验中…");
+      verifyBadge.replaceChildren(icon("alert", 12), "校验中…");
       try {
         const resp = await fetch(`/ui/api/artifacts/${art.id}/content`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);

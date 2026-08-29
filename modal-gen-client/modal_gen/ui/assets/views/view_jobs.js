@@ -1,6 +1,6 @@
 // Screen: 任务 — Primary job: 跟踪进行中的任务，并在需要时取消或查看详情。
 import {
-  h, icon, fmtTime, fmtBytes, apiGet, apiPost, toast, openDrawer, openDialog, hashChip, jobBadge, stateEmpty, store,
+  h, icon, fmtTime, apiGet, apiPost, toast, openDrawer, openDialog, hashChip, jobBadge, stateEmpty, store,
 } from "../app.js";
 
 const STATUS_FILTERS = ["all", "running", "succeeded", "failed"];
@@ -164,14 +164,17 @@ export async function mountJobs(root) {
   }
 
   store.cleanup = () => { if (timer) clearInterval(timer); };
-  function tick() {
-    if (autoPoll && status === "all" ? true : true) refresh();
-  }
   refresh();
-  timer = setInterval(() => { if (autoPoll && document.visibilityState === "visible") tick(); }, 4000);
+  timer = setInterval(() => {
+    if (autoPoll && document.visibilityState === "visible") refresh();
+  }, 4000);
 
   // helpers
-  function trunc(text, head = 12, tail = 8) { return text; }
+  function trunc(text, head = 12, tail = 8) {
+    const value = String(text || "");
+    if (value.length <= head + tail + 1) return value;
+    return `${value.slice(0, head)}…${value.slice(-tail)}`;
+  }
   function durOf(row) {
     if (!row.startedAt) return "—";
     const end = row.completedAt || row.updatedAt;

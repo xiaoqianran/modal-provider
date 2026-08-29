@@ -36,5 +36,8 @@ select = ["E", "F", "I", "UP", "B"]
 modal-2d-client-agent = { path = "../modal-2D-client", editable = true }
 modal-3d-client = { path = "../modal-3D-client", editable = true }
 
+[tool.setuptools.packages.find]
+include = ["modal_gen*"]
+
 [tool.setuptools.package-data]
 "modal_gen.ui" = ["assets/*.html", "assets/*.css", "assets/*.js", "assets/views/*.js"]

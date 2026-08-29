@@ -1,7 +1,7 @@
 // Screen: 创建 — Primary job: 用一句提示词产出一个生成任务（2D 图片 或 3D 资产）。
 // Form is generated from the connector capability descriptor (input.schema),
 // so the UI never hard-codes provider fields.
-import { h, icon, fmtTime, apiGet, apiPost, toast, stateEmpty, store, jobBadge } from "../app.js";
+import { h, icon, apiGet, apiPost, toast, stateEmpty, store } from "../app.js";
 
 export async function mountCreate(root) {
   root.append(
@@ -152,7 +152,7 @@ export async function mountCreate(root) {
         if (props.sourceArtifact) inputs.sourceArtifact = values.sourceArtifact;
         delete inputs.options;
         const payload = { provider: sel.p.id, operation: cap.operation, inputs };
-        const res = await apiPost("jobs", payload);
+        await apiPost("jobs", payload);
         toast(`${sel.p.displayName} 任务已提交`, "ok");
         location.hash = "#/jobs";
       } catch (e) {

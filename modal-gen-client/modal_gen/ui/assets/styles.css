@@ -348,7 +348,7 @@ body {
 .connect-provider span:last-child { font: 10px/1.2 var(--mono); color: var(--text-3); }
 .connect-section { display: grid; gap: 7px; }
 .connect-section__label { font-size: var(--fs-12); font-weight: 600; color: var(--text-2); }
-.connect-command { min-height: 72px; font-size: var(--fs-12); }
+.connect-command { min-height: 42px; font-size: var(--fs-12); }
 .connect-hint { min-height: 16px; font-size: var(--fs-11); color: var(--text-3); }
 .connect-hint--ok { color: var(--ok); }
 .connect-hint--error { color: var(--danger); }
@@ -501,3 +501,11 @@ body { background:radial-gradient(circle at 25% -10%,#27301b 0,transparent 35%),
   .status span { display:none; }
   .screen-head.studio-head { flex-direction:column; }
 }
+
+/* Keep Modal connection controls pixel-aligned with modal-2D-client. */
+.drawer-field .input {
+  height: 42px;
+  border-radius: 10px;
+  padding: 0 12px;
+}
+.drawer__title { font-size: 20px; }

@@ -116,9 +116,9 @@ export async function openConnectionSettings() {
 }
 
 function connectionPanel(connections) {
-  const command = h("textarea", {
-    class: "textarea input--mono connect-command",
-    rows: "3",
+  const command = h("input", {
+    class: "input input--mono connect-command",
+    type: "password",
     autocomplete: "off",
     spellcheck: "false",
     placeholder: "modal token set --token-id ak-... --token-secret as-...",
@@ -204,9 +204,6 @@ function connectionPanel(connections) {
   });
 
   const managed = connections.filter((item) => item.managed !== false);
-  const count = managed.filter((item) => item.connected).length;
-  const allConnected = managed.length > 0 && count === managed.length;
-
   return h("div", { class: "modal-settings" },
     h("p", { class: "drawer-copy" }, "一组凭证同时用于本机 2D / 3D Provider。凭据只保存在当前 Agent 进程内存中。"),
     h("div", { class: "connect-status-grid" },
@@ -306,10 +303,6 @@ function hubNode(title, subtitle, extra = "") {
 
 function hubArrow() {
   return h("div", { class: "hub-arrow" }, icon("chevron", 18));
-}
-
-function field(label, control) {
-  return h("label", { class: "field" }, h("span", { class: "field__label" }, label), control);
 }
 
 function kv(rows) {
