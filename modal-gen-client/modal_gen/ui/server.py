@@ -157,7 +157,9 @@ class LiveGateway:
             payload = resp.text
         if not resp.is_success:
             code = (payload.get("code") if isinstance(payload, dict) else None) or "HTTP"
-            raise RuntimeError(f"{code} ({resp.status_code})")
+            message = payload.get("message") if isinstance(payload, dict) else None
+            suffix = f": {message}" if isinstance(message, str) and message.strip() else ""
+            raise RuntimeError(f"{code} ({resp.status_code}){suffix}")
         return payload
 
     def bootstrap(self) -> dict:

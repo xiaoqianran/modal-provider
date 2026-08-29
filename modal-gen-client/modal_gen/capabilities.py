@@ -79,11 +79,22 @@ class CapabilityRegistry:
         if not token_id.strip() or not token_secret.strip():
             raise ProviderError("PROVIDER_CREDENTIALS_REQUIRED", "Modal credentials 不能为空", 422)
         rows: list[dict[str, object]] = []
-        for adapter in self.adapters.values():
-            try:
-                rows.append(adapter.connect(token_id, token_secret))
-            except AttributeError:
-                rows.append({"id": adapter.id, "connected": True, "managed": False})
+        connected: list[ProviderAdapter] = []
+        try:
+            for adapter in self.adapters.values():
+                try:
+                    rows.append(adapter.connect(token_id, token_secret))
+                    connected.append(adapter)
+                except AttributeError:
+                    rows.append({"id": adapter.id, "connected": True, "managed": False})
+        except Exception:
+            for adapter in reversed(connected):
+                try:
+                    adapter.disconnect()
+                except Exception:
+                    pass
+            self.snapshot()
+            raise
         self.snapshot()
         return rows
 

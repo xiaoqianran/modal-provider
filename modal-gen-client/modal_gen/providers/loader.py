@@ -55,8 +55,11 @@ class LibraryProviderAdapter:
         try:
             value = dict(self.provider.connect(token_id, token_secret))
         except Exception as exc:
+            detail = type(exc).__name__
             raise ProviderError(
-                "PROVIDER_CONNECTION_FAILED", "Provider 连接 Modal 失败", 502
+                "PROVIDER_CONNECTION_FAILED",
+                f"{self.id} 连接 Modal 失败 ({detail})",
+                502,
             ) from exc
         return {"id": self.id, **value}
 
@@ -64,8 +67,11 @@ class LibraryProviderAdapter:
         try:
             value = dict(self.provider.disconnect())
         except Exception as exc:
+            detail = type(exc).__name__
             raise ProviderError(
-                "PROVIDER_DISCONNECT_FAILED", "Provider 断开 Modal 失败", 502
+                "PROVIDER_DISCONNECT_FAILED",
+                f"{self.id} 断开 Modal 失败 ({detail})",
+                502,
             ) from exc
         return {"id": self.id, **value}
 

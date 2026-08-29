@@ -156,7 +156,7 @@ def test_connector_composes_builtin_2d_artifact_into_builtin_3d(tmp_path: Path, 
     monkeypatch.setenv("MODAL_GEN_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(
         "modal_2d_client.provider.capabilities.document",
-        lambda *, refresh_remote=False: {"models": [{"id": "sana-sprint-1.6b"}]},
+        lambda **_: {"models": [{"id": "sana-sprint-1.6b"}]},
     )
     jobs_2d = Fake2DJobs(tmp_path)
     jobs_3d = Fake3DJobs(tmp_path)

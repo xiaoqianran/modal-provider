@@ -177,3 +177,22 @@ def test_local_control_manages_provider_connections_without_echoing_credentials(
             assert disconnected.json()["providers"][0]["connected"] is False
 
     run(scenario())
+
+
+class FailingManagedAdapter(ManagedFakeAdapter):
+    id = "modal-failing"
+
+    def connect(self, token_id, token_secret):
+        raise RuntimeError("secret-value must never be echoed")
+
+
+def test_connect_all_rolls_back_previously_connected_providers(tmp_path: Path):
+    first = ManagedFakeAdapter()
+    second = FailingManagedAdapter()
+    runtime = build_runtime(Store(tmp_path / "db.sqlite3"), adapters=[first, second])
+
+    with pytest.raises(RuntimeError):
+        runtime.capabilities.connect_all("id-value", "secret-value")
+
+    assert first.connected is False
+    assert second.connected is False
