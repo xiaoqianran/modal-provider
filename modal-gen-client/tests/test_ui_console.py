@@ -105,8 +105,9 @@ def _get(base: str, path: str):
         return json.loads(resp.read())
 
 
-def test_server_serves_index_html(ui_server: str) -> None:
-    with urllib.request.urlopen(f"{ui_server}/ui/") as resp:  # noqa: S310
+@pytest.mark.parametrize("path", ["/", "/ui", "/ui/"])
+def test_server_serves_index_html(ui_server: str, path: str) -> None:
+    with urllib.request.urlopen(f"{ui_server}{path}") as resp:  # noqa: S310
         body = resp.read().decode()
     assert resp.status == 200
     assert "<title>modal-gen" in body

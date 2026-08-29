@@ -428,7 +428,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        if path == "/ui/" or path == "/ui":
+        if path in {"/", "/ui", "/ui/"}:
             return self._send_file(_STATIC / "index.html")
         if path.startswith("/ui/assets/"):
             rel = path[len("/ui/assets/") :]
@@ -553,7 +553,7 @@ def main() -> None:
             "警告：已启用 MODAL_GEN_ALLOW_ANY_ORIGIN，任意站点可跨域调用本机接口。",
             file=sys.stderr,
         )
-    print(f"modal-gen console on http://{host}:{_PORT}/ui/  (mode={_MODE})")
+    print(f"modal-gen console on http://{host}:{_PORT}/  (mode={_MODE})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
