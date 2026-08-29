@@ -758,6 +758,36 @@ image = (
     .workdir("/workspace/EmbodiedGen")
 )
 
+# Production API never downloads SAM3D weights at request time. Remove the heavy
+# ModelScope import/fallback from the upstream wrapper; preload_weights is mandatory.
+image = (
+    image
+    .add_local_file(
+        "modal/patches/embodiedgen-v2.1.0/production/patch_sam3d_local_only.py",
+        "/tmp/patch_sam3d_local_only.py",
+        copy=True,
+    )
+    .run_commands(
+        "python /tmp/patch_sam3d_local_only.py",
+        "! grep -q '^from modelscope import snapshot_download' /workspace/EmbodiedGen/embodied_gen/models/sam3d.py",
+    )
+)
+
+# SAM3D upstream assumes a GPU exists at import time. Modal builds CPU memory
+# snapshots before GPU restore, so provide a deterministic CPU-safe default.
+image = (
+    image
+    .add_local_file(
+        "modal/patches/embodiedgen-v2.1.0/production/patch_sam3d_snapshot_cpu.py",
+        "/tmp/patch_sam3d_snapshot_cpu.py",
+        copy=True,
+    )
+    .run_commands(
+        "python /tmp/patch_sam3d_snapshot_cpu.py",
+        "python -m py_compile /workspace/EmbodiedGen/thirdparty/sam3d/sam3d_objects/pipeline/inference_pipeline.py",
+    )
+)
+
 # Apply only the validated headless/source patches after all packages are installed.
 image = (
     image
@@ -798,6 +828,8 @@ image = (
         "! command -v nvcc",
     )
 )
+
+
 
 
 
@@ -1527,6 +1559,31 @@ def _finalize_in_process(root: Path) -> dict:
     return report
 
 
+def _birefnet_predict_mask(session, image):
+    """BiRefNet-General-Lite preprocessing/postprocessing matching rembg 2.0.61."""
+    import numpy as np
+    from PIL import Image
+
+    resized=image.convert("RGB").resize((1024,1024),Image.Resampling.LANCZOS)
+    ary=np.asarray(resized,dtype=np.float32)
+    max_value=float(np.max(ary))
+    if max_value <= 0.0:
+        raise ValueError("BiRefNet input is fully black")
+    ary=ary/max_value
+    mean=np.asarray((0.485,0.456,0.406),dtype=np.float32)
+    std=np.asarray((0.229,0.224,0.225),dtype=np.float32)
+    tensor=((ary-mean)/std).transpose((2,0,1))[None,...].astype(np.float32,copy=False)
+    input_name=session.get_inputs()[0].name
+    logits=session.run(None,{input_name:tensor})[0][:,0,:,:]
+    pred=1.0/(1.0+np.exp(-logits))
+    lo=float(np.min(pred)); hi=float(np.max(pred))
+    if hi <= lo:
+        raise RuntimeError("BiRefNet returned a degenerate mask")
+    pred=np.squeeze((pred-lo)/(hi-lo))
+    mask=Image.fromarray((pred*255).astype("uint8"),mode="L")
+    return mask.resize(image.size,Image.Resampling.LANCZOS)
+
+
 @app.cls(
     image=image,
     gpu="L40S",
@@ -1538,35 +1595,108 @@ def _finalize_in_process(root: Path) -> dict:
     buffer_containers=0,
     scaledown_window=PIPELINE_SCALEDOWN_SECONDS,
     timeout=30 * 60,
+    enable_memory_snapshot=True,
+    experimental_options={"enable_gpu_snapshot": True},
 )
 class EmbodiedGenWorker:
     """One warm L40S cache boundary: GPU BiRefNet -> SAM3D -> CPU mesh -> GPU bake -> CPU finalize."""
 
-    @modal.enter()
-    def load(self):
-        import uuid
-        import onnxruntime as ort
-        import torch
-        from embodied_gen.models.sam3d import Sam3dInference
-        from rembg.session_factory import new_session
+    @modal.enter(snap=True)
+    def load_snapshot(self):
+        """Build CPU-resident SAM3D once into a Modal memory snapshot."""
+        snapshot0=time.perf_counter()
+        import_profile={}
+        t=time.perf_counter(); import torch; import_profile["torch"]=round(time.perf_counter()-t,3)
+        t=time.perf_counter(); from embodied_gen.models.sam3d import Sam3dInference; import_profile["embodiedgen_sam3d"]=round(time.perf_counter()-t,3)
+        t=time.perf_counter(); from sam3d_objects.pipeline.inference_pipeline_pointmap import InferencePipeline; import_profile["sam3d_pipeline_class"]=round(time.perf_counter()-t,3)
+        imports_seconds=sum(import_profile.values())
 
-        # Match modal-3D's proven CUDA ONNX bootstrap: load NVIDIA wheel DLLs
-        # before constructing CUDAExecutionProvider so cuDNN/cublas resolve.
-        if hasattr(ort, "preload_dlls"):
-            ort.preload_dlls(cuda=True, cudnn=True, directory="")
-
-        t0=time.perf_counter(); os.chdir("/workspace/EmbodiedGen")
+        os.chdir("/workspace/EmbodiedGen")
         os.environ.update({"TORCH_HOME":"/weights/torch", "U2NET_HOME":"/weights/rembg"})
         if not BIREFNET_MODEL_PATH.is_file() or BIREFNET_MODEL_PATH.stat().st_size != BIREFNET_MODEL_BYTES:
             raise RuntimeError("BiRefNet weight missing; run preload_weights first")
+
+        component_profile={}
+        originals={}
+        component_names=(
+            "init_pose_decoder",
+            "init_ss_preprocessor",
+            "init_ss_generator",
+            "init_slat_generator",
+            "init_ss_decoder",
+            "init_ss_encoder",
+            "init_slat_decoder_gs",
+            "init_slat_decoder_mesh",
+            "init_ss_condition_embedder",
+            "init_slat_condition_embedder",
+        )
+        for component_name in component_names:
+            original=getattr(InferencePipeline,component_name,None)
+            if original is None:
+                continue
+            originals[component_name]=original
+            def timed_component(self,*args,__name=component_name,__original=original,**kwargs):
+                t=time.perf_counter()
+                try:
+                    return __original(self,*args,**kwargs)
+                finally:
+                    component_profile.setdefault(__name,[]).append(round(time.perf_counter()-t,3))
+            setattr(InferencePipeline,component_name,timed_component)
+
+        sam0=time.perf_counter()
+        try:
+            self.pipeline=Sam3dInference(local_dir="/weights/sam-3d-objects")
+        finally:
+            for component_name,original in originals.items():
+                setattr(InferencePipeline,component_name,original)
+        sam_seconds=time.perf_counter()-sam0
+
+        self.torch=torch
+        self.snapshot_profile={
+            "imports_seconds":round(imports_seconds,3),
+            "imports":import_profile,
+            "sam3d_seconds":round(sam_seconds,3),
+            "sam3d_components":component_profile,
+            "snapshot_build_seconds":round(time.perf_counter()-snapshot0,3),
+        }
+        print("EMBODIEDGEN_SNAPSHOT_BUILD "+json.dumps(self.snapshot_profile),flush=True)
+
+    @modal.enter()
+    def load_after_restore(self):
+        """Initialize CUDA-bound BiRefNet state after snapshot restore."""
+        import uuid
+        import onnxruntime as ort
+
+        t0=time.perf_counter()
+        dll0=time.perf_counter()
+        if hasattr(ort,"preload_dlls"):
+            ort.preload_dlls(cuda=True,cudnn=True,directory="")
+        dll_seconds=time.perf_counter()-dll0
+
         providers=["CUDAExecutionProvider","CPUExecutionProvider"]
-        self.rembg_session=new_session(BIREFNET_ENGINE,providers=providers)
-        active=self.rembg_session.inner_session.get_providers()
+        rembg0=time.perf_counter()
+        self.rembg_session=ort.InferenceSession(str(BIREFNET_MODEL_PATH),providers=providers)
+        active=self.rembg_session.get_providers()
+        rembg_seconds=time.perf_counter()-rembg0
         if not active or active[0] != "CUDAExecutionProvider":
             raise RuntimeError(f"BiRefNet CUDA provider unavailable: {active}")
-        self.pipeline=Sam3dInference(local_dir="/weights/sam-3d-objects")
-        torch.cuda.synchronize(); self.torch=torch; self.instance_id=uuid.uuid4().hex; self.load_seconds=time.perf_counter()-t0
-        print("EMBODIEDGEN_RESIDENT_READY "+json.dumps({"instance_id":self.instance_id,"gpu":torch.cuda.get_device_name(0),"load_seconds":round(self.load_seconds,3),"rembg":BIREFNET_ENGINE,"providers":active}),flush=True)
+
+        self.instance_id=uuid.uuid4().hex
+        post_restore_seconds=time.perf_counter()-t0
+        self.load_seconds=post_restore_seconds
+        self.load_profile={
+            **self.snapshot_profile,
+            "cuda_dll_seconds":round(dll_seconds,3),
+            "birefnet_session_seconds":round(rembg_seconds,3),
+            "post_restore_seconds":round(post_restore_seconds,3),
+            "memory_snapshot":True,
+        }
+        print("EMBODIEDGEN_STARTUP_PROFILE "+json.dumps(self.load_profile),flush=True)
+        print("EMBODIEDGEN_RESIDENT_READY "+json.dumps({"instance_id":self.instance_id,"gpu":self.torch.cuda.get_device_name(0),"load_seconds":round(self.load_seconds,3),"rembg":BIREFNET_ENGINE,"providers":active,"memory_snapshot":True}),flush=True)
+
+    @modal.method()
+    def startup_profile(self) -> dict:
+        return {"instance_id":self.instance_id,"gpu":self.torch.cuda.get_device_name(0),"load_profile":self.load_profile}
 
     @modal.method()
     def generate(self, job_id: str, image_bytes: bytes, seed: int = 0) -> dict:
@@ -1590,10 +1720,7 @@ class EmbodiedGenWorker:
             scale=min(1.0,1024.0/max(image.size))
             if scale < 1.0:
                 image=image.resize((max(1,int(image.width*scale)),max(1,int(image.height*scale))),Image.Resampling.LANCZOS)
-            masks=self.rembg_session.predict(image)
-            if not masks: raise RuntimeError("BiRefNet returned no mask")
-            mask=masks[0].convert("L")
-            if mask.size != image.size: mask=mask.resize(image.size,Image.Resampling.LANCZOS)
+            mask=_birefnet_predict_mask(self.rembg_session,image)
             cond=image.convert("RGBA"); cond.putalpha(mask); timings["rembg"]=round(time.perf_counter()-t0,3)
 
             _job_stage(job_id,"sam3d",timings)

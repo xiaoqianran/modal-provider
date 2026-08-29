@@ -25,15 +25,27 @@
     "validation_profile": "SAM3D 16/16, 50k-face UV target, 24-view horizontal texture bake, 60-frame preview",
     "binary_release_reuse": "Reuses the v2.0.0 PyTorch3D/nvdiffrast/gsplat SM89 binary bundle because v2.1.0 keeps Python 3.10, Torch 2.8.0, CUDA 12.6, and identical SAM3D/TRELLIS submodule pointers.",
     "state_handoff": "in-process only; no split-worker Dict/Volume message bus",
-    "runtime_policy": "EmbodiedGenWorker warm 180s; Text2Image handoff 5s; Retexture warm 120s"
+    "runtime_policy": "EmbodiedGenWorker warm 180s; Text2Image handoff 5s; Retexture warm 120s",
+    "background_removal_runtime": "BiRefNet-General-Lite via native onnxruntime.InferenceSession; no rembg package import on the production hot path",
+    "sam3d_runtime_download_policy": "local-only; request-time ModelScope fallback removed, missing preloaded weights fail fast",
+    "gpu_memory_snapshot": "enabled on EmbodiedGenWorker; GPU snapshot stores expensive SAM3D import/model initialization, BiRefNet CUDA session is recreated post-restore",
+    "snapshot_priming": "validation observed two snapshot builds for a new deployment before a third cold invocation directly restored an existing snapshot"
   },
   "validated": {
-    "status": "real-modal-e2e-passed",
+    "status": "real-modal-e2e-gpu-snapshot-passed",
     "gpu": "NVIDIA L40S",
-    "runtime": "unified-l40s",
-    "image_to_3d_pipeline_seconds": 40.893,
-    "resident_model_load_seconds": 23.789,
-    "birefnet_provider": "CUDAExecutionProvider"
+    "runtime": "unified-l40s-gpu-snapshot",
+    "birefnet_provider": "CUDAExecutionProvider",
+    "snapshot_hit_post_restore_seconds": 1.527,
+    "snapshot_hit_cold_client_wall_seconds": 85.261,
+    "snapshot_hit_cold_pipeline_seconds": 40.039,
+    "warm_client_wall_seconds": 37.338,
+    "warm_pipeline_seconds": 32.51,
+    "warm_instance_reused": true,
+    "snapshot_build_seconds_observed": [
+      39.508,
+      52.299
+    ]
   },
   "source_commit": "f0124197888c2b733e4eaa65acd81ad9cfda3b79",
   "git_dependencies": {

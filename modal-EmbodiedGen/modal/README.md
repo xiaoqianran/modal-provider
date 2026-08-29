@@ -149,34 +149,101 @@ The old split-worker benchmark and dynamic autoscale-profile benchmark have been
 
 ## Validated production smoke results
 
-After the unified runtime cleanup, a real L40S Image→3D smoke completed successfully with:
+The production Image→3D worker now uses three cold-start optimizations:
 
 ```text
-resident model load     23.789 s
-BiRefNet                  0.626 s
-SAM3D                    20.715 s
-mesh / xatlas             5.084 s
-texture bake              7.481 s
-finalize                   5.527 s
-pipeline total            40.893 s
+1. BiRefNet uses native ONNX Runtime directly
+   (no request-time import of the full rembg package)
+
+2. SAM3D is local-only at runtime
+   (no request-time ModelScope fallback/download path)
+
+3. EmbodiedGenWorker uses Modal GPU Memory Snapshot
+   enable_memory_snapshot=True
+   experimental_options={"enable_gpu_snapshot": True}
 ```
 
-The client wall time was larger because the L40S request spent time in Modal `Pending`; that queue time is platform scheduling, not model execution.
+### Startup profiling
 
-A prior back-to-back warm validation reused the exact same `instance_id` and completed the pipeline in about 33.9 seconds.
-
-Text→3D has also been validated end-to-end with Kolors handing image bytes directly to the unified worker. Representative stage timings were:
+Before the cold-start work, a representative resident initialization was:
 
 ```text
-Kolors inference         11.870 s
-BiRefNet                  0.618 s
-SAM3D                    16.623 s
-mesh                      4.123 s
-texture                   3.713 s
-finalize                  5.977 s
+rembg/session import          ~39.6 s
+EmbodiedGen/SAM3D import      ~15.8 s
+SAM3D instantiate             ~23.7 s
+BiRefNet CUDA session          ~2.6 s
+resident initialization       ~84.3 s
 ```
 
-GLB, MP4 and validation outputs were downloaded and checked after the real Modal runs.
+After removing the `rembg` hot-path import, resident initialization dropped to about 44 seconds. With GPU Memory Snapshot, a verified snapshot hit restored the CPU/GPU model state and only rebuilt CUDA-bound BiRefNet state:
+
+```text
+GPU snapshot restore          handled by Modal
+post-restore init              1.527 s
+BiRefNet CUDA session          1.526 s
+```
+
+The restored worker reported `CUDAExecutionProvider` and `NVIDIA L40S`.
+
+### Snapshot priming behavior
+
+A new deployment may pay snapshot construction before steady-state restores. During validation:
+
+```text
+snapshot build #1             39.508 s
+snapshot build #2             52.299 s
+cold invocation #3            direct snapshot restore (no rebuild)
+```
+
+The third cold invocation contained `Restoring Function from memory snapshot` and did **not** emit `Creating GPU memory snapshot` or a new `EMBODIEDGEN_SNAPSHOT_BUILD` event.
+
+### Image→3D: cold snapshot hit
+
+A real cold Image→3D request after the warm container had naturally scaled to zero completed successfully:
+
+```text
+client wall                   85.261 s
+post-restore init              1.527 s
+BiRefNet                       0.700 s
+SAM3D                         19.868 s
+mesh / xatlas                  4.853 s
+texture bake                   6.230 s
+finalize                       4.241 s
+pipeline total                40.039 s
+```
+
+The difference between pipeline time and client wall includes Modal GPU scheduling / container / snapshot infrastructure latency. The model no longer spends ~40 seconds importing and reconstructing SAM3D on this snapshot-hit path.
+
+### Image→3D: warm reuse
+
+The immediate follow-up request reused the exact same resident worker instance:
+
+```text
+instance_id                   9900ec452d814b61904d2a5a0d7fcf75
+client wall                   37.338 s
+BiRefNet                       0.243 s
+SAM3D                          9.306 s
+mesh / xatlas                  5.402 s
+texture bake                   6.280 s
+finalize                       4.374 s
+pipeline total                32.510 s
+```
+
+Both the cold snapshot-hit and warm requests reached `succeeded / done`. Their GLBs were downloaded locally and identified as valid glTF 2.0 binary models; video and validation outputs also passed.
+
+### Text→3D
+
+Text→3D remains a two-GPU-boundary pipeline with Kolors handing image bytes directly to the unified worker. A validated representative run was:
+
+```text
+Kolors inference              11.870 s
+BiRefNet                       0.618 s
+SAM3D                         16.623 s
+mesh                           4.123 s
+texture                        3.713 s
+finalize                       5.977 s
+```
+
 
 ## Tests
 

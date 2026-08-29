@@ -95,9 +95,15 @@ class UnifiedRuntimeTest(unittest.TestCase):
         body = source[pos:source.index("\n@app.function(", pos)]
         self.assertIn('gpu="L40S"', decorator)
         self.assertIn('scaledown_window=PIPELINE_SCALEDOWN_SECONDS', decorator)
-        self.assertIn('ort.preload_dlls(cuda=True, cudnn=True, directory="")', body)
-        self.assertIn('new_session(BIREFNET_ENGINE,providers=providers)', body)
+        self.assertIn('enable_memory_snapshot=True', decorator)
+        self.assertIn('experimental_options={"enable_gpu_snapshot": True}', decorator)
+        self.assertIn('@modal.enter(snap=True)', body)
+        self.assertIn('ort.preload_dlls(cuda=True,cudnn=True,directory="")', body)
+        self.assertIn('ort.InferenceSession(str(BIREFNET_MODEL_PATH),providers=providers)', body)
         self.assertIn('self.pipeline=Sam3dInference', body)
+        self.assertNotIn('rembg.session_factory', body)
+        self.assertIn('patch_sam3d_local_only.py', source)
+        self.assertIn('patch_sam3d_snapshot_cpu.py', source)
 
     def test_pipeline_stages_stay_in_one_method_and_in_order(self):
         source = RUNTIME.read_text(encoding="utf-8")
