@@ -179,3 +179,34 @@ def test_ui_server_supports_options_preflight(ui_server: str) -> None:
     with urllib.request.urlopen(req) as resp:  # noqa: S310
         assert resp.status == 204
         assert resp.headers["Access-Control-Allow-Origin"] == "https://site.example"
+
+
+def test_live_gateway_builds_current_connector_job_contract(monkeypatch) -> None:
+    from modal_gen.identity import verify_request_identity
+    from modal_gen.ui.server import LiveGateway
+
+    gateway = LiveGateway()
+    gateway.token = "session-token"
+    gateway.session = {"clientIdentity": "agentscape"}
+    snapshot = build_capability_snapshot()
+    captured = {}
+
+    def fake_req(method, path, *, json_body=None, headers=None, token=None):
+        if path == "/v1/capabilities":
+            return snapshot
+        if path == "/connector/v1/jobs" and method == "POST":
+            captured.update(json_body)
+            return {"job": {"id": "job_01", "status": "accepted"}}
+        raise AssertionError((method, path, headers, token))
+
+    monkeypatch.setattr(gateway, "_req", fake_req)
+    row = gateway.submit(
+        "modal-2d",
+        "modal-2d.image.text_to_image.v1",
+        {"prompt": "test", "model": "sana-sprint-0.6b"},
+    )
+    assert row["id"] == "job_01"
+    assert captured["outputRoles"] == ["primary-image"]
+    assert captured["capabilityHash"] == snapshot["hash"]
+    assert captured["operationVersion"] == "1"
+    verify_request_identity(captured)

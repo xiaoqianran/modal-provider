@@ -142,3 +142,55 @@ uv run pytest -q
 ```
 
 当前 2D / 3D 已通过 package entry point 直接接入。下一步按同一 SPI 接入 EmbodiedGen。
+
+## Runtime topology
+
+`modal-2D` / `modal-3D` 是部署到 Modal 的远程 GPU Runtime；`modal-2D-client` / `modal-3D-client` 是本地控制库；`modal-gen-client` 只聚合本地 client。
+
+```text
+AgentScape
+    ↓
+modal-gen-client
+    ├── modal-2D-client → deployed modal-2D App
+    └── modal-3D-client → deployed modal-3D workers
+```
+
+Provider client 通过 Modal SDK 直接调用远程 App，不经过 gen-client HTTP 转发。Modal credentials 只保存在当前 client 进程内存，不写入 Connector DB。
+
+## Local UI
+
+启动 Connector 与可视化控制台时，两者使用同一个本地控制 token：
+
+```bash
+export MODAL_GEN_AGENT_TOKEN='<local-control-token>'
+modal-gen-agent
+```
+
+另一个终端：
+
+```bash
+export MODAL_GEN_AGENT_TOKEN='<same-local-control-token>'
+modal-gen-ui
+```
+
+打开：
+
+```text
+http://127.0.0.1:48124/ui/
+```
+
+控制台当前提供：
+
+- Provider Hub 拓扑与 2D / 3D 连接状态
+- 内存态 Modal credentials 连接 / 断开
+- 实时 Capability / Model 展示
+- 2D 文本生成图片
+- 从 Connector PNG Artifact 继续提交 3D
+- Job 状态轮询、取消与详情
+- PNG 预览、GLB Artifact 与 SHA-256 校验下载
+
+离线 UI 审查：
+
+```bash
+MODAL_GEN_UI_DEMO=1 modal-gen-ui
+```

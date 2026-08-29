@@ -91,6 +91,24 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         snapshot = current().capabilities.snapshot()
         return {"providers": snapshot["providers"]}
 
+    @app.get("/v1/provider-connections")
+    def provider_connections():
+        return {"providers": current().capabilities.connections()}
+
+    @app.post("/v1/providers/connect")
+    async def connect_providers(request: Request):
+        payload = await _json_body(request)
+        token_id = payload.get("tokenId")
+        token_secret = payload.get("tokenSecret")
+        if not isinstance(token_id, str) or not isinstance(token_secret, str):
+            raise ConnectorError("PROVIDER_CREDENTIALS_REQUIRED", "Modal credentials 不能为空", 422)
+        rows = current().capabilities.connect_all(token_id, token_secret)
+        return {"providers": rows}
+
+    @app.post("/v1/providers/disconnect")
+    def disconnect_providers():
+        return {"providers": current().capabilities.disconnect_all()}
+
     @app.get("/v1/capabilities")
     def local_capabilities():
         return current().capabilities.snapshot()

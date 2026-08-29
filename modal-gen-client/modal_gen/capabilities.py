@@ -66,6 +66,37 @@ class CapabilityRegistry:
                 "PROVIDER_UNAVAILABLE", f"Provider 不存在: {provider_id}", 422
             ) from exc
 
+    def connections(self) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+        for adapter in self.adapters.values():
+            try:
+                rows.append(adapter.connection_status())
+            except (AttributeError, ProviderError):
+                rows.append({"id": adapter.id, "connected": True, "managed": False})
+        return rows
+
+    def connect_all(self, token_id: str, token_secret: str) -> list[dict[str, object]]:
+        if not token_id.strip() or not token_secret.strip():
+            raise ProviderError("PROVIDER_CREDENTIALS_REQUIRED", "Modal credentials 不能为空", 422)
+        rows: list[dict[str, object]] = []
+        for adapter in self.adapters.values():
+            try:
+                rows.append(adapter.connect(token_id, token_secret))
+            except AttributeError:
+                rows.append({"id": adapter.id, "connected": True, "managed": False})
+        self.snapshot()
+        return rows
+
+    def disconnect_all(self) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+        for adapter in self.adapters.values():
+            try:
+                rows.append(adapter.disconnect())
+            except AttributeError:
+                rows.append({"id": adapter.id, "connected": True, "managed": False})
+        self.snapshot()
+        return rows
+
     @staticmethod
     def capability(
         snapshot: dict[str, object], provider_id: str, operation: str

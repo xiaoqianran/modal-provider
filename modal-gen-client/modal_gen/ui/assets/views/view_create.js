@@ -34,9 +34,9 @@ export async function mountCreate(root) {
       || (p.capabilities || [])[0],
   }));
 
-  const available = providers.filter((o) => o.cap.status === "available" || o.cap.status === "degraded");
+  const available = providers.filter((o) => o.cap && (o.cap.status === "available" || o.cap.status === "degraded"));
   if (!available.length) {
-    root.append(stateEmpty("暂无可用的 Provider", "两个 Provider 当前都不可用（fail closed）。请检查 Provider 侧边车与本地预处理模型。", { iconName: "alert" }));
+    root.append(stateEmpty("暂无可用的 Provider", "当前没有可用 Provider（fail closed）。请先在「Provider Hub」连接 Modal，并确认远程 App 已部署。", { iconName: "alert" }));
     return;
   }
 
@@ -47,7 +47,7 @@ export async function mountCreate(root) {
   renderForm(formHost, selected);
 
   // surface unavailable providers (fail closed) below the form
-  const unavailable = providers.filter((o) => o.cap.status !== "available" && o.cap.status !== "degraded");
+  const unavailable = providers.filter((o) => !o.cap || (o.cap.status !== "available" && o.cap.status !== "degraded"));
   if (unavailable.length) {
     const panel = h("div", { class: "panel" },
       h("div", { class: "panel__head" }, h("h2", { class: "panel__title" }, `不可用 Provider (${unavailable.length})`)),
@@ -78,11 +78,19 @@ export async function mountCreate(root) {
 
     // provider + operation (familiar select)
     const providerSel = h("select", { class: "select" },
-      ...providers.map((o) => h("option", { value: o.cap.operation }, `${o.p.displayName} · ${o.cap.displayName}`))
+      ...providers.filter((o) => o.cap).map((o) => h(
+        "option",
+        {
+          value: o.cap.operation,
+          disabled: o.cap.status !== "available" && o.cap.status !== "degraded",
+        },
+        `${o.p.displayName} · ${o.cap.displayName}`
+      ))
     );
     providerSel.value = cap.operation;
     providerSel.addEventListener("change", () => {
-      const next = providers.find((o) => o.cap.operation === providerSel.value);
+      const next = available.find((o) => o.cap.operation === providerSel.value);
+      if (!next) return;
       selected = next;
       renderForm(host, next);
     });
@@ -105,7 +113,7 @@ export async function mountCreate(root) {
     // 3D source artifact picker (progressive disclosure)
     let sourceErrEl = null;
     if (props.sourceArtifact) {
-      sourceErrEl = renderSourcePicker(fields, values, fieldRefs);
+      sourceErrEl = renderSourcePicker(fields, values, props.sourceArtifact);
     }
 
     // advanced disclosure
@@ -188,17 +196,23 @@ export async function mountCreate(root) {
   // (errors are painted inline by onSubmit via fieldRefs; nothing to clean up here)
 }
 
-function renderSourcePicker(host, values, fieldRefs) {
+function renderSourcePicker(host, values, sourceSpec) {
   const pickerWrap = h("div", { class: "stack" });
   const sourceErrEl = h("div", { class: "field__error" });
-  const note = h("div", { class: "field__hint" }, "选择一份已存在的 primary-image 产物作为 3D 重建的来源。");
+  const role = sourceSpec?.properties?.role?.const || "compatible artifact";
+  const mime = sourceSpec?.properties?.mime?.const || "supported MIME";
+  const note = h("div", { class: "field__hint" }, `选择一份 ${role} · ${mime} 产物作为输入。`);
   const sel = h("select", { class: "select" }, h("option", { value: "" }, "— 选择来源产物 —"));
   async function load() {
     try {
       const a = await apiGet("artifacts");
-      const imgs = (a.artifacts || []).filter((x) => x.role === "primary-image");
+      const role = sourceSpec?.properties?.role?.const || null;
+      const mime = sourceSpec?.properties?.mime?.const || null;
+      const imgs = (a.artifacts || []).filter((x) =>
+        (!role || x.role === role) && (!mime || x.mime === mime)
+      );
       if (!imgs.length) {
-        pickerWrap.append(h("div", { class: "banner banner--warn" }, icon("alert", 16), "还没有可用的图片产物。请先在「创建 · 文本→图片」生成一张图片。"));
+        pickerWrap.append(h("div", { class: "banner banner--warn" }, icon("alert", 16), `还没有符合 ${role} · ${mime} 的来源产物。请先生成上游 Artifact。`));
         return;
       }
       for (const art of imgs) {
@@ -207,7 +221,7 @@ function renderSourcePicker(host, values, fieldRefs) {
       sel.addEventListener("change", () => {
         if (!sel.value) { values.sourceArtifact = null; return; }
         const art = imgs.find((x) => x.id === sel.value);
-        values.sourceArtifact = { id: art.id, role: "primary-image", mime: "image/png", hash: art.hash };
+        values.sourceArtifact = { id: art.id, role: art.role, mime: art.mime, hash: art.hash };
       });
     } catch (e) {
       pickerWrap.append(h("div", { class: "banner banner--warn" }, icon("alert", 16), "读取产物失败：" + String(e.message || e)));

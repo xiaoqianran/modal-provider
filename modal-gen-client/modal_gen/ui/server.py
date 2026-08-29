@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+from ..identity import idempotency_key, request_hash
 from .demo import DemoEngine, build_capability_snapshot
 
 _HERE = Path(__file__).resolve().parent
@@ -61,6 +62,7 @@ class DemoGateway:
 
     def __init__(self) -> None:
         self.engine = DemoEngine()
+        self._connected = True
 
     def bootstrap(self) -> dict:
         return {"mode": "demo", "connector": {"id": "unified-connector", "version": "0.1.0"}}
@@ -76,6 +78,22 @@ class DemoGateway:
 
     def session(self) -> dict:
         return {"status": "paired", "session": self.engine.session_descriptor()}
+
+    def connections(self) -> dict:
+        return {
+            "providers": [
+                {"id": "modal-2d", "connected": self._connected, "managed": True},
+                {"id": "modal-3d", "connected": self._connected, "managed": True},
+            ]
+        }
+
+    def connect_providers(self, _token_id: str, _token_secret: str) -> dict:
+        self._connected = True
+        return self.connections()
+
+    def disconnect_providers(self) -> dict:
+        self._connected = False
+        return self.connections()
 
     def jobs(self, status=None, q="", page=1, page_size=25) -> dict:
         return self.engine.list_jobs(status=status, q=q, page=page, page_size=page_size)
@@ -117,6 +135,7 @@ class LiveGateway:
     def __init__(self) -> None:
         self.token: str | None = None
         self.session: dict | None = None
+        self.snapshot: dict | None = None
         self._lock = threading.Lock()
 
     # -- low level ---------------------------------------------------------- #
@@ -153,8 +172,43 @@ class LiveGateway:
         return {"mode": "live", "connector": health.get("connector"), "reachable": True}
 
     def capabilities(self) -> dict:
-        snap = self._req("GET", "/connector/v1/capabilities", token=self.token)
+        snap = self._req(
+            "GET",
+            "/v1/capabilities",
+            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+        )
+        self.snapshot = snap
         return {"snapshot": snap, "stale": False}
+
+    def connections(self) -> dict:
+        return self._req(
+            "GET",
+            "/v1/provider-connections",
+            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+        )
+
+    def connect_providers(self, token_id: str, token_secret: str) -> dict:
+        result = self._req(
+            "POST",
+            "/v1/providers/connect",
+            json_body={"tokenId": token_id, "tokenSecret": token_secret},
+            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+        )
+        self.token = None
+        self.session = None
+        self.snapshot = None
+        return result
+
+    def disconnect_providers(self) -> dict:
+        result = self._req(
+            "POST",
+            "/v1/providers/disconnect",
+            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+        )
+        self.token = None
+        self.session = None
+        self.snapshot = None
+        return result
 
     def pairings(self) -> dict:
         snap = self._req("GET", "/v1/pairings", headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN})
@@ -169,37 +223,59 @@ class LiveGateway:
         return {"status": "approved"}
 
     def session(self) -> dict:
-        # two-phase pairing: request, approve via control plane, complete
-        body = {
-            "clientIdentity": "agentscape",
-            "contractVersion": "1",
-            "origin": _CLIENT_ORIGIN,
-            "scopes": [
-                "capabilities.read",
-                "jobs.submit",
-                "jobs.read",
-                "jobs.cancel",
-                "artifacts.read",
-            ],
-        }
-        first = self._req("POST", "/connector/v1/session", json_body=body)
-        if first.get("status") != "approval_required":
-            raise RuntimeError("unexpected pairing response")
-        pairing_id = first["pairingId"]
-        self.approve_pairing(pairing_id)
-        second = self._req(
-            "POST", "/connector/v1/session", json_body={**body, "pairingId": pairing_id}
-        )
-        if second.get("status") != "paired":
-            raise RuntimeError("session not established")
-        self.token = second["token"]
-        self.session = second["session"]
-        return second
+        if self.token and self.session:
+            return {"status": "paired", "token": self.token, "session": self.session}
+        with self._lock:
+            if self.token and self.session:
+                return {"status": "paired", "token": self.token, "session": self.session}
+            body = {
+                "clientIdentity": "agentscape",
+                "contractVersion": "1",
+                "origin": _CLIENT_ORIGIN,
+                "scopes": [
+                    "capabilities.read",
+                    "jobs.submit",
+                    "jobs.read",
+                    "jobs.cancel",
+                    "artifacts.read",
+                ],
+            }
+            first = self._req("POST", "/connector/v1/session", json_body=body)
+            if first.get("status") != "approval_required":
+                raise RuntimeError("unexpected pairing response")
+            pairing_id = first["pairingId"]
+            self.approve_pairing(pairing_id)
+            second = self._req(
+                "POST", "/connector/v1/session", json_body={**body, "pairingId": pairing_id}
+            )
+            if second.get("status") != "paired":
+                raise RuntimeError("session not established")
+            self.token = second["token"]
+            self.session = second["session"]
+            return second
+
+    def _ensure_session(self) -> None:
+        if not self.token:
+            self.session()
 
     def jobs(self, status=None, q="", page=1, page_size=25) -> dict:
-        url = "/connector/v1/jobs"
-        data = self._req("GET", url, token=self.token)
+        self._ensure_session()
+        data = self._req("GET", "/connector/v1/jobs", token=self.token)
         rows = data.get("jobs", [])
+        terminal = {"succeeded", "failed", "cancelled", "expired"}
+        refreshed = []
+        for row in rows:
+            if row.get("status") in terminal:
+                refreshed.append(row)
+                continue
+            try:
+                payload = self._req(
+                    "GET", f"/connector/v1/jobs/{row['id']}", token=self.token
+                )
+                refreshed.append(payload.get("job") or row)
+            except RuntimeError:
+                refreshed.append(row)
+        rows = refreshed
         # filter/sort/paginate client-side for simplicity
         if status and status != "all":
             rows = [r for r in rows if r.get("status") == status]
@@ -216,24 +292,59 @@ class LiveGateway:
         return {"jobs": rows[start : start + page_size], "page": page, "total": total}
 
     def job(self, job_id: str) -> dict | None:
+        self._ensure_session()
         try:
-            return self._req("GET", f"/connector/v1/jobs/{job_id}", token=self.token)
+            payload = self._req("GET", f"/connector/v1/jobs/{job_id}", token=self.token)
+            return payload.get("job") if isinstance(payload, dict) else None
         except RuntimeError:
             return None
 
     def submit(self, provider: str, operation: str, inputs: dict) -> dict:
+        snapshot = self.capabilities()["snapshot"]
+        provider_desc = next(
+            (item for item in snapshot.get("providers", []) if item.get("id") == provider), None
+        )
+        if not provider_desc:
+            raise RuntimeError("provider not found in capability snapshot")
+        capability = next(
+            (
+                item
+                for item in provider_desc.get("capabilities", [])
+                if item.get("operation") == operation
+            ),
+            None,
+        )
+        if not capability:
+            raise RuntimeError("operation not found in capability snapshot")
+        output = capability.get("output") or {}
+        roles = list(output.get("required") or output.get("roles") or [])
         body = {
             "provider": provider,
             "operation": operation,
-            "inputs": inputs,
-            "profile": inputs.get("profile"),
+            "inputs": dict(inputs),
+            "profile": None,
             "options": {},
-            "outputRoles": ["primary-image"] if provider == "modal-2d" else ["primary-glb"],
+            "outputRoles": roles,
+            "parent": None,
+            "retention": None,
+            "metadata": None,
+            "operationVersion": capability.get("version"),
+            "contractVersion": provider_desc.get("contractVersion", "1"),
+            "capabilityHash": snapshot.get("hash"),
+            "capabilityRevision": snapshot.get("revision"),
         }
-        return self._req("POST", "/connector/v1/jobs", json_body=body, token=self.token)
+        body["requestHash"] = request_hash(body)
+        body["idempotencyKey"] = idempotency_key(body)
+        self._ensure_session()
+        payload = self._req("POST", "/connector/v1/jobs", json_body=body, token=self.token)
+        return payload.get("job") if isinstance(payload, dict) else payload
 
     def cancel(self, job_id: str) -> dict:
-        return self._req("POST", f"/connector/v1/jobs/{job_id}/cancel", token=self.token)
+        self._ensure_session()
+        payload = self._req(
+            "POST", f"/connector/v1/jobs/{job_id}/cancel", token=self.token
+        )
+        return payload.get("job") if isinstance(payload, dict) else payload
 
     def artifacts(self) -> dict:
         # derive from jobs' result.artifacts (connector exposes per artifact content)
@@ -245,6 +356,7 @@ class LiveGateway:
         return {"artifacts": list(seen.values())}
 
     def artifact_content(self, artifact_id: str) -> tuple[bytes, str] | None:
+        self._ensure_session()
         try:
             import httpx
 
@@ -355,6 +467,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(g.capabilities())
         if name == "pairings":
             return self._send_json(g.pairings())
+        if name == "connections":
+            return self._send_json(g.connections())
         if name == "jobs":
             params = dict(p.split("=") for p in query.split("&") if "=" in p)
             return self._send_json(
@@ -395,6 +509,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(g.session())
         if name == "pairings/approve":
             return self._send_json(g.approve_pairing(body.get("pairingId", "")))
+        if name == "providers/connect":
+            try:
+                return self._send_json(
+                    g.connect_providers(body.get("tokenId", ""), body.get("tokenSecret", ""))
+                )
+            except RuntimeError as exc:
+                return self._send_json({"error": str(exc)}, 502)
+        if name == "providers/disconnect":
+            try:
+                return self._send_json(g.disconnect_providers())
+            except RuntimeError as exc:
+                return self._send_json({"error": str(exc)}, 502)
         if name == "jobs":
             try:
                 row = g.submit(

@@ -47,6 +47,28 @@ class LibraryProviderAdapter:
             raise ProviderError("PROVIDER_CAPABILITY_INVALID", "Provider identity 不匹配", 502)
         return value
 
+    def connection_status(self) -> dict[str, object]:
+        value = dict(self.provider.connection_status())
+        return {"id": self.id, **value}
+
+    def connect(self, token_id: str, token_secret: str) -> dict[str, object]:
+        try:
+            value = dict(self.provider.connect(token_id, token_secret))
+        except Exception as exc:
+            raise ProviderError(
+                "PROVIDER_CONNECTION_FAILED", "Provider 连接 Modal 失败", 502
+            ) from exc
+        return {"id": self.id, **value}
+
+    def disconnect(self) -> dict[str, object]:
+        try:
+            value = dict(self.provider.disconnect())
+        except Exception as exc:
+            raise ProviderError(
+                "PROVIDER_DISCONNECT_FAILED", "Provider 断开 Modal 失败", 502
+            ) from exc
+        return {"id": self.id, **value}
+
     def submit(
         self,
         *,
