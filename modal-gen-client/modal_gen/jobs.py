@@ -9,7 +9,7 @@ from .artifacts import ArtifactService
 from .capabilities import CapabilityRegistry, iso
 from .errors import ConnectorError, ProviderError
 from .identity import safe_json, verify_request_identity
-from .providers.base import ProviderContext, ProviderJob
+from .providers.protocol import ProviderContext, ProviderJob
 from .storage import Store
 
 _TERMINAL = {"succeeded", "failed", "cancelled", "expired"}
@@ -98,7 +98,7 @@ class JobService:
         effective_options = dict(options)
         if profile is not None:
             effective_options = {"profile": profile, **effective_options}
-        model_id = str(inputs.get("model") or "").strip()
+        model_id = str(provider_job.model or "").strip()
         row = {
             "id": f"job_{uuid.uuid4().hex}",
             "owner_client": owner_client,
@@ -111,7 +111,7 @@ class JobService:
             "capability_hash": payload["capabilityHash"],
             "capability_revision": payload["capabilityRevision"],
             "provider_job_id": provider_job.id,
-            "provider_state": provider_job.state,
+            "provider_state": None,
             "status": "accepted",
             "stage": "submitted",
             "attempt": 1,
@@ -146,10 +146,7 @@ class JobService:
             return self.projection(row)
         adapter = self.capabilities.adapter(str(row["provider"]))
         try:
-            provider_job = adapter.cancel(
-                str(row["provider_job_id"]),
-                state=row.get("provider_state"),
-            )
+            provider_job = adapter.cancel(str(row["provider_job_id"]))
         except ProviderError as exc:
             if exc.code == "PROVIDER_CONNECTION_REQUIRED":
                 row = self._update_status(
@@ -194,10 +191,7 @@ class JobService:
     def _refresh(self, row: dict[str, object]) -> dict[str, object]:
         adapter = self.capabilities.adapter(str(row["provider"]))
         try:
-            provider_job = adapter.get(
-                str(row["provider_job_id"]),
-                state=row.get("provider_state"),
-            )
+            provider_job = adapter.get(str(row["provider_job_id"]))
         except ProviderError as exc:
             if exc.code == "PROVIDER_CONNECTION_REQUIRED":
                 return self._update_status(
@@ -223,10 +217,16 @@ class JobService:
         error = None
         result = None
         if status == "succeeded":
-            if provider_job.artifact is None:
+            if not provider_job.artifacts:
                 raise ConnectorError("PROVIDER_JOB_INVALID", "成功 Provider Job 缺少 Artifact", 502)
-            artifact = self.artifacts.register(job=row, provider_artifact=provider_job.artifact)
-            result = {"manifestId": None, "artifacts": [self.artifacts.summary(artifact)]}
+            artifacts = [
+                self.artifacts.register(job=row, provider_artifact=item)
+                for item in provider_job.artifacts
+            ]
+            result = {
+                "manifestId": None,
+                "artifacts": [self.artifacts.summary(item) for item in artifacts],
+            }
         elif provider_job.error_code:
             error = {
                 "code": provider_job.error_code,
@@ -379,7 +379,7 @@ def _stage(status: str) -> str:
     return {
         "accepted": "submitted",
         "queued": "queued",
-        "running": "generation",
+        "running": "running",
         "connection_required": "connection",
         "cancel_requested": "cancelling",
         "succeeded": "artifact",

@@ -13,8 +13,7 @@ from .capabilities import CapabilityRegistry
 from .constants import SESSION_PATH, allow_any_origin
 from .errors import ConnectorError
 from .jobs import JobService
-from .providers.modal2d import Modal2DAdapter
-from .providers.modal3d import Modal3DAdapter
+from .providers.loader import load_providers
 from .sessions import SessionService, normalize_origin
 from .storage import Store
 
@@ -32,7 +31,7 @@ def build_runtime(store: Store | None = None, *, adapters=None) -> Runtime:
     state = store or Store()
     registry = CapabilityRegistry(
         state,
-        adapters if adapters is not None else [Modal2DAdapter(), Modal3DAdapter()],
+        adapters if adapters is not None else load_providers(),
     )
     artifacts = ArtifactService(state, registry)
     return Runtime(

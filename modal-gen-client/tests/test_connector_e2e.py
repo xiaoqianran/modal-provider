@@ -8,7 +8,7 @@ import httpx
 
 from modal_gen.app import build_runtime, create_app
 from modal_gen.identity import idempotency_key, request_hash
-from modal_gen.providers.base import ProviderArtifact, ProviderJob
+from modal_gen.providers.protocol import ProviderArtifact, ProviderJob
 from modal_gen.storage import Store
 
 ORIGIN = "https://xiaoqianran.github.io"
@@ -80,7 +80,7 @@ class Fake2DAdapter:
         self.submitted = (operation, inputs, profile, options)
         return ProviderJob(id="provider_job_01", status="running", model=inputs.get("model"))
 
-    def get(self, provider_job_id, *, state=None):
+    def get(self, provider_job_id):
         assert provider_job_id == "provider_job_01"
         self.polls += 1
         if self.polls == 1:
@@ -89,13 +89,13 @@ class Fake2DAdapter:
             id=provider_job_id,
             status="succeeded",
             model="sana-sprint-0.6b",
-            artifact=self.artifact,
+            artifacts=(self.artifact,),
         )
 
-    def cancel(self, provider_job_id, *, state=None):
+    def cancel(self, provider_job_id):
         return ProviderJob(id=provider_job_id, status="cancel_requested")
 
-    def iter_artifact(self, provider_job_id, artifact, *, state=None):
+    def iter_artifact(self, provider_job_id, artifact):
         assert provider_job_id == "provider_job_01"
         assert artifact == self.artifact
         yield PNG[:5]

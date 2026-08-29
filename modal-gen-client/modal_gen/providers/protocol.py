@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -48,17 +48,15 @@ class ProviderJob:
     id: str
     status: str
     model: str | None = None
-    artifact: ProviderArtifact | None = None
+    artifacts: tuple[ProviderArtifact, ...] = ()
     error_code: str | None = None
     retryable: bool | None = None
-    state: dict[str, object] | None = None
 
 
 class ProviderAdapter(Protocol):
     id: str
 
     def descriptor(self) -> dict[str, object]: ...
-
     def unavailable_descriptor(self) -> dict[str, object]: ...
 
     def submit(
@@ -71,24 +69,37 @@ class ProviderAdapter(Protocol):
         context: ProviderContext,
     ) -> ProviderJob: ...
 
-    def get(
-        self,
-        provider_job_id: str,
-        *,
-        state: dict[str, object] | None = None,
-    ) -> ProviderJob: ...
-
-    def cancel(
-        self,
-        provider_job_id: str,
-        *,
-        state: dict[str, object] | None = None,
-    ) -> ProviderJob: ...
+    def get(self, provider_job_id: str) -> ProviderJob: ...
+    def cancel(self, provider_job_id: str) -> ProviderJob: ...
 
     def iter_artifact(
         self,
         provider_job_id: str,
         artifact: ProviderArtifact,
+    ) -> Iterator[bytes]: ...
+
+
+class LibraryProvider(Protocol):
+    id: str
+
+    def descriptor(self) -> Mapping[str, object]: ...
+    def unavailable_descriptor(self) -> Mapping[str, object]: ...
+
+    def submit(
+        self,
         *,
-        state: dict[str, object] | None = None,
+        operation: str,
+        inputs: dict[str, object],
+        profile: str | None,
+        options: dict[str, object],
+        context: object,
+    ) -> Mapping[str, object]: ...
+
+    def get(self, provider_job_id: str) -> Mapping[str, object]: ...
+    def cancel(self, provider_job_id: str) -> Mapping[str, object]: ...
+
+    def iter_artifact(
+        self,
+        provider_job_id: str,
+        artifact_id: str,
     ) -> Iterator[bytes]: ...

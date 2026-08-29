@@ -6,6 +6,8 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.116,<1",
     "httpx>=0.28,<1",
+    "modal-2d-client-agent",
+    "modal-3d-client",
     "uvicorn>=0.35,<1",
 ]
 
@@ -28,3 +30,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.uv.sources]
+modal-2d-client-agent = { path = "../modal-2D-client", editable = true }
+modal-3d-client = { path = "../modal-3D-client", editable = true }

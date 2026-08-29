@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from .constants import CONNECTOR_ID, CONNECTOR_VERSION, CONTRACT_VERSION
 from .errors import ProviderError
-from .providers.base import ProviderAdapter
+from .providers.protocol import ProviderAdapter
 from .storage import Store
 
 

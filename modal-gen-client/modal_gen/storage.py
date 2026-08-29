@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .paths import database_path
 
-_DB_VERSION = 2
+_DB_VERSION = 3
 
 
 class Store:
@@ -107,7 +107,7 @@ class Store:
                     hash TEXT NOT NULL,
                     provider_artifact_id TEXT NOT NULL,
                     provider_job_id TEXT NOT NULL,
-                    UNIQUE(job_id, role),
+                    UNIQUE(job_id, provider_artifact_id),
                     FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS jobs_owner_idx
@@ -118,6 +118,8 @@ class Store:
             job_columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
             if "provider_state_json" not in job_columns:
                 db.execute("ALTER TABLE jobs ADD COLUMN provider_state_json TEXT")
+            if _artifact_unique_columns(db) != ("job_id", "provider_artifact_id"):
+                _migrate_artifacts_v3(db)
             db.execute(f"PRAGMA user_version = {_DB_VERSION}")
 
     def instance_id(self) -> str:
@@ -312,10 +314,13 @@ class Store:
                 ),
             )
 
-    def get_artifact_for_job(self, job_id: str, role: str) -> dict[str, object] | None:
+    def get_artifact_for_provider(
+        self, job_id: str, provider_artifact_id: str
+    ) -> dict[str, object] | None:
         with self.connect() as db:
             row = db.execute(
-                "SELECT * FROM artifacts WHERE job_id=? AND role=?", (job_id, role)
+                "SELECT * FROM artifacts WHERE job_id=? AND provider_artifact_id=?",
+                (job_id, provider_artifact_id),
             ).fetchone()
         return dict(row) if row else None
 
@@ -332,6 +337,43 @@ class Store:
                 (artifact_id, owner_client, owner_origin),
             ).fetchone()
         return dict(row) if row else None
+
+
+def _artifact_unique_columns(db: sqlite3.Connection) -> tuple[str, ...] | None:
+    for row in db.execute("PRAGMA index_list(artifacts)"):
+        if not row[2]:
+            continue
+        columns = tuple(item[2] for item in db.execute(f"PRAGMA index_info({row[1]!r})"))
+        if columns[:1] == ("job_id",):
+            return columns
+    return None
+
+
+def _migrate_artifacts_v3(db: sqlite3.Connection) -> None:
+    db.executescript(
+        """
+        CREATE TABLE artifacts_v3 (
+            id TEXT PRIMARY KEY,
+            job_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            mime TEXT NOT NULL,
+            bytes INTEGER NOT NULL,
+            hash TEXT NOT NULL,
+            provider_artifact_id TEXT NOT NULL,
+            provider_job_id TEXT NOT NULL,
+            UNIQUE(job_id, provider_artifact_id),
+            FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
+        );
+        INSERT INTO artifacts_v3(
+            id,job_id,role,mime,bytes,hash,provider_artifact_id,provider_job_id
+        ) SELECT
+            id,job_id,role,mime,bytes,hash,provider_artifact_id,provider_job_id
+        FROM artifacts;
+        DROP TABLE artifacts;
+        ALTER TABLE artifacts_v3 RENAME TO artifacts;
+        CREATE INDEX artifacts_job_idx ON artifacts(job_id);
+        """
+    )
 
 
 def _dump(value: object) -> str:

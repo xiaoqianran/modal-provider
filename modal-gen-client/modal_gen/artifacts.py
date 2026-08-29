@@ -9,7 +9,7 @@ from pathlib import Path
 from .capabilities import CapabilityRegistry
 from .errors import ConnectorError
 from .paths import artifact_cache_dir
-from .providers.base import ConnectorArtifactInput, ProviderArtifact
+from .providers.protocol import ConnectorArtifactInput, ProviderArtifact
 from .storage import Store
 
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
@@ -32,7 +32,9 @@ class ArtifactService:
     ) -> dict[str, object]:
         if provider_artifact.bytes <= 0 or provider_artifact.bytes > MAX_ARTIFACT_BYTES:
             raise ConnectorError("ARTIFACT_SIZE_INVALID", "Provider Artifact 大小超出限制", 502)
-        existing = self.store.get_artifact_for_job(str(job["id"]), provider_artifact.role)
+        existing = self.store.get_artifact_for_provider(
+            str(job["id"]), provider_artifact.id
+        )
         if existing:
             if (
                 existing["provider_artifact_id"] != provider_artifact.id
@@ -117,7 +119,6 @@ class ArtifactService:
                     adapter.iter_artifact(
                         str(artifact["provider_job_id"]),
                         provider_artifact,
-                        state=job.get("provider_state"),
                     ),
                     stream,
                     artifact,

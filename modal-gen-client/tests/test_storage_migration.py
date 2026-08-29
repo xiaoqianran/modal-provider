@@ -53,5 +53,51 @@ def test_v1_database_migrates_provider_state_column(tmp_path: Path):
         columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
     finally:
         db.close()
-    assert version == 2
+    assert version == 3
     assert "provider_state_json" in columns
+
+
+def test_v2_artifact_role_identity_migrates_to_provider_artifact_identity(tmp_path: Path):
+    path = tmp_path / "connector.sqlite3"
+    Store(path)
+    db = sqlite3.connect(path)
+    try:
+        db.executescript(
+            """
+            DROP INDEX IF EXISTS artifacts_job_idx;
+            DROP TABLE artifacts;
+            CREATE TABLE artifacts (
+                id TEXT PRIMARY KEY,
+                job_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                mime TEXT NOT NULL,
+                bytes INTEGER NOT NULL,
+                hash TEXT NOT NULL,
+                provider_artifact_id TEXT NOT NULL,
+                provider_job_id TEXT NOT NULL,
+                UNIQUE(job_id, role),
+                FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
+            );
+            CREATE INDEX artifacts_job_idx ON artifacts(job_id);
+            PRAGMA user_version = 2;
+            """
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    Store(path)
+
+    db = sqlite3.connect(path)
+    try:
+        unique = []
+        for row in db.execute("PRAGMA index_list(artifacts)"):
+            if row[2]:
+                columns = tuple(
+                    item[2] for item in db.execute(f"PRAGMA index_info({row[1]!r})")
+                )
+                unique.append(columns)
+    finally:
+        db.close()
+    assert ("job_id", "provider_artifact_id") in unique
+    assert ("job_id", "role") not in unique
