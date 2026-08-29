@@ -23,7 +23,7 @@ export async function mountJobs(root) {
   let page = 1;
   let autoPoll = true;
   let timer = null;
-  let busy = false;
+  let refreshSeq = 0;
 
   const toolbar = h("div", { class: "toolbar" });
   const filterChips = h("div", { class: "row" });
@@ -50,17 +50,19 @@ export async function mountJobs(root) {
   }
 
   async function refresh() {
-    if (busy) return;
-    busy = true;
+    const requestSeq = ++refreshSeq;
+    const requestStatus = status;
+    const requestQuery = q;
+    const requestPage = page;
     highlightFilters();
     tableHost.replaceChildren(h("div", { class: "panel" }, h("div", { class: "panel__body" }, skeletonRows(5))));
     try {
-      const data = await apiGet(`jobs?status=${status}&q=${encodeURIComponent(q)}&page=${page}`);
+      const data = await apiGet(`jobs?status=${requestStatus}&q=${encodeURIComponent(requestQuery)}&page=${requestPage}`);
+      if (requestSeq !== refreshSeq) return;
       renderRows(data);
     } catch (e) {
+      if (requestSeq !== refreshSeq) return;
       tableHost.replaceChildren(stateEmpty("无法读取任务", String(e.message || e), { iconName: "alert" }));
-    } finally {
-      busy = false;
     }
   }
 
@@ -89,7 +91,7 @@ export async function mountJobs(root) {
         h("td", { class: "mono" }, row.model?.id || "—"),
         h("td", { class: "dim tabular" }, fmtTime(row.createdAt)),
         h("td", { class: "dim tabular" }, dur),
-        h("td", {}, h("button", { class: "btn btn--ghost btn--sm", onclick: (e) => { e.stopPropagation(); onCancel(row); } }, cancelLabel(row.status)))
+        h("td", {}, h("button", { class: "btn btn--ghost btn--sm", onclick: (e) => { e.stopPropagation(); isTerminal(row.status) ? openJob(row) : onCancel(row); } }, cancelLabel(row.status)))
       );
       tbody.append(tr);
     }
@@ -100,7 +102,7 @@ export async function mountJobs(root) {
     const pager = h("div", { class: "toolbar", style: "padding: var(--s3) var(--s4)" },
       h("span", { class: "muted" }, `共 ${total} 条`),
       h("div", { class: "row", style: "margin-left:auto", },
-        h("button", { class: "btn btn--sm", disabled: page <= .2, onclick: () => { page--; refresh(); } }, "上一页"),
+        h("button", { class: "btn btn--sm", disabled: page <= 1, onclick: () => { page--; refresh(); } }, "上一页"),
         h("span", { class: "dim tabular" }, `${page} / ${pages}`),
         h("button", { class: "btn btn--sm", disabled: page >= pages, onclick: () => { page++; refresh(); } }, "下一页")
       )
@@ -183,8 +185,11 @@ export async function mountJobs(root) {
     const s = Math.max(0, (b - a) / 1000);
     return `${s.toFixed(0)}s`;
   }
+  function isTerminal(status) {
+    return ["succeeded", "failed", "cancelled", "expired"].includes(status);
+  }
   function cancelLabel(status) {
-    return ["succeeded", "failed", "cancelled", "expired"].includes(status) ? "详情" : "取消";
+    return isTerminal(status) ? "详情" : "取消";
   }
 }
 

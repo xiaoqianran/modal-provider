@@ -186,14 +186,12 @@ export function openDrawer(title, bodyNode) {
   scrim.addEventListener("click", close);
   host.className = "drawer-host host--on";
   host.replaceChildren(scrim, panel);
+  const first = panel.querySelector(".drawer__body input,.drawer__body select,.drawer__body textarea,.drawer__body button")
+    || panel.querySelector("button,input,select,textarea,summary,[tabindex]:not([tabindex='-1'])");
+  first?.focus();
   requestAnimationFrame(() => {
     scrim.classList.add("scrim--on");
     panel.classList.add("drawer--open");
-    setTimeout(() => {
-      const first = panel.querySelector(".drawer__body input,.drawer__body select,.drawer__body textarea,.drawer__body button")
-        || panel.querySelector("button,input,select,textarea,summary,[tabindex]:not([tabindex='-1'])");
-      first?.focus();
-    }, 80);
   });
   return close;
 }
@@ -209,22 +207,60 @@ export function stateEmpty(title, desc, { iconName = "file" } = {}) {
 
 export function openDialog({ title, body, confirm = "确认", danger = false, onConfirm }) {
   const host = document.getElementById("dialog-host");
+  const previousFocus = document.activeElement;
   const scrim = h("div", { class: "dialog-scrim" });
   const dialog = h("div", { class: "dialog", role: "dialog", "aria-modal": "true", "aria-label": title });
-  const close = () => { scrim.classList.remove("scrim--on"); dialog.classList.remove("dialog--open"); host.classList.remove("host--on"); setTimeout(() => host.replaceChildren(), 200); };
+  const close = () => {
+    scrim.classList.remove("scrim--on");
+    dialog.classList.remove("dialog--open");
+    host.classList.remove("host--on");
+    setTimeout(() => {
+      host.replaceChildren();
+      if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();
+    }, 200);
+  };
   const ok = h("button", {
-    class: `btn ${danger ? "btn--danger" : "btn--primary"}`, onclick: () => { close(); onConfirm && onConfirm(); },
+    class: `btn ${danger ? "btn--danger" : "btn--primary"}`,
+    type: "button",
+    onclick: () => { close(); onConfirm && onConfirm(); },
   }, confirm);
+  const cancel = h("button", { class: "btn btn--ghost", type: "button", onclick: close }, "取消");
   dialog.append(
     h("div", { class: "dialog__head" }, h("h3", { class: "dialog__title" }, title)),
     h("div", { class: "dialog__body" }, body),
-    h("div", { class: "dialog__foot" }, h("button", { class: "btn btn--ghost", onclick: close }, "取消"), ok)
+    h("div", { class: "dialog__foot" }, cancel, ok)
   );
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const nodes = Array.from(dialog.querySelectorAll("button,input,select,textarea,[tabindex]:not([tabindex='-1'])"))
+      .filter((node) => !node.disabled && node.offsetParent !== null);
+    if (!nodes.length) return;
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
   scrim.addEventListener("click", close);
   host.className = "dialog-host host--on";
   host.replaceChildren(scrim, dialog);
-  requestAnimationFrame(() => { scrim.classList.add("scrim--on"); dialog.classList.add("dialog--open"); });
+  cancel.focus();
+  requestAnimationFrame(() => {
+    scrim.classList.add("scrim--on");
+    dialog.classList.add("dialog--open");
+  });
+  return close;
 }
+
 
 // ------------------------------------------------------------------ hash chip
 export function hashChip(hash, { copyable = true } = {}) {

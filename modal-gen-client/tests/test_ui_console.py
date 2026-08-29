@@ -296,3 +296,26 @@ if (appended.length !== 1 || appended[0].message !== "connected") process.exit(1
         capture_output=True,
         text=True,
     )
+
+
+def test_jobs_ui_keeps_latest_query_and_valid_first_page() -> None:
+    from pathlib import Path
+
+    source = Path("modal_gen/ui/assets/views/view_jobs.js").read_text(encoding="utf-8")
+
+    assert "let refreshSeq = 0;" in source
+    assert "const requestSeq = ++refreshSeq;" in source
+    assert "if (requestSeq !== refreshSeq) return;" in source
+    assert "disabled: page <= 1" in source
+    assert "isTerminal(row.status) ? openJob(row) : onCancel(row)" in source
+
+
+def test_dialog_ui_restores_focus_and_handles_escape() -> None:
+    from pathlib import Path
+
+    source = Path("modal_gen/ui/assets/app.js").read_text(encoding="utf-8")
+
+    assert "const previousFocus = document.activeElement;" in source
+    assert 'if (event.key === "Escape")' in source
+    assert "previousFocus.focus()" in source
+    assert "cancel.focus();" in source
