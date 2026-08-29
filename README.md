@@ -71,7 +71,6 @@ modal-provider
 - `modal-gen-client` (`main`) → https://github.com/xiaoqianran/modal-gen-client
 - `modal-EmbodiedGen` (`master`) → https://github.com/xiaoqianran/modal-EmbodiedGen
 - `modal-build` (`master`) → https://github.com/xiaoqianran/modal-build
-- `modal-world` (`master`) → https://github.com/xiaoqianran/modal-world
 
 ### 同步前必须检查
 
