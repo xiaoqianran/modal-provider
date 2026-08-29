@@ -1032,10 +1032,11 @@ class Text2ImageWorker:
 
     @modal.enter()
     def load(self):
-        import torch
-        from diffusers import DPMSolverMultistepScheduler, KolorsPipeline
+        profile={}
+        total0=time.perf_counter()
+        t=time.perf_counter(); import torch; profile["import_torch_seconds"]=round(time.perf_counter()-t,3)
+        t=time.perf_counter(); from diffusers import DPMSolverMultistepScheduler, KolorsPipeline; profile["import_diffusers_seconds"]=round(time.perf_counter()-t,3)
 
-        t0=time.perf_counter()
         model_dir=Path(TEXT2IMG_MODEL_DIR)
         model_index=model_dir/"model_index.json"
         revision_marker=model_dir/TEXT2IMG_REVISION_MARKER
@@ -1044,20 +1045,30 @@ class Text2ImageWorker:
             raise RuntimeError("Kolors weights/revision mismatch; run preload_text2img_weights first")
         os.environ["HF_HUB_OFFLINE"]="1"
         os.environ["TRANSFORMERS_OFFLINE"]="1"
+
+        t=time.perf_counter()
         pipe=KolorsPipeline.from_pretrained(
             TEXT2IMG_MODEL_DIR,
             torch_dtype=torch.float16,
             variant="fp16",
             local_files_only=True,
-        ).to("cuda")
-        pipe.enable_model_cpu_offload()
-        pipe.enable_xformers_memory_efficient_attention()
-        pipe.scheduler=DPMSolverMultistepScheduler.from_config(
+        )
+        profile["from_pretrained_seconds"]=round(time.perf_counter()-t,3)
+
+        t=time.perf_counter(); pipe=pipe.to("cuda"); torch.cuda.synchronize(); profile["to_cuda_seconds"]=round(time.perf_counter()-t,3)
+        profile["pre_offload_cuda_gib"]=round(torch.cuda.memory_allocated()/1024**3,3)
+        t=time.perf_counter(); pipe.enable_model_cpu_offload(); profile["cpu_offload_seconds"]=round(time.perf_counter()-t,3)
+        profile["post_offload_cuda_gib"]=round(torch.cuda.memory_allocated()/1024**3,3)
+        t=time.perf_counter(); pipe.enable_xformers_memory_efficient_attention(); profile["xformers_seconds"]=round(time.perf_counter()-t,3)
+        t=time.perf_counter(); pipe.scheduler=DPMSolverMultistepScheduler.from_config(
             pipe.scheduler.config,
             use_karras_sigmas=True,
-        )
+        ); profile["scheduler_seconds"]=round(time.perf_counter()-t,3)
         self.pipe=pipe
-        self.load_seconds=time.perf_counter()-t0
+        self.load_seconds=time.perf_counter()-total0
+        profile["total_seconds"]=round(self.load_seconds,3)
+        self.load_profile=profile
+        print("TEXT2IMG_STARTUP_PROFILE "+json.dumps(profile),flush=True)
         print(
             "TEXT2IMG_RESIDENT_READY "+json.dumps({
                 "model":TEXT2IMG_MODEL_ID,
@@ -1066,6 +1077,10 @@ class Text2ImageWorker:
             }),
             flush=True,
         )
+
+    @modal.method()
+    def startup_profile(self) -> dict:
+        return {"load_seconds":round(self.load_seconds,3),"load_profile":self.load_profile}
 
     @modal.method()
     def generate(self,job_id: str,prompt: str,seed: int=0,dispatch_3d: bool=False) -> dict:
@@ -1084,6 +1099,7 @@ class Text2ImageWorker:
         state=dict(job_states.get(job_id) or {"job_id":job_id})
         state.update({"status":"running","stage":"text2image","updated_epoch":time.time()})
         job_states.put(job_id,state)
+        torch.cuda.reset_peak_memory_stats()
         t0=time.perf_counter()
         image_out=self.pipe(
             prompt=full_prompt,
@@ -1098,6 +1114,7 @@ class Text2ImageWorker:
         image_out.save(buf,format="PNG")
         png=buf.getvalue()
         generate_seconds=round(time.perf_counter()-t0,3)
+        peak_cuda_gib=round(torch.cuda.max_memory_allocated()/1024**3,3)
         out={
             "job_id":job_id,
             "model":"kolors",
@@ -1107,6 +1124,7 @@ class Text2ImageWorker:
             "height":image_out.height,
             "load_seconds":round(self.load_seconds,3),
             "generate_seconds":generate_seconds,
+            "peak_cuda_gib":peak_cuda_gib,
         }
         if dispatch_3d:
             worker=modal.Cls.from_name(APP_NAME,"EmbodiedGenWorker")()

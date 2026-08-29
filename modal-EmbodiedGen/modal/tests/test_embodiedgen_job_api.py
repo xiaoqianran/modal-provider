@@ -177,6 +177,8 @@ class TextJobTest(unittest.TestCase):
         body = source[pos:body_end]
         self.assertIn('gpu="L40S"', decorator)
         self.assertIn('scaledown_window=TEXT2IMG_SCALEDOWN_SECONDS', decorator)
+        self.assertNotIn('enable_memory_snapshot=True', decorator)
+        self.assertNotIn('@modal.enter(snap=True)', body)
         self.assertIn('local_files_only=True', body)
         self.assertIn('HF_HUB_OFFLINE', body)
         self.assertIn('TRANSFORMERS_OFFLINE', body)
