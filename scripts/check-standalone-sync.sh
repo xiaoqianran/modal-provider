@@ -68,6 +68,10 @@ for package in "${packages[@]}"; do
     --exclude=__pycache__ \
     --exclude=.pytest_cache \
     --exclude=.ruff_cache \
+    --exclude=node_modules \
+    --exclude=build \
+    --exclude=dist \
+    --exclude=coverage \
     --exclude="*.egg-info" \
     "$source_dir" "$target_dir" 2>&1)
   code=$?
