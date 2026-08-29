@@ -75,8 +75,8 @@ Deploy modules directly; there is no registration step:
 ./scripts/deploy-worker.ps1 modal_3d/pixal3d.py
 ```
 
-Generation/task/artifact HTTP APIs live in `modal-3D-client`, not in this
-provider repository. Historical benchmark evidence is preserved under
+Generation/task/artifact HTTP APIs live in the sibling `modal-3D-client` package, not in this
+provider package. Historical benchmark evidence is preserved under
 `benchmarks/`; retired experiments live under `archive/`.
 
 See `docs/ARCHITECTURE.md` for the production boundaries.

@@ -3,7 +3,7 @@
 `modal-2D-client` 是 `modal-2D` 的 **Reference Sidecar**：把远端 Modal execution 映射成本地可恢复 Job，并负责验证/缓存 Provider Artifact。它没有业务 UI，也不拥有 Asset、World 或全局 Provider routing；`modal-gen-client` 如存在，只把它当作安全 transport 下游。
 
 ```text
-本地 UI / Connector（未来 modal-gen-client）
+AgentScape / optional modal-gen-client
                 │
                 ▼
         modal-2D-client Agent
@@ -140,7 +140,7 @@ modal-2D
   model / GPU / remote artifact
 ```
 
-`modal-gen-client` 不吸收本仓的 Provider-specific Job/Artifact implementation；它只通过本地 API 做安全 transport。这样本仓可以继续脱离 AgentScape 独立 smoke 和恢复测试。
+`modal-gen-client` 不吸收本仓的 Provider-specific Job/Artifact implementation；它只通过本地 API 做安全 transport。这样本 package 可以继续脱离 AgentScape 独立 smoke 和恢复测试。
 
 
 ## Candidate Batch

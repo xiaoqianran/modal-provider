@@ -1,6 +1,6 @@
-# modal-build
+# modal-EmbodiedGen
 
-Reproducible CUDA/PyTorch build artifacts and production reference runtimes for Modal 3D workers.
+`modal-EmbodiedGen` is the EmbodiedGen/build-runtime package inside the `modal-provider` monorepo. It owns reproducible CUDA/PyTorch build artifacts, upstream compatibility pins/patches, and production reference runtimes used by Modal 3D/Embodied workers.
 
 Large binary artifacts are stored as **GitHub Release assets**, not committed into Git history.
 Each release is keyed by Python/CUDA/PyTorch/CUDA-architecture compatibility and ships:
@@ -10,9 +10,9 @@ Each release is keyed by Python/CUDA/PyTorch/CUDA-architecture compatibility and
 - `*.sha256` — archive checksum
 
 
-## Repository layers
+## Package layers
 
-The repository separates three different lifecycle stages. They are related, but they do not call
+This package separates three different lifecycle stages. They are related, but they do not call
 each other directly at runtime:
 
 ```text
@@ -165,7 +165,7 @@ Validation completed with `VALIDATION_OK`: 95,004 PLY Gaussians, 516,271 OBJ ver
 ## Policy
 
 Do not publish model weights, gated Hugging Face assets, secrets, or artifacts without clear
-redistribution permission. This repository is for build tooling and redistributable wheels.
+redistribution permission. This package is for build tooling and redistributable wheels inside `modal-provider`.
 
 ## trellis.cpp / L40S
 

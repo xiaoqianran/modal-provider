@@ -3,7 +3,7 @@
 `modal-3D-client` 是 `modal-3D` 的 **Reference Sidecar**。它不拥有 Project、Preprocess、UI、Asset 或 World；只把远端 3D Provider execution 映射成本地可恢复 Job，并负责输入上传与 GLB Artifact 校验/缓存。
 
 ```text
-Caller / modal-inference-hub / Agent
+Caller / AgentScape UI / Agent
           │ PNG / JPEG / WebP
           ▼
 ┌──────────────── modal-3D-client ────────────────┐
