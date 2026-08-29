@@ -78,3 +78,46 @@ seed 135   2.428 s
 ```
 
 Warm batch 返回 `worker_reused=true`、`worker_load_ms=null`；cold batch 单独记录本次 `worker_load_ms`。这样外层 Job wait 不再被误解为模型推理时间。
+
+## Unified benchmark harness
+
+`scripts/benchmark.py` benchmarks the deployed production workers through the same capability-driven route used by clients. It does not duplicate model loading or inference code.
+
+Default run benchmarks every advertised model with warm batch sizes `1,2,4,8`:
+
+```bash
+uv run python scripts/benchmark.py --output benchmark-results/all.json
+```
+
+Select one or more models when a full run would be too expensive:
+
+```bash
+uv run python scripts/benchmark.py \
+  --model sana-sprint-1.6b \
+  --model z-image-turbo \
+  --batches 1,2,4,8 \
+  --output benchmark-results/fast-models.json
+```
+
+Each model gets one initial batch-1 cold probe followed by the requested warm runs. `coldStartObserved` is only `true` when the Worker itself reports a real model load; an already-warm container is never reported as a cold start.
+
+The report includes:
+
+- end-to-end latency and latency per image;
+- Worker model-load and batch timing;
+- per-image inference timing;
+- CUDA GPU name and peak allocated/reserved VRAM;
+- artifact count and byte sizes;
+- GPU-seconds consumed by the observed load/inference window;
+- optional cost estimates when an explicit current GPU hourly rate is supplied.
+
+GPU prices are deliberately not hard-coded. Supply them at run time if cost estimates are needed:
+
+```bash
+uv run python scripts/benchmark.py \
+  --model qwen-image-2512 \
+  --gpu-rate 'RTX-PRO-6000=YOUR_CURRENT_USD_PER_HOUR' \
+  --output benchmark-results/qwen.json
+```
+
+`benchmark-results/` is intended as ephemeral output; keep benchmark reports outside commits unless a specific result is being documented as an experiment.
