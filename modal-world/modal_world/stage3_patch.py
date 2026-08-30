@@ -11,8 +11,72 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
     worldgen_root = root / "hyworld2/worldgen"
     patch_worldstereo_wrapper(worldgen_root / "models/worldstereo_wrapper.py")
 
+    depth_alignment_path = worldgen_root / "src/depth_alignment.py"
+    depth_source = depth_alignment_path.read_text()
+    if "def get_guided_depth_infos_batch(" in depth_source:
+        raise RuntimeError("guided-depth batch helper already present unexpectedly")
+    batch_helper = """
+
+
+def get_guided_depth_infos_batch(
+    w2cs,
+    Ks,
+    prev_points3d,
+    prev_normal,
+    height,
+    width,
+    device,
+    render_radius=0.008,
+    chunk_size=4,
+):
+    \"\"\"Render guidance for several cameras while amortizing static point-cloud setup.\"\"\"
+    if prev_normal is not None:
+        prev_normal_warped = prev_normal.to(device)
+    else:
+        prev_normal_warped = torch.zeros((prev_points3d.shape[0], 3), device=device)
+
+    guided_normals = []
+    guided_depths = []
+    for start in range(0, w2cs.shape[0], chunk_size):
+        end = min(start + chunk_size, w2cs.shape[0])
+        chunk_normal, chunk_depth = point_rendering(
+            K=Ks[start:end],
+            w2cs=w2cs[start:end],
+            points=prev_points3d,
+            colors=prev_normal_warped,
+            h=height,
+            w=width,
+            render_radius=render_radius,
+            points_per_pixel=8,
+            device=device,
+            background_color=[0, 0, 0],
+            return_depth=True,
+        )
+        guided_depths.append(chunk_depth[:, 0])
+        if prev_normal is not None:
+            guided_normals.append(chunk_normal)
+
+    guided_depth = torch.cat(guided_depths, dim=0)
+    guided_depth_mask = guided_depth != -1
+    guided_normal = torch.cat(guided_normals, dim=0) if prev_normal is not None else None
+    return guided_depth, guided_depth_mask, guided_normal
+"""
+    depth_alignment_path.write_text(depth_source + batch_helper)
+
     retrieval_path = worldgen_root / "src/retrieval_wm.py"
     source = retrieval_path.read_text()
+    depth_import_old = "from .depth_alignment import get_guided_depth_infos_v2, ConstrainedLinearRegression\n"
+    depth_import_new = (
+        "from .depth_alignment import (\n"
+        "    get_guided_depth_infos_v2,\n"
+        "    get_guided_depth_infos_batch,\n"
+        "    ConstrainedLinearRegression,\n"
+        ")\n"
+    )
+    if source.count(depth_import_old) != 1:
+        raise RuntimeError("expected pinned depth-alignment import not found")
+    source = source.replace(depth_import_old, depth_import_new, 1)
+
     processor_old = "            self.processor = AutoImageProcessor.from_pretrained(model_path, use_fast=True)\n"
     processor_new = (
         "            self.processor = AutoImageProcessor.from_pretrained(\n"
@@ -140,6 +204,28 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
         1,
     )
 
+    batch_alignment_marker = "            # START alignment!\n"
+    if source.count(batch_alignment_marker) != 1:
+        raise RuntimeError("expected pinned alignment-loop marker not found")
+    batch_alignment_prep = (
+        "            guided_depth_batch = None\n"
+        "            guided_depth_mask_batch = None\n"
+        "            guided_normal_batch = None\n"
+        "            try:\n"
+        "                _guided_batch_started = time.perf_counter()\n"
+        "                guided_depth_batch, guided_depth_mask_batch, guided_normal_batch = get_guided_depth_infos_batch(\n"
+        "                    w2cs=updated_tar_w2cs, Ks=updated_tar_Ks,\n"
+        "                    prev_points3d=self.global_pcd.vertices, prev_normal=self.global_normal,\n"
+        "                    height=self.image_height, width=self.image_width, device=self.device,\n"
+        "                    chunk_size=4,\n"
+        "                )\n"
+        "                self.alignment_phase2_detail[\"guided_depth\"] += time.perf_counter() - _guided_batch_started\n"
+        "            except Exception as exc:\n"
+        "                color_print(f\"Batched guided-depth rendering failed; falling back to per-frame rendering: {exc}\", \"warning\")\n"
+        + batch_alignment_marker
+    )
+    source = source.replace(batch_alignment_marker, batch_alignment_prep, 1)
+
     cache_comment = "            # Initialize the cache for the current video.\n"
     if source.count(cache_comment) != 1:
         raise RuntimeError("expected pinned Phase 2 cache marker not found")
@@ -185,19 +271,30 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
     )
 
     guided_call = "                    guided_depth, guided_depth_mask, guided_normal = get_guided_depth_infos_v2(w2c=updated_tar_w2cs[local_i], K=updated_tar_Ks[local_i],\n"
+    guided_call_mid = "                                                                                               prev_points3d=self.global_pcd.vertices, prev_normal=self.global_normal,\n"
+    guided_call_tail = "                                                                                               height=self.image_height, width=self.image_width, device=self.device)\n"
     guided_after = "                    guided_depth_np = guided_depth.cpu().numpy()\n"
-    if source.count(guided_call) != 1 or source.count(guided_after) != 1:
-        raise RuntimeError("expected pinned guided-depth markers not found")
-    source = source.replace(
-        guided_call,
-        "                    _phase2_detail_started = time.perf_counter()\n" + guided_call,
-        1,
+    guided_original = guided_call + guided_call_mid + guided_call_tail
+    if source.count(guided_original) != 1 or source.count(guided_after) != 1:
+        raise RuntimeError("expected pinned guided-depth call not found")
+    guided_replacement = (
+        "                    if guided_depth_batch is not None:\n"
+        "                        guided_depth = guided_depth_batch[local_i]\n"
+        "                        guided_depth_mask = guided_depth_mask_batch[local_i]\n"
+        "                        guided_normal = guided_normal_batch[local_i] if guided_normal_batch is not None else None\n"
+        "                    else:\n"
+        "                        _phase2_detail_started = time.perf_counter()\n"
+        "                        guided_depth, guided_depth_mask, guided_normal = get_guided_depth_infos_v2(\n"
+        "                            w2c=updated_tar_w2cs[local_i], K=updated_tar_Ks[local_i],\n"
+        "                            prev_points3d=self.global_pcd.vertices, prev_normal=self.global_normal,\n"
+        "                            height=self.image_height, width=self.image_width, device=self.device\n"
+        "                        )\n"
+        "                        self.alignment_phase2_detail[\"guided_depth\"] += time.perf_counter() - _phase2_detail_started\n"
     )
+    source = source.replace(guided_original, guided_replacement, 1)
     source = source.replace(
         guided_after,
-        '                    self.alignment_phase2_detail["guided_depth"] += time.perf_counter() - _phase2_detail_started\n'
-        + "                    _phase2_detail_started = time.perf_counter()\n"
-        + guided_after,
+        "                    _phase2_detail_started = time.perf_counter()\n" + guided_after,
         1,
     )
 
