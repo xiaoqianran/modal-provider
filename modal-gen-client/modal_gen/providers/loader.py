@@ -63,6 +63,22 @@ class LibraryProviderAdapter:
             ) from exc
         return {"id": self.id, **value}
 
+    async def connect_async(self, token_id: str, token_secret: str) -> dict[str, object]:
+        try:
+            connect_async = getattr(self.provider, "connect_async", None)
+            if callable(connect_async):
+                value = dict(await connect_async(token_id, token_secret))
+            else:
+                value = dict(self.provider.connect(token_id, token_secret))
+        except Exception as exc:
+            detail = type(exc).__name__
+            raise ProviderError(
+                "PROVIDER_CONNECTION_FAILED",
+                f"{self.id} 连接 Modal 失败 ({detail})",
+                502,
+            ) from exc
+        return {"id": self.id, **value}
+
     def disconnect(self) -> dict[str, object]:
         try:
             value = dict(self.provider.disconnect())

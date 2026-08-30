@@ -63,3 +63,42 @@ def test_deployment_api_returns_job_without_waiting_for_deploy(tmp_path, monkeyp
             assert many.json()["limit"] == 7
 
     asyncio.run(scenario())
+
+
+def test_deployment_status_is_200_when_modal_is_disconnected(tmp_path):
+    runtime = build_runtime(Store(tmp_path / "db.sqlite3"), adapters=[Adapter()])
+    app = create_app(runtime)
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:48123"
+        ) as client:
+            response = await client.get(
+                "/v1/deployments", headers={"X-Modal-Gen-Session": "wangran"}
+            )
+            assert response.status_code == 200
+            assert response.json()["connected"] is False
+
+    asyncio.run(scenario())
+
+
+def test_huggingface_secret_api_requires_modal_connection(tmp_path, monkeypatch):
+    runtime = build_runtime(Store(tmp_path / "db.sqlite3"), adapters=[Adapter()])
+    app = create_app(runtime)
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:48123"
+        ) as client:
+            headers = {"X-Modal-Gen-Session": "wangran"}
+            status = await client.get("/v1/secrets/huggingface", headers=headers)
+            assert status.status_code == 200
+            assert status.json() == {"connected": False, "configured": False, "secrets": []}
+
+            saved = await client.post(
+                "/v1/secrets/huggingface", headers=headers, json={"token": "hf_demo"}
+            )
+            assert saved.status_code == 409
+            assert saved.json()["code"] == "DEPLOYMENT_CREDENTIALS_REQUIRED"
+
+    asyncio.run(scenario())

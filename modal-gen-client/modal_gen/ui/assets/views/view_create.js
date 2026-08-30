@@ -1,13 +1,13 @@
-// Screen: 创建 — Primary job: 用一句提示词产出一个生成任务（2D 图片 或 3D 资产）。
+// Screen: 创建 — batch 2D prompts or create a 3D asset from an existing image artifact.
 // Form is generated from the connector capability descriptor (input.schema),
 // so the UI never hard-codes provider fields.
-import { h, icon, apiGet, apiPost, toast, stateEmpty, store } from "../app.js";
+import { h, icon, apiGet, apiPost, toast, stateEmpty, store, loadCapabilities, refreshNavCounts } from "../app.js";
 
 export async function mountCreate(root) {
   root.append(
     h("div", { class: "screen-head" },
       h("h1", { class: "screen-head__title" }, "创建"),
-      h("p", { class: "screen-head__job" }, "选择一个 Provider 与 Operation，填写输入并提交一次生成任务。")
+      h("p", { class: "screen-head__job" }, "2D 支持一行一个 Prompt 批量提交；3D 从产物库直接选择来源图片。提交后保留在当前页面。")
     )
   );
 
@@ -21,20 +21,23 @@ export async function mountCreate(root) {
 
   let snap;
   try {
-    snap = (await apiGet("capabilities")).snapshot;
+    snap = await loadCapabilities();
   } catch (e) {
     loading.replaceWith(stateEmpty("无法读取能力快照", String(e.message || e)));
     return;
   }
   loading.remove();
 
+  const isSubmitReady = (capability) => capability?.status === "available"
+    || (capability?.status === "degraded" && !(capability.runtimeBlockers || []).length);
   const providers = (snap.providers || []).map((p) => ({
     p,
-    cap: (p.capabilities || []).find((c) => c.status === "available" || c.status === "degraded")
+    cap: (p.capabilities || []).find((c) => isSubmitReady(c))
+      || (p.capabilities || []).find((c) => c.status === "degraded")
       || (p.capabilities || [])[0],
   }));
 
-  const available = providers.filter((o) => o.cap && (o.cap.status === "available" || o.cap.status === "degraded"));
+  const available = providers.filter((o) => o.cap && isSubmitReady(o.cap));
   if (!available.length) {
     root.append(stateEmpty("暂无可用的 Provider", "当前没有可用 Provider（fail closed）。请先在「Provider Hub」连接 Modal，并确认远程 App 已部署。", { iconName: "alert" }));
     return;
@@ -47,7 +50,7 @@ export async function mountCreate(root) {
   renderForm(formHost, selected);
 
   // surface unavailable providers (fail closed) below the form
-  const unavailable = providers.filter((o) => !o.cap || (o.cap.status !== "available" && o.cap.status !== "degraded"));
+  const unavailable = providers.filter((o) => !o.cap || !isSubmitReady(o.cap));
   if (unavailable.length) {
     const panel = h("div", { class: "panel" },
       h("div", { class: "panel__head" }, h("h2", { class: "panel__title" }, `不可用 Provider (${unavailable.length})`)),
@@ -60,7 +63,9 @@ export async function mountCreate(root) {
           icon("alert", 16),
           h("div", { class: "stack" },
             h("strong", {}, `${o.p.displayName || o.p.id} · ${o.cap.displayName || o.cap.operation}`),
-            h("span", {}, "当前不可用（fail closed）。未配置或未就绪时 Connector 不会伪装可用；解决 Provider 侧连接或本地预处理模型后可在此提交。")
+            h("span", {}, (o.cap.runtimeBlockers || []).length
+              ? `当前被 ${o.cap.runtimeBlockers.map((item) => item.app || "required runtime").join("、")} 阻塞；Provider Hub 会保留“部分就绪”信息，但创建页不会提交必然失败的请求。`
+              : "当前不可用（fail closed）。解决 Provider 连接或 Runtime readiness 后可在此提交。")
           )
         )
       );
@@ -82,7 +87,7 @@ export async function mountCreate(root) {
         "option",
         {
           value: o.cap.operation,
-          disabled: o.cap.status !== "available" && o.cap.status !== "degraded",
+          disabled: !isSubmitReady(o.cap),
         },
         `${o.p.displayName} · ${o.cap.displayName}`
       ))
@@ -102,12 +107,16 @@ export async function mountCreate(root) {
     // Material required inputs first, advanced (seed/guidance/profile/idempotency) behind disclosure.
     const advancedKeys = ["seed", "guidance", "profile", "options", "outputRoles", "parent", "retention", "metadata"];
     const ordered = Object.keys(props)
-      .filter((k) => k !== "sourceArtifact")
+      .filter((k) => k !== "sourceArtifact" && (required.has(k) || !advancedKeys.includes(k)))
       .sort((a, b) => (required.has(a) === required.has(b) ? 0 : required.has(a) ? -1 : 1));
 
     for (const key of ordered) {
       if (key === "sourceArtifact") continue;
-      fields.append(buildField(key, props[key], required.has(key), limits, values, fieldRefs));
+      if (key === "prompt" && props[key]?.type === "string") {
+        fields.append(buildPromptBatchField(props[key], required.has(key), values, fieldRefs));
+      } else {
+        fields.append(buildField(key, props[key], required.has(key), limits, values, fieldRefs));
+      }
     }
 
     // 3D source artifact picker (progressive disclosure)
@@ -128,12 +137,23 @@ export async function mountCreate(root) {
 
     const submitBtn = h("button", { class: "btn btn--primary btn--block", type: "button" }, "提交生成");
     const statusLine = h("div", { class: "muted", style: "font-size: var(--fs-12)" });
+    const submissionHost = h("div", { class: "submission-results" });
+    const promptRef = fieldRefs.prompt?.batch ? fieldRefs.prompt : null;
+    const syncSubmitLabel = () => {
+      if (!promptRef) return;
+      const count = parsePromptLines(promptRef.control.value).length;
+      submitBtn.textContent = count > 1 ? `提交 ${count} 个任务` : "提交生成";
+    };
+    promptRef?.control.addEventListener("input", syncSubmitLabel);
+    syncSubmitLabel();
 
     const onSubmit = async () => {
       // validate + paint inline errors
       let ok = true;
       for (const [key, ref] of Object.entries(fieldRefs)) {
-        const err = validateField(key, ref.spec, ref.required, limits, values);
+        const err = ref.batch
+          ? validatePromptBatch(ref.control.value, ref.spec, ref.required)
+          : validateField(key, ref.spec, ref.required, limits, values);
         ref.errEl.textContent = err || "";
         ref.control.setAttribute("aria-invalid", err ? "true" : "false");
         if (err) ok = false;
@@ -146,20 +166,38 @@ export async function mountCreate(root) {
       if (!ok) { statusLine.textContent = "请修正标红的字段。"; statusLine.style.color = "var(--danger)"; return; }
 
       submitBtn.disabled = true;
-      submitBtn.replaceChildren(h("span", { class: "spinner" }), "提交中…");
-      try {
-        const inputs = { ...values };
-        if (props.sourceArtifact) inputs.sourceArtifact = values.sourceArtifact;
-        delete inputs.options;
-        const payload = { provider: sel.p.id, operation: cap.operation, inputs };
-        await apiPost("jobs", payload);
-        toast(`${sel.p.displayName} 任务已提交`, "ok");
-        location.hash = "#/jobs";
-      } catch (e) {
-        statusLine.textContent = String(e.message || e);
-        submitBtn.disabled = false;
-        submitBtn.textContent = "提交生成";
+      const prompts = promptRef ? parsePromptLines(promptRef.control.value) : [null];
+      const baseInputs = { ...values };
+      if (props.sourceArtifact) baseInputs.sourceArtifact = values.sourceArtifact;
+      delete baseInputs.options;
+      if (promptRef) delete baseInputs.prompt;
+      submissionHost.replaceChildren();
+      const results = [];
+      let failed = 0;
+      for (let index = 0; index < prompts.length; index += 1) {
+        const prompt = prompts[index];
+        submitBtn.replaceChildren(h("span", { class: "spinner" }), `提交 ${index + 1}/${prompts.length}`);
+        statusLine.style.color = "";
+        statusLine.textContent = `正在提交 ${index + 1}/${prompts.length}；提交后会留在当前页面。`;
+        const inputs = { ...baseInputs };
+        if (promptRef) inputs.prompt = prompt;
+        try {
+          const response = await apiPost("jobs", { provider: sel.p.id, operation: cap.operation, inputs });
+          results.push({ prompt, job: response.job, ok: true });
+        } catch (error) {
+          failed += 1;
+          results.push({ prompt, error: String(error.message || error), ok: false });
+        }
+        renderSubmissionResults(submissionHost, results, prompts.length);
       }
+      submitBtn.disabled = false;
+      syncSubmitLabel();
+      statusLine.style.color = failed ? "var(--warn)" : "var(--ok)";
+      statusLine.textContent = failed
+        ? `已提交 ${results.length - failed}/${results.length} 个任务，${failed} 个失败。`
+        : `已提交 ${results.length} 个任务。你可以继续编辑并再次提交。`;
+      toast(failed ? `${results.length - failed} 个任务已提交，${failed} 个失败` : `${results.length} 个任务已提交`, failed ? "danger" : "ok");
+      refreshNavCounts();
     };
     submitBtn.addEventListener("click", onSubmit);
 
@@ -171,7 +209,8 @@ export async function mountCreate(root) {
           fields,
           adv,
           submitBtn,
-          statusLine
+          statusLine,
+          submissionHost
         )
       )
     );
@@ -197,41 +236,146 @@ export async function mountCreate(root) {
 }
 
 function renderSourcePicker(host, values, sourceSpec) {
-  const pickerWrap = h("div", { class: "stack" });
-  const sourceErrEl = h("div", { class: "field__error" });
-  const role = sourceSpec?.properties?.role?.const || "compatible artifact";
-  const mime = sourceSpec?.properties?.mime?.const || "supported MIME";
-  const note = h("div", { class: "field__hint" }, `选择一份 ${role} · ${mime} 产物作为输入。`);
-  const sel = h("select", { class: "select" }, h("option", { value: "" }, "— 选择来源产物 —"));
+  const wrap = h("div", { class: "source-picker" });
+  const grid = h("div", { class: "source-picker__grid" });
+  const status = h("div", { class: "field__hint" }, "读取最近的图片产物…");
+  const errEl = h("div", { class: "field__error" });
+  const pager = h("div", { class: "source-picker__pager" });
+  const role = sourceSpec?.properties?.role?.const || "primary-image";
+  const mime = sourceSpec?.properties?.mime?.const || "image/png";
+  let page = 1;
+  let selectedId = null;
+
   async function load() {
+    grid.replaceChildren(...Array.from({ length: 4 }, () => h("div", { class: "skeleton source-picker__skeleton" })));
+    pager.replaceChildren();
     try {
-      const a = await apiGet("artifacts");
-      const role = sourceSpec?.properties?.role?.const || null;
-      const mime = sourceSpec?.properties?.mime?.const || null;
-      const imgs = (a.artifacts || []).filter((x) =>
-        (!role || x.role === role) && (!mime || x.mime === mime)
-      );
-      if (!imgs.length) {
-        pickerWrap.append(h("div", { class: "banner banner--warn" }, icon("alert", 16), `还没有符合 ${role} · ${mime} 的来源产物。请先生成上游 Artifact。`));
+      const data = await apiGet(`artifacts?page=${page}&page_size=8&mime=${encodeURIComponent(mime)}`);
+      const items = (data.artifacts || []).filter((item) => !role || item.role === role);
+      if (!items.length) {
+        grid.replaceChildren();
+        status.textContent = `还没有符合 ${role} · ${mime} 的图片。请先生成上游图片。`;
         return;
       }
-      for (const art of imgs) {
-        sel.append(h("option", { value: art.id }, `${art.id} · ${art.hash.slice(0, 16)}…`));
-      }
-      sel.addEventListener("change", () => {
-        if (!sel.value) { values.sourceArtifact = null; return; }
-        const art = imgs.find((x) => x.id === sel.value);
-        values.sourceArtifact = { id: art.id, role: art.role, mime: art.mime, hash: art.hash };
-      });
-    } catch (e) {
-      pickerWrap.append(h("div", { class: "banner banner--warn" }, icon("alert", 16), "读取产物失败：" + String(e.message || e)));
+      status.textContent = `选择一张来源图片 · 共 ${data.total || items.length} 张`;
+      grid.replaceChildren(...items.map((art) => h("button", {
+        class: `source-tile ${selectedId === art.id ? "is-selected" : ""}`,
+        type: "button",
+        dataset: { id: art.id },
+        "aria-pressed": String(selectedId === art.id),
+        onclick: () => {
+          selectedId = art.id;
+          values.sourceArtifact = { id: art.id, role: art.role, mime: art.mime, hash: art.hash };
+          errEl.textContent = "";
+          grid.querySelectorAll(".source-tile").forEach((node) => {
+            const active = node.dataset.id === art.id;
+            node.classList.toggle("is-selected", active);
+            node.setAttribute("aria-pressed", String(active));
+          });
+        },
+      },
+        h("img", { src: `/ui/api/artifacts/${art.id}/content`, alt: art.id, loading: "lazy", decoding: "async" }),
+        h("span", {}, art.model || "生成图片")
+      )));
+      const pages = Math.max(1, Math.ceil((data.total || 0) / 8));
+      pager.append(
+        h("button", { class: "btn btn--sm", type: "button", disabled: page <= 1, onclick: () => { page -= 1; load(); } }, "上一页"),
+        h("span", { class: "muted" }, `${page} / ${pages}`),
+        h("button", { class: "btn btn--sm", type: "button", disabled: page >= pages, onclick: () => { page += 1; load(); } }, "下一页")
+      );
+    } catch (error) {
+      grid.replaceChildren();
+      status.textContent = `读取图片产物失败：${String(error.message || error)}`;
     }
   }
-  pickerWrap.append(field("来源产物 (sourceArtifact)", sel, "必填"), sourceErrEl, note);
-  host.append(pickerWrap);
-  sel.addEventListener("change", () => { if (sel.value) sourceErrEl.textContent = ""; });
+
+  wrap.append(
+    h("div", { class: "row spread" },
+      h("label", { class: "field__label" }, "来源图片", h("span", { class: "field__req" }, "*")),
+      h("a", { class: "btn btn--ghost btn--sm", href: "#/artifacts" }, "打开产物库")
+    ),
+    status, grid, pager, errEl
+  );
+  host.append(wrap);
   load();
-  return sourceErrEl;
+  return errEl;
+}
+
+function buildPromptBatchField(spec, required, values, fieldRefs) {
+  const control = h("textarea", {
+    class: "textarea prompt-batch",
+    rows: "9",
+    placeholder: "一行一个 Prompt\n\n例如：\n一只坐在窗边的橘猫\n未来感城市夜景\n白色背景上的产品摄影",
+  });
+  const errEl = h("div", { class: "field__error", dataset: { err: "prompt" } });
+  const hint = h("div", { class: "prompt-batch__hint" });
+  const sync = () => {
+    const prompts = parsePromptLines(control.value);
+    values.prompt = prompts[0];
+    hint.textContent = prompts.length
+      ? `${prompts.length} 个有效 Prompt · 空行和完全重复行自动忽略 · 最多 50 个`
+      : "一行一个 Prompt；空行不会提交。";
+    const error = validatePromptBatch(control.value, spec, required);
+    errEl.textContent = error || "";
+    control.setAttribute("aria-invalid", error ? "true" : "false");
+  };
+  control.addEventListener("input", sync);
+  fieldRefs.prompt = { control, errEl, spec, required, batch: true };
+  sync();
+  return h("div", { class: "field prompt-batch-field" },
+    h("div", { class: "row spread" },
+      h("label", { class: "field__label" }, "Prompt", required ? h("span", { class: "field__req" }, "*") : null),
+      h("span", { class: "badge badge--accent" }, "批量 · 每行一个")
+    ),
+    control,
+    hint,
+    errEl
+  );
+}
+
+function parsePromptLines(text) {
+  const seen = new Set();
+  const prompts = [];
+  for (const raw of String(text || "").split(/\r?\n/)) {
+    const prompt = raw.trim();
+    if (!prompt || seen.has(prompt)) continue;
+    seen.add(prompt);
+    prompts.push(prompt);
+  }
+  return prompts;
+}
+
+function validatePromptBatch(text, spec, required) {
+  const prompts = parsePromptLines(text);
+  if (required && !prompts.length) return "至少填写一个 Prompt";
+  if (prompts.length > 50) return "一次最多提交 50 个 Prompt";
+  for (let index = 0; index < prompts.length; index += 1) {
+    const prompt = prompts[index];
+    if (spec.minLength && prompt.length < spec.minLength) return `第 ${index + 1} 个 Prompt 过短`;
+    if (spec.maxLength && prompt.length > spec.maxLength) return `第 ${index + 1} 个 Prompt 超过 ${spec.maxLength} 字符`;
+  }
+  return "";
+}
+
+function renderSubmissionResults(host, results, total) {
+  const succeeded = results.filter((item) => item.ok).length;
+  host.replaceChildren(
+    h("div", { class: "submission-results__head" },
+      h("strong", {}, `本次提交 ${results.length}/${total}`),
+      h("span", { class: "muted" }, `${succeeded} 成功 · ${results.length - succeeded} 失败`)
+    ),
+    h("div", { class: "submission-results__list" },
+      ...results.slice(-8).map((item) => h("div", { class: `submission-result ${item.ok ? "is-ok" : "is-error"}` },
+        h("div", { class: "submission-result__main" },
+          h("strong", {}, item.ok ? "已进入任务队列" : "提交失败"),
+          item.prompt ? h("span", { title: item.prompt }, item.prompt) : null
+        ),
+        item.ok
+          ? h("button", { class: "btn btn--ghost btn--sm", type: "button", onclick: () => { location.hash = "#/jobs"; } }, "查看任务")
+          : h("span", { class: "submission-result__error" }, item.error)
+      ))
+    )
+  );
 }
 
 function buildField(key, spec, required, limits, values, fieldRefs) {

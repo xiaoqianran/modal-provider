@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import copy
 import importlib
 import re
@@ -52,6 +53,18 @@ def _validate_revision(revision: str | None) -> None:
         )
 
 
+def _modal_secret_names(client: modal.Client) -> set[str]:
+    return {secret.name for secret in modal.Secret.objects.list(client=client)}
+
+
+def _upsert_modal_secret(name: str, token: str, client: modal.Client, *, exists: bool) -> None:
+    values = {"HF_TOKEN": token}
+    if exists:
+        modal.Secret.from_name(name, client=client).update(values)
+    else:
+        modal.Secret.objects.create(name, values, client=client)
+
+
 class DeploymentService:
     def __init__(
         self,
@@ -61,6 +74,7 @@ class DeploymentService:
         max_workers: int = 2,
         max_attempts: int = 2,
         retry_backoff_s: float = 0.5,
+        readiness_ttl_s: float = 10.0,
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be positive")
@@ -68,6 +82,8 @@ class DeploymentService:
             raise ValueError("max_attempts must be positive")
         if retry_backoff_s < 0:
             raise ValueError("retry_backoff_s must be non-negative")
+        if readiness_ttl_s < 0:
+            raise ValueError("readiness_ttl_s must be non-negative")
         self._client: modal.Client | None = None
         self._lock = threading.RLock()
         self._targets_all = (
@@ -83,6 +99,10 @@ class DeploymentService:
         self._job_request_keys: dict[str, tuple[object, ...]] = {}
         self._max_attempts = max_attempts
         self._retry_backoff_s = retry_backoff_s
+        self._readiness_ttl_s = readiness_ttl_s
+        self._readiness_cache: dict[
+            tuple[str | None, str | None], tuple[float, dict[str, object]]
+        ] = {}
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers,
             thread_name_prefix="modal-gen-deploy",
@@ -137,9 +157,41 @@ class DeploymentService:
         with self._lock:
             self._client = client
 
+    async def connect_async(self, token_id: str, token_secret: str) -> None:
+        if not token_id.strip() or not token_secret.strip():
+            raise ConnectorError("PROVIDER_CREDENTIALS_REQUIRED", "Modal credentials 不能为空", 422)
+        client = await modal.Client.from_credentials.aio(token_id.strip(), token_secret.strip())
+        with self._lock:
+            self._client = client
+            self._readiness_cache.clear()
+
     def disconnect(self) -> None:
         with self._lock:
             self._client = None
+            self._readiness_cache.clear()
+
+    def huggingface_secret_status(self) -> dict[str, object]:
+        client = self._require_client()
+        names = _modal_secret_names(client)
+        managed = ("huggingface", "hyworld2-hf")
+        rows = [{"name": name, "exists": name in names} for name in managed]
+        return {
+            "connected": True,
+            "configured": all(item["exists"] for item in rows),
+            "secrets": rows,
+        }
+
+    def save_huggingface_token(self, token: str) -> dict[str, object]:
+        value = token.strip()
+        if not value:
+            raise ConnectorError("HF_TOKEN_REQUIRED", "Hugging Face Token 不能为空", 422)
+        if len(value) > 32768:
+            raise ConnectorError("HF_TOKEN_TOO_LONG", "Hugging Face Token 过长", 422)
+        client = self._require_client()
+        existing = _modal_secret_names(client)
+        for name in ("huggingface", "hyworld2-hf"):
+            _upsert_modal_secret(name, value, client, exists=name in existing)
+        return self.huggingface_secret_status()
 
     @property
     def connected(self) -> bool:
@@ -186,6 +238,80 @@ class DeploymentService:
         rows = [self._target_status(target, client) for target in self._targets(provider)]
         return self._summary(rows)
 
+    async def status_async(
+        self,
+        provider: str | None = None,
+        *,
+        environment_name: str | None = None,
+        force: bool = False,
+    ) -> dict[str, object]:
+        targets = self._targets(provider)
+        with self._lock:
+            client = self._client
+        if client is None:
+            return self._disconnected_summary(targets)
+
+        key = (provider, environment_name)
+        now = time.monotonic()
+        with self._lock:
+            cached = self._readiness_cache.get(key)
+            if not force and cached is not None and cached[0] > now:
+                return copy.deepcopy(cached[1])
+
+        rows = list(
+            await asyncio.gather(
+                *(self._target_status_async(target, client, environment_name) for target in targets)
+            )
+        )
+        result = {"connected": True, **self._summary(rows)}
+        with self._lock:
+            self._readiness_cache[key] = (
+                time.monotonic() + self._readiness_ttl_s,
+                copy.deepcopy(result),
+            )
+        return result
+
+    def _invalidate_readiness_cache(self) -> None:
+        with self._lock:
+            self._readiness_cache.clear()
+
+    def cached_status(
+        self,
+        provider: str | None = None,
+        *,
+        environment_name: str | None = None,
+    ) -> dict[str, object] | None:
+        key = (provider, environment_name)
+        now = time.monotonic()
+        with self._lock:
+            cached = self._readiness_cache.get(key)
+            if cached is None or cached[0] <= now:
+                return None
+            return copy.deepcopy(cached[1])
+
+    @staticmethod
+    def _disconnected_summary(
+        targets: tuple[DeploymentTarget, ...],
+    ) -> dict[str, object]:
+        providers: list[dict[str, object]] = []
+        for provider in dict.fromkeys(target.provider for target in targets):
+            apps = [
+                {
+                    "provider": target.provider,
+                    "app": target.app_name,
+                    "module": target.module,
+                    "status": "disconnected",
+                    "expectedRevision": target.revision,
+                    "deployedRevision": None,
+                    "models": list(target.models),
+                    "required": target.required,
+                }
+                for target in targets
+                if target.provider == provider
+            ]
+            providers.append({"id": provider, "status": "disconnected", "apps": apps})
+        return {"connected": False, "providers": providers}
+
     def deploy(
         self,
         provider: str | None = None,
@@ -200,7 +326,8 @@ class DeploymentService:
         targets = self._select_targets(provider, app_name)
         if missing_only:
             statuses = {
-                target.app_name: self._target_status(target, client)["status"] for target in targets
+                target.app_name: self._target_status(target, client, environment_name)["status"]
+                for target in targets
             }
             targets = tuple(target for target in targets if statuses[target.app_name] == "missing")
 
@@ -304,6 +431,7 @@ class DeploymentService:
         self._require_client()
         self._validate_strategy(strategy)
         self._select_targets(provider, app_name)
+        self._invalidate_readiness_cache()
         request_key = (provider, app_name, strategy, environment_name, missing_only)
         with self._lock:
             existing_id = self._active_requests.get(request_key)
@@ -366,7 +494,7 @@ class DeploymentService:
                 targets = tuple(
                     target
                     for target in targets
-                    if self._target_status(target, client)["status"] == "missing"
+                    if self._target_status(target, client, environment_name)["status"] == "missing"
                 )
             self._update_job(
                 job_id,
@@ -398,6 +526,7 @@ class DeploymentService:
             return
         terminal = self._deployment_result_status(result)
         self._update_job(job_id, status=terminal, result=result)
+        self._invalidate_readiness_cache()
 
     def _deploy_target_for_job(
         self,
@@ -498,11 +627,58 @@ class DeploymentService:
             )[:limit]
             return {"jobs": copy.deepcopy(rows)}
 
-    @staticmethod
-    def _target_status(target: DeploymentTarget, client: modal.Client) -> dict[str, object]:
+    async def _target_status_async(
+        self,
+        target: DeploymentTarget,
+        client: modal.Client,
+        environment_name: str | None = None,
+    ) -> dict[str, object]:
         actual_revision = None
         try:
-            deployed = modal.App.lookup(target.app_name, client=client)
+            deployed = await modal.App.lookup.aio(
+                target.app_name,
+                client=client,
+                environment_name=environment_name,
+            )
+            tags = await deployed.get_tags.aio(client=client)
+            actual_revision = tags.get("modal-gen-revision")
+            status = (
+                "current"
+                if target.revision is not None and actual_revision == target.revision
+                else "stale"
+            )
+            error = None
+        except NotFoundError as exc:
+            status, error = "missing", str(exc)
+        except Exception as exc:
+            status, error = "error", str(exc)
+        row: dict[str, object] = {
+            "provider": target.provider,
+            "app": target.app_name,
+            "module": target.module,
+            "status": status,
+            "expectedRevision": target.revision,
+            "deployedRevision": actual_revision,
+            "models": list(target.models),
+            "required": target.required,
+        }
+        if error:
+            row["error"] = error
+        return row
+
+    def _target_status(
+        self,
+        target: DeploymentTarget,
+        client: modal.Client,
+        environment_name: str | None = None,
+    ) -> dict[str, object]:
+        actual_revision = None
+        try:
+            deployed = modal.App.lookup(
+                target.app_name,
+                client=client,
+                environment_name=environment_name,
+            )
             tags = deployed.get_tags(client=client)
             actual_revision = tags.get("modal-gen-revision")
             status = (

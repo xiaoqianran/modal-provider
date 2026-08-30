@@ -27,7 +27,7 @@ export async function mountJobs(root) {
 
   const toolbar = h("div", { class: "toolbar" });
   const filterChips = h("div", { class: "row" });
-  const search = h("input", { class: "input", placeholder: "搜索 ID / Operation / 提示詞", style: "max-width: 280px" });
+  const search = h("input", { class: "input", placeholder: "搜索 ID / Operation / 模型", style: "max-width: 280px" });
   const pollToggle = h("button", { class: "btn btn--ghost btn--sm" }, "自动刷新：开");
   const refreshBtn = h("button", { class: "btn btn--ghost btn--sm" }, "刷新");
   toolbar.append(filterChips, h("div", { class: "row", style: "margin-left:auto" }, search, refreshBtn, pollToggle));
@@ -49,13 +49,15 @@ export async function mountJobs(root) {
     filterChips.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.status === status)));
   }
 
-  async function refresh() {
+  async function refresh({ silent = false } = {}) {
     const requestSeq = ++refreshSeq;
     const requestStatus = status;
     const requestQuery = q;
     const requestPage = page;
     highlightFilters();
-    tableHost.replaceChildren(h("div", { class: "panel" }, h("div", { class: "panel__body" }, skeletonRows(5))));
+    if (!silent || !tableHost.children.length) {
+      tableHost.replaceChildren(h("div", { class: "panel" }, h("div", { class: "panel__body" }, skeletonRows(5))));
+    }
     try {
       const data = await apiGet(`jobs?status=${requestStatus}&q=${encodeURIComponent(requestQuery)}&page=${requestPage}`);
       if (requestSeq !== refreshSeq) return;
@@ -168,7 +170,7 @@ export async function mountJobs(root) {
   store.cleanup = () => { if (timer) clearInterval(timer); };
   refresh();
   timer = setInterval(() => {
-    if (autoPoll && document.visibilityState === "visible") refresh();
+    if (autoPoll && document.visibilityState === "visible") refresh({ silent: true });
   }, 4000);
 
   // helpers

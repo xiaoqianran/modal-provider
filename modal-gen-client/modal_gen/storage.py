@@ -257,16 +257,31 @@ class Store:
             ).fetchone()
         return _job(row) if row else None
 
-    def list_jobs(self, owner_client: str, owner_origin: str) -> list[dict[str, object]]:
+    def list_jobs(
+        self,
+        owner_client: str,
+        owner_origin: str,
+        *,
+        status: str | None = None,
+        q: str = "",
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        where, params = _job_filters(owner_client, owner_origin, status=status, q=q)
         with self.connect() as db:
             rows = db.execute(
-                """
-                SELECT * FROM jobs WHERE owner_client=? AND owner_origin=?
-                ORDER BY created_at DESC LIMIT 200
-                """,
-                (owner_client, owner_origin),
+                f"SELECT * FROM jobs WHERE {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (*params, limit, offset),
             ).fetchall()
         return [_job(row) for row in rows]
+
+    def count_jobs(
+        self, owner_client: str, owner_origin: str, *, status: str | None = None, q: str = ""
+    ) -> int:
+        where, params = _job_filters(owner_client, owner_origin, status=status, q=q)
+        with self.connect() as db:
+            row = db.execute(f"SELECT COUNT(*) FROM jobs WHERE {where}", params).fetchone()
+        return int(row[0])
 
     def update_job(self, row: dict[str, object]) -> None:
         with self.connect() as db:
@@ -337,6 +352,75 @@ class Store:
                 (artifact_id, owner_client, owner_origin),
             ).fetchone()
         return dict(row) if row else None
+
+    def list_artifacts(
+        self,
+        owner_client: str,
+        owner_origin: str,
+        *,
+        mime: str | None = None,
+        limit: int = 12,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        where = ["j.owner_client=?", "j.owner_origin=?"]
+        params: list[object] = [owner_client, owner_origin]
+        if mime:
+            where.append("a.mime=?")
+            params.append(mime)
+        with self.connect() as db:
+            rows = db.execute(
+                f"""
+                SELECT a.*, j.updated_at, j.model_json
+                FROM artifacts a
+                JOIN jobs j ON j.id=a.job_id
+                WHERE {" AND ".join(where)}
+                ORDER BY j.updated_at DESC, a.id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (*params, limit, offset),
+            ).fetchall()
+        result: list[dict[str, object]] = []
+        for row in rows:
+            item = dict(row)
+            raw_model = item.pop("model_json", None)
+            item["model"] = json.loads(raw_model) if raw_model else None
+            result.append(item)
+        return result
+
+    def count_artifacts(
+        self, owner_client: str, owner_origin: str, *, mime: str | None = None
+    ) -> int:
+        where = ["j.owner_client=?", "j.owner_origin=?"]
+        params: list[object] = [owner_client, owner_origin]
+        if mime:
+            where.append("a.mime=?")
+            params.append(mime)
+        with self.connect() as db:
+            row = db.execute(
+                f"""
+                SELECT COUNT(*) FROM artifacts a
+                JOIN jobs j ON j.id=a.job_id
+                WHERE {" AND ".join(where)}
+                """,
+                params,
+            ).fetchone()
+        return int(row[0])
+
+
+def _job_filters(
+    owner_client: str, owner_origin: str, *, status: str | None, q: str
+) -> tuple[str, tuple[object, ...]]:
+    where = ["owner_client=?", "owner_origin=?"]
+    params: list[object] = [owner_client, owner_origin]
+    if status and status != "all":
+        where.append("status=?")
+        params.append(status)
+    needle = q.strip()
+    if needle:
+        like = f"%{needle}%"
+        where.append("(id LIKE ? OR operation LIKE ? OR COALESCE(model_json, '') LIKE ?)")
+        params.extend((like, like, like))
+    return " AND ".join(where), tuple(params)
 
 
 def _artifact_unique_columns(db: sqlite3.Connection) -> tuple[str, ...] | None:

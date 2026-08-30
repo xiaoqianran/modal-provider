@@ -87,8 +87,8 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         return {"ok": True, "connector": current().capabilities.connector}
 
     @app.get("/v1/providers")
-    def providers():
-        snapshot = current().capabilities.snapshot()
+    async def providers():
+        snapshot = await current().capabilities.snapshot_async()
         return {"providers": snapshot["providers"]}
 
     @app.get("/v1/provider-connections")
@@ -102,19 +102,33 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         token_secret = payload.get("tokenSecret")
         if not isinstance(token_id, str) or not isinstance(token_secret, str):
             raise ConnectorError("PROVIDER_CREDENTIALS_REQUIRED", "Modal credentials 不能为空", 422)
-        await run_in_threadpool(current().deployments.connect, token_id, token_secret)
-        rows = current().capabilities.connect_all(token_id, token_secret)
+        await current().deployments.connect_async(token_id, token_secret)
+        rows = await current().capabilities.connect_all_async(token_id, token_secret)
         return {"providers": rows}
 
     @app.post("/v1/providers/disconnect")
     def disconnect_providers():
-        rows = current().capabilities.disconnect_all()
         current().deployments.disconnect()
+        rows = current().capabilities.disconnect_all()
         return {"providers": rows}
 
     @app.get("/v1/deployments")
-    def deployments(provider: str | None = None):
-        return current().deployments.status(provider)
+    async def deployments(provider: str | None = None):
+        return await current().deployments.status_async(provider)
+
+    @app.get("/v1/secrets/huggingface")
+    async def huggingface_secret_status():
+        if not current().deployments.connected:
+            return {"connected": False, "configured": False, "secrets": []}
+        return await run_in_threadpool(current().deployments.huggingface_secret_status)
+
+    @app.post("/v1/secrets/huggingface")
+    async def save_huggingface_secret(request: Request):
+        payload = await _json_body(request)
+        token = payload.get("token")
+        if not isinstance(token, str):
+            raise ConnectorError("HF_TOKEN_REQUIRED", "Hugging Face Token 不能为空", 422)
+        return await run_in_threadpool(current().deployments.save_huggingface_token, token)
 
     @app.get("/v1/deployments/jobs")
     def deployment_jobs(limit: int = 20):
@@ -135,7 +149,7 @@ def create_app(state: Runtime | None = None) -> FastAPI:
             and token_id
             and token_secret
         ):
-            await run_in_threadpool(current().deployments.connect, token_id, token_secret)
+            await current().deployments.connect_async(token_id, token_secret)
         provider = payload.get("provider")
         if provider is not None and not isinstance(provider, str):
             raise ConnectorError("DEPLOYMENT_PROVIDER_INVALID", "provider 必须是字符串", 422)
@@ -161,8 +175,8 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         return {"job": job}
 
     @app.get("/v1/capabilities")
-    def local_capabilities():
-        return current().capabilities.snapshot()
+    async def local_capabilities():
+        return await current().capabilities.snapshot_async()
 
     @app.get("/v1/pairings")
     def pairings():
@@ -203,17 +217,35 @@ def create_app(state: Runtime | None = None) -> FastAPI:
             request_origin=request.headers.get("origin"),
         )
         payload = await _json_body(request)
-        return {"job": current().jobs.submit(payload, session)}
+        job = await run_in_threadpool(current().jobs.submit, payload, session)
+        return {"job": job}
 
     @app.get("/connector/v1/jobs")
-    def list_jobs(request: Request):
+    def list_jobs(
+        request: Request,
+        status: str | None = None,
+        q: str = "",
+        limit: int = 25,
+        offset: int = 0,
+    ):
         session = current().sessions.authorize(
             request.headers.get("authorization"),
             "jobs.read",
             request_origin=request.headers.get("origin"),
         )
-        jobs = current().jobs.list(session)
-        return {"jobs": jobs, "eventCursor": None}
+        page_limit = max(1, min(limit, 200))
+        page_offset = max(0, offset)
+        jobs = current().jobs.list(
+            session, status=status, q=q, limit=page_limit, offset=page_offset
+        )
+        total = current().jobs.count(session, status=status, q=q)
+        return {
+            "jobs": jobs,
+            "total": total,
+            "limit": page_limit,
+            "offset": page_offset,
+            "eventCursor": None,
+        }
 
     @app.get("/connector/v1/jobs/{job_id}")
     def get_job(job_id: str, request: Request):
@@ -232,6 +264,34 @@ def create_app(state: Runtime | None = None) -> FastAPI:
             request_origin=request.headers.get("origin"),
         )
         return {"job": current().jobs.cancel(job_id, session)}
+
+    @app.get("/connector/v1/artifacts")
+    def list_artifacts(request: Request, mime: str | None = None, limit: int = 12, offset: int = 0):
+        session = current().sessions.authorize(
+            request.headers.get("authorization"),
+            "artifacts.read",
+            request_origin=request.headers.get("origin"),
+        )
+        page_limit = max(1, min(limit, 48))
+        page_offset = max(0, offset)
+        owner_client = str(session["client_identity"])
+        owner_origin = str(session["origin"])
+        artifacts = current().artifacts.list(
+            owner_client=owner_client,
+            owner_origin=owner_origin,
+            mime=mime or None,
+            limit=page_limit,
+            offset=page_offset,
+        )
+        total = current().artifacts.count(
+            owner_client=owner_client, owner_origin=owner_origin, mime=mime or None
+        )
+        return {
+            "artifacts": artifacts,
+            "total": total,
+            "limit": page_limit,
+            "offset": page_offset,
+        }
 
     @app.get("/connector/v1/artifacts/{artifact_id}")
     def get_artifact(artifact_id: str, request: Request):

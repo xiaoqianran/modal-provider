@@ -136,9 +136,29 @@ class JobService:
             row = self._refresh(row)
         return self.projection(row)
 
-    def list(self, session: dict[str, object]) -> list[dict[str, object]]:
-        rows = self.store.list_jobs(str(session["client_identity"]), str(session["origin"]))
+    def list(
+        self,
+        session: dict[str, object],
+        *,
+        status: str | None = None,
+        q: str = "",
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        rows = self.store.list_jobs(
+            str(session["client_identity"]),
+            str(session["origin"]),
+            status=status,
+            q=q,
+            limit=limit,
+            offset=offset,
+        )
         return [self.projection(row) for row in rows]
+
+    def count(self, session: dict[str, object], *, status: str | None = None, q: str = "") -> int:
+        return self.store.count_jobs(
+            str(session["client_identity"]), str(session["origin"]), status=status, q=q
+        )
 
     def cancel(self, job_id: str, session: dict[str, object]) -> dict[str, object]:
         row = self._job(job_id, session)

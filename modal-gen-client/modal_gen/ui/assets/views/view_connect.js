@@ -1,6 +1,7 @@
 // Screen: 连接 — inspect the Provider Hub and manage in-memory Modal connections.
 import {
   h, icon, fmtTime, providerBadge, apiGet, apiPost, toast, store, stateEmpty, openDrawer,
+  loadCapabilities, invalidateCapabilities, refreshCurrentRoute, refreshNavCounts,
 } from "../app.js";
 import { parseModalTokenCommand } from "../modal_credentials.js";
 
@@ -39,7 +40,7 @@ export async function mountConnect(root) {
   let connections = [];
   try {
     const [caps, conns] = await Promise.all([
-      apiGet("capabilities"),
+      loadCapabilities().then((snapshot) => ({ snapshot })),
       apiGet("connections").catch(() => ({ providers: [] })),
     ]);
     snap = caps.snapshot;
@@ -50,18 +51,36 @@ export async function mountConnect(root) {
   }
   loading.remove();
 
-  root.append(hubOverview(snap, connections));
-  try {
-    const deployments = await apiGet("deployments");
-    root.append(deploymentPanel(deployments.providers || []));
-  } catch { /* credentials may not be connected yet */ }
-
-  const providers = h("div", { class: "stack" });
   const connectionMap = new Map(connections.map((item) => [item.id, item]));
+  const providers = h("div", { class: "provider-service-grid" });
   for (const provider of snap.providers || []) {
     providers.append(providerCard(provider, connectionMap.get(provider.id)));
   }
   root.append(providers);
+
+  // Runtime deployment state is technical detail. Render the useful business
+  // capabilities first, then resolve Modal control-plane state in the background.
+  const runtimeBody = h("div", { class: "runtime-disclosure__body stack" },
+    hubOverview(snap, connections),
+    h("div", { class: "runtime-panel-host" }, skeletonRows(3))
+  );
+  const runtimeDetails = h("details", { class: "disclosure runtime-disclosure" },
+    h("summary", { class: "disclosure__head" },
+      icon("chevron", 14, "chevron"),
+      h("span", {}, "运行时与部署"),
+      h("span", { class: "muted runtime-disclosure__summary" }, "技术信息 · 后台刷新")
+    ),
+    runtimeBody
+  );
+  root.append(runtimeDetails);
+  const runtimeHost = runtimeBody.querySelector(".runtime-panel-host");
+  apiGet("deployments").then((deployments) => {
+    runtimeHost.replaceChildren(deploymentPanel(deployments.providers || []));
+  }).catch((error) => {
+    runtimeHost.replaceChildren(
+      h("div", { class: "connect-hint" }, `Runtime 状态暂不可用：${String(error.message || error)}`)
+    );
+  });
 
   try {
     const pr = await apiGet("pairings");
@@ -110,16 +129,20 @@ export async function openConnectionSettings() {
     return;
   }
   let connections = [];
+  let hfSecret = { connected: false, configured: false, secrets: [] };
   try {
     const data = await apiGet("connections");
     connections = data.providers || [];
+    if (connections.some((item) => item.connected === true)) {
+      hfSecret = await apiGet("secrets/huggingface");
+    }
   } catch (error) {
     toast(`读取连接状态失败：${String(error.message || error)}`, "danger");
   }
-  openDrawer("连接 Modal", connectionPanel(connections));
+  openDrawer("连接 Modal", connectionPanel(connections, hfSecret));
 }
 
-function connectionPanel(connections) {
+function connectionPanel(connections, hfSecret) {
   const command = h("input", {
     class: "input input--mono connect-command",
     type: "password",
@@ -140,13 +163,55 @@ function connectionPanel(connections) {
     placeholder: "as-...",
   });
   const status = h("div", { class: "connect-hint" },
-    "粘贴完整 Modal CLI 命令会自动提取凭证。Secret 仅保存在当前进程内存。"
+    "粘贴完整 Modal CLI 命令会自动提取凭证。凭证仅保存在当前 Agent 进程内存。"
   );
   const connect = h("button", { class: "btn btn--primary connect-action", type: "button" },
     icon("plug", 15), "连接 Modal"
   );
   const disconnect = h("button", { class: "btn", type: "button" }, "断开全部");
   const deployAll = h("button", { class: "btn", type: "button" }, "部署 2D + 3D");
+  const hfToken = h("input", {
+    class: "input input--mono",
+    type: "password",
+    autocomplete: "off",
+    spellcheck: "false",
+    placeholder: "hf_...",
+  });
+  const hfHint = h("div", { class: `connect-hint ${hfSecret.configured ? "connect-hint--ok" : ""}` },
+    hfSecret.connected
+      ? (hfSecret.configured ? "已保存到 Modal Secrets。Token 不会回显。" : "尚未配置 Hugging Face Token。")
+      : "连接 Modal 后可以保存 Hugging Face Token。"
+  );
+  const saveHf = h("button", {
+    class: "btn", type: "button", disabled: !hfSecret.connected,
+  }, "保存 HF Token");
+
+  saveHf.addEventListener("click", async () => {
+    const token = hfToken.value.trim();
+    if (!token) {
+      hfHint.className = "connect-hint connect-hint--error";
+      hfHint.textContent = "Hugging Face Token 不能为空。";
+      return;
+    }
+    saveHf.disabled = true;
+    hfHint.className = "connect-hint";
+    hfHint.textContent = "正在写入 Modal Secrets…";
+    try {
+      const result = await apiPost("secrets/huggingface", { token });
+      hfToken.value = "";
+      hfHint.className = "connect-hint connect-hint--ok";
+      hfHint.textContent = result.configured
+        ? "已写入 huggingface + hyworld2-hf；Token 不会回显。"
+        : "已保存，但部分 Secret 状态尚未确认。";
+      toast("Hugging Face Token 已保存到 Modal", "ok");
+    } catch (e) {
+      hfToken.value = "";
+      hfHint.className = "connect-hint connect-hint--error";
+      hfHint.textContent = String(e.message || e);
+    } finally {
+      saveHf.disabled = false;
+    }
+  });
 
   command.addEventListener("input", () => {
     const parsed = parseModalTokenCommand(command.value);
@@ -154,7 +219,7 @@ function connectionPanel(connections) {
     if (!parsed) {
       status.textContent = command.value.trim()
         ? "未识别到完整的 --token-id 和 --token-secret。"
-        : "粘贴完整 Modal CLI 命令会自动提取凭证。Secret 仅保存在当前进程内存。";
+        : "粘贴完整 Modal CLI 命令会自动提取凭证。凭证仅保存在当前 Agent 进程内存。";
       return;
     }
     tokenId.value = parsed.tokenId;
@@ -184,7 +249,11 @@ function connectionPanel(connections) {
       status.className = "connect-hint connect-hint--ok";
       status.textContent = "Modal 已连接。";
       toast("2D / 3D 已连接 Modal", "ok");
-      setTimeout(() => location.reload(), 250);
+      invalidateCapabilities();
+      loadCapabilities({ refresh: true }).then(() => {
+        refreshCurrentRoute();
+        refreshNavCounts();
+      }).catch(() => {});
     } catch (e) {
       tokenSecret.value = "";
       status.className = "connect-hint connect-hint--error";
@@ -218,7 +287,9 @@ function connectionPanel(connections) {
     try {
       await apiPost("providers/disconnect", {});
       toast("2D / 3D 已断开 Modal", "ok");
-      setTimeout(() => location.reload(), 200);
+      invalidateCapabilities();
+      refreshCurrentRoute();
+      refreshNavCounts();
     } catch (e) {
       status.className = "connect-hint connect-hint--error";
       status.textContent = String(e.message || e);
@@ -228,7 +299,7 @@ function connectionPanel(connections) {
 
   const managed = connections.filter((item) => item.managed !== false);
   return h("div", { class: "modal-settings" },
-    h("p", { class: "drawer-copy" }, "一组凭证同时用于本机 2D / 3D Provider。凭据只保存在当前 Agent 进程内存中。"),
+    h("p", { class: "drawer-copy" }, "一组凭证同时用于本机 2D / 3D Provider。凭证仅保存在当前 Agent 进程内存。"),
     h("div", { class: "connect-status-grid" },
       ...managed.map((item) => h("div", { class: "connect-provider" },
         h("span", { class: `connect-provider__dot ${item.connected ? "is-on" : ""}` }),
@@ -245,27 +316,56 @@ function connectionPanel(connections) {
     status,
     h("label", { class: "drawer-field" }, h("span", {}, "Modal Token ID"), tokenId),
     h("label", { class: "drawer-field" }, h("span", {}, "Modal Token Secret"), tokenSecret),
-    h("div", { class: "drawer-actions" }, disconnect, deployAll, connect)
+    h("div", { class: "drawer-actions" }, disconnect, deployAll, connect),
+    h("div", { class: "drawer-section" },
+      h("div", { class: "drawer-section__title" }, "Hugging Face"),
+      h("p", { class: "drawer-copy" },
+        "用于 gated / private 模型下载。保存后写入 Modal Secrets：huggingface 与 hyworld2-hf。"
+      ),
+      h("label", { class: "drawer-field" }, h("span", {}, "HF Token"), hfToken),
+      hfHint,
+      h("div", { class: "drawer-actions" }, saveHf)
+    )
   );
 }
 
 function providerCard(provider, connection) {
   const capabilities = provider.capabilities || [];
   const connected = connection?.connected === true;
-  return h("div", { class: "panel" },
-    h("div", { class: "panel__head" },
-      h("h2", { class: "panel__title" }, provider.displayName || provider.id),
-      providerBadge(provider.status),
-      h("span", { class: `badge badge--${connected ? "ok" : "neutral"}` }, connected ? "Modal 已连接" : "Modal 未连接")
+  const serviceTitle = provider.id === "modal-2d"
+    ? "2D 图片生成"
+    : provider.id === "modal-3d"
+      ? "3D 资产生成"
+      : provider.displayName || provider.id;
+  const serviceCopy = provider.id === "modal-2d"
+    ? "Prompt → 图片。选择已就绪模型后直接创建任务。"
+    : provider.id === "modal-3d"
+      ? "图片 → GLB。前处理与 3D Worker 会分别显示就绪状态。"
+      : "生成能力";
+  const technical = h("details", { class: "provider-technical" },
+    h("summary", {}, "技术信息"),
+    kv([
+      ["Provider", provider.id],
+      ["Health", provider.health || "—"],
+      ["Revision", provider.implementationRevision || "—"],
+      ["Artifact transport", provider.artifactTransport || "—"],
+    ])
+  );
+  return h("section", { class: "panel provider-service-card" },
+    h("div", { class: "provider-service-card__head" },
+      h("div", { class: "provider-service-card__identity" },
+        h("span", { class: "provider-service-card__provider" }, provider.displayName || provider.id),
+        h("h2", {}, serviceTitle),
+        h("p", {}, serviceCopy)
+      ),
+      h("div", { class: "provider-service-card__status" },
+        providerBadge(provider.status),
+        h("span", { class: `badge badge--${connected ? "ok" : "neutral"}` }, connected ? "Modal 已连接" : "Modal 未连接")
+      )
     ),
-    h("div", { class: "panel__body stack" },
-      kv([
-        ["Provider", provider.id],
-        ["Health", provider.health || "—"],
-        ["Revision", provider.implementationRevision || "—"],
-        ["Artifact transport", provider.artifactTransport || "—"],
-      ]),
-      ...capabilities.map(capabilityCard)
+    h("div", { class: "provider-service-card__body" },
+      ...capabilities.map(capabilityCard),
+      technical
     )
   );
 }
@@ -274,17 +374,38 @@ function capabilityCard(capability) {
   const schema = capability.input?.schema || {};
   const modelIds = schema.properties?.model?.enum || [];
   const roles = capability.output?.roles || [];
-  return h("div", { class: "cap-row" },
-    h("div", { class: "row spread" },
-      h("strong", {}, capability.displayName || capability.operation),
+  const blockers = Array.isArray(capability.runtimeBlockers) ? capability.runtimeBlockers : [];
+  const blockerRows = blockers.map((item) => {
+    const reason = item.error || (item.status === "missing" ? "未部署" : item.status || "不可用");
+    return h("div", { class: "capability-blocker" },
+      icon("alert", 15),
+      h("div", {},
+        h("strong", {}, "前处理阻塞"),
+        h("span", {}, `${item.app || "required runtime"} · ${reason}`)
+      )
+    );
+  });
+  return h("div", { class: "capability-service" },
+    h("div", { class: "row spread capability-service__head" },
+      h("div", {},
+        h("strong", {}, capability.displayName || capability.operation),
+        h("span", { class: "capability-service__output" }, roles.length ? `输出 ${roles.join(" · ")}` : "")
+      ),
       providerBadge(capability.status)
     ),
-    kv([
-      ["Operation", capability.operation],
-      ["Models", modelIds.join(" · ") || "—"],
-      ["Output", roles.join(" · ") || "—"],
-      ["Profiles", Object.keys(capability.profiles || {}).join(" · ") || "—"],
-    ])
+    h("div", { class: "model-chip-list" },
+      ...(modelIds.length
+        ? modelIds.map((model) => h("span", { class: "model-chip" }, model))
+        : [h("span", { class: "muted" }, "当前没有就绪模型")])
+    ),
+    ...blockerRows,
+    h("details", { class: "capability-technical" },
+      h("summary", {}, "接口信息"),
+      kv([
+        ["Operation", capability.operation],
+        ["Profiles", Object.keys(capability.profiles || {}).join(" · ") || "—"],
+      ])
+    )
   );
 }
 
@@ -345,7 +466,7 @@ function deploymentPanel(rows) {
   const body = h("div", { class: "panel__body stack" });
   const deployAll = deploymentAction("部署全部缺失", "all", null, body, false, true);
   body.append(h("div", { class: "row spread" },
-    h("p", { class: "muted" }, "直接调用 Modal SDK 部署；凭证仅保存在当前 Agent 进程内存。"),
+    h("p", { class: "muted" }, "直接调用 Modal SDK 部署；Modal 凭据保存在本机 .secrets，并在启动时自动恢复。"),
     deployAll
   ));
 

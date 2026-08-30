@@ -132,6 +132,17 @@ async function api(method, path, body) {
 export const apiGet = (p) => api("GET", p);
 export const apiPost = (p, b) => api("POST", p, b);
 
+export async function loadCapabilities({ refresh = false } = {}) {
+  if (!refresh && store.snapshot) return store.snapshot;
+  const data = await apiGet(`capabilities${refresh ? "?refresh=1" : ""}`);
+  store.snapshot = data.snapshot;
+  return store.snapshot;
+}
+
+export function invalidateCapabilities() {
+  store.snapshot = null;
+}
+
 // ------------------------------------------------------------------ toast
 export function toast(message, kind = "") {
   const host = document.getElementById("toast-host");
@@ -278,9 +289,9 @@ export function hashChip(hash, { copyable = true } = {}) {
 async function refreshCounts() {
   try {
     const j = await apiGet("jobs?status=all&page_size=1");
-    const a = await apiGet("artifacts");
+    const a = await apiGet("artifacts?page=1&page_size=1");
     store.counts.jobs = j.total || 0;
-    store.counts.artifacts = Array.isArray(a.artifacts) ? a.artifacts.length : 0;
+    store.counts.artifacts = a.total || 0;
   } catch { /* counts optional */ }
   drawNav();
 }
@@ -315,6 +326,14 @@ function route() {
   const screen = document.getElementById("screen");
   screen.replaceChildren();
   entry.render(screen);
+}
+
+export function refreshCurrentRoute() {
+  route();
+}
+
+export function refreshNavCounts() {
+  refreshCounts();
 }
 
 function paintConnector() {

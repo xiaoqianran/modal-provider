@@ -318,3 +318,161 @@ def test_dialog_ui_restores_focus_and_handles_escape() -> None:
     assert 'if (event.key === "Escape")' in source
     assert "previousFocus.focus()" in source
     assert "cancel.focus();" in source
+
+
+def test_live_gateway_bypasses_environment_proxy(monkeypatch) -> None:
+    import httpx
+
+    from modal_gen.ui.server import LiveGateway
+
+    captured = {}
+
+    def fake_request(method, url, **kwargs):
+        captured.update({"method": method, "url": url, **kwargs})
+        request = httpx.Request(method, url)
+        return httpx.Response(200, json={"ok": True}, request=request)
+
+    monkeypatch.setattr(httpx, "request", fake_request)
+    result = LiveGateway()._req("GET", "/health")
+
+    assert result == {"ok": True}
+    assert captured["trust_env"] is False
+
+
+class _DisconnectingWriter:
+    def __init__(self, exc: OSError) -> None:
+        self.exc = exc
+
+    def write(self, _data: bytes) -> None:
+        raise self.exc
+
+
+def test_ui_response_write_ignores_client_disconnects():
+    from modal_gen.ui.server import Handler
+
+    handler = object.__new__(Handler)
+    for exc in (
+        BrokenPipeError(),
+        ConnectionAbortedError(),
+        ConnectionResetError(),
+    ):
+        handler.wfile = _DisconnectingWriter(exc)
+        handler._write_body(b"payload")
+
+
+def test_demo_gateway_artifacts_are_paginated() -> None:
+    gateway = DemoGateway()
+    first = gateway.artifacts(page=1, page_size=1)
+    second = gateway.artifacts(page=2, page_size=1)
+    assert first["pageSize"] == 1
+    assert first["total"] >= 1
+    assert len(first["artifacts"]) == 1
+    if first["total"] == 1:
+        assert second["artifacts"] == []
+    else:
+        assert second["artifacts"][0]["id"] != first["artifacts"][0]["id"]
+
+
+def test_live_gateway_capability_snapshot_uses_short_ui_cache(monkeypatch) -> None:
+    from modal_gen.ui.server import LiveGateway
+
+    gateway = LiveGateway()
+    snapshot = build_capability_snapshot()
+    calls = []
+
+    def fake_req(method, path, **kwargs):
+        calls.append((method, path))
+        return snapshot
+
+    monkeypatch.setattr(gateway, "_req", fake_req)
+    assert gateway.capabilities()["cached"] is False
+    assert gateway.capabilities()["cached"] is True
+    assert gateway.capabilities(force=True)["cached"] is False
+    assert calls == [("GET", "/v1/capabilities"), ("GET", "/v1/capabilities")]
+
+
+def test_live_gateway_jobs_only_refreshes_visible_page(monkeypatch) -> None:
+    from modal_gen.ui.server import LiveGateway
+
+    gateway = LiveGateway()
+    gateway.token = "session-token"
+    rows = [
+        {
+            "id": f"job_{i}",
+            "status": "running",
+            "operation": "generate",
+            "updatedAt": f"2026-08-31T00:00:0{i}Z",
+            "model": {"id": "m"},
+        }
+        for i in range(4)
+    ]
+    detail_calls = []
+
+    def fake_req(method, path, **kwargs):
+        if path.startswith("/connector/v1/jobs?"):
+            return {"jobs": [rows[2]], "total": len(rows)}
+        detail_calls.append(path)
+        job_id = path.rsplit("/", 1)[-1]
+        return {"job": next(item for item in rows if item["id"] == job_id)}
+
+    monkeypatch.setattr(gateway, "_req", fake_req)
+    result = gateway.jobs(page=2, page_size=1)
+    assert result["total"] == 4
+    assert [item["id"] for item in result["jobs"]] == ["job_2"]
+    assert detail_calls == ["/connector/v1/jobs/job_2"]
+
+
+def test_live_gateway_artifacts_pages_without_remote_job_refresh(monkeypatch) -> None:
+    from modal_gen.ui.server import LiveGateway
+
+    gateway = LiveGateway()
+    gateway.token = "session-token"
+    artifact = {
+        "id": "art_new",
+        "role": "primary-image",
+        "mime": "image/png",
+        "bytes": 10,
+        "hash": "sha256:a",
+        "jobId": "job_new",
+        "updatedAt": "2026-08-31T00:00:02Z",
+        "model": "image-model",
+    }
+    calls = []
+
+    def fake_req(method, path, **kwargs):
+        calls.append(path)
+        assert path.startswith("/connector/v1/artifacts?")
+        return {"artifacts": [artifact], "total": 2}
+
+    monkeypatch.setattr(gateway, "_req", fake_req)
+    result = gateway.artifacts(page=1, page_size=1)
+    assert result["total"] == 2
+    assert result["artifacts"][0]["id"] == "art_new"
+    assert result["artifacts"][0]["model"] == "image-model"
+    assert len(calls) == 1
+
+
+def test_generation_studio_ui_has_batch_prompt_and_lazy_glb_viewer() -> None:
+    create_source = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_create.js").read_text(
+        encoding="utf-8"
+    )
+    artifact_source = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_artifacts.js").read_text(
+        encoding="utf-8"
+    )
+    index = (PROJECT_ROOT / "modal_gen/ui/assets/index.html").read_text(encoding="utf-8")
+
+    assert "一行一个 Prompt" in create_source
+    assert "parsePromptLines" in create_source
+    submit_source = create_source.split("const onSubmit", 1)[1].split(
+        "function renderSourcePicker", 1
+    )[0]
+    assert 'location.hash = "#/jobs"' not in submit_source
+    assert "page_size=8" in create_source
+    assert 'h("model-viewer"' in artifact_source
+    assert 'removeAttribute("src")' in artifact_source
+    assert "PAGE_SIZE = 12" in artifact_source
+    assert (
+        'import("https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js")'
+        in artifact_source
+    )
+    assert "model-viewer/4.3.1/model-viewer.min.js" not in index

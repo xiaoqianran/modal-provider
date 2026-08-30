@@ -35,7 +35,7 @@ class Deployments:
     def __init__(self, required_status="current"):
         self.required_status = required_status
 
-    def status(self, _provider):
+    def cached_status(self, _provider):
         return {
             "providers": [
                 {
@@ -76,11 +76,14 @@ def test_readiness_filters_non_current_models(tmp_path):
     assert provider["runtimeReadiness"]["apps"][2]["status"] == "stale"
 
 
-def test_required_runtime_disables_provider(tmp_path):
+def test_required_runtime_degrades_provider_when_worker_is_ready(tmp_path):
     registry = CapabilityRegistry(
         Store(tmp_path / "db.sqlite3"), [Adapter()], Deployments(required_status="missing")
     )
     provider = registry.snapshot()["providers"][0]
-    assert provider["status"] == "disabled"
-    assert provider["health"] == "unavailable"
-    assert provider["capabilities"][0]["status"] == "disabled"
+    assert provider["status"] == "degraded"
+    assert provider["health"] == "degraded"
+    capability = provider["capabilities"][0]
+    assert capability["status"] == "degraded"
+    assert capability["readyModels"] == ["ready"]
+    assert capability["runtimeBlockers"] == [{"app": "prep", "status": "missing", "error": None}]

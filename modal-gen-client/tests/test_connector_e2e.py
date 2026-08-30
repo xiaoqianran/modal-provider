@@ -230,6 +230,21 @@ def test_full_pair_capability_job_artifact_contract(tmp_path: Path, monkeypatch)
             assert summary["id"] != "provider_art_01"
             assert summary["hash"] == f"sha256:{hashlib.sha256(PNG).hexdigest()}"
 
+            jobs_page = await client.get("/connector/v1/jobs?limit=1&offset=0", headers=auth)
+            assert jobs_page.status_code == 200
+            assert jobs_page.json()["total"] == 1
+            assert [item["id"] for item in jobs_page.json()["jobs"]] == [job_id]
+            jobs_after_end = await client.get("/connector/v1/jobs?limit=1&offset=1", headers=auth)
+            assert jobs_after_end.json()["jobs"] == []
+
+            artifacts_page = await client.get(
+                "/connector/v1/artifacts?mime=image%2Fpng&limit=1&offset=0", headers=auth
+            )
+            assert artifacts_page.status_code == 200
+            assert artifacts_page.json()["total"] == 1
+            assert artifacts_page.json()["artifacts"][0]["id"] == summary["id"]
+            assert artifacts_page.json()["artifacts"][0]["jobId"] == job_id
+
             artifact = await client.get(
                 f"/connector/v1/artifacts/{summary['id']}",
                 headers={**auth, "Accept": "image/png"},

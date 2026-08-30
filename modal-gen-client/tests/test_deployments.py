@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -23,7 +24,8 @@ def test_status_only_marks_not_found_as_missing(monkeypatch):
         raise NotFoundError("missing")
 
     monkeypatch.setattr("modal_gen.deployments.modal.App.lookup", missing)
-    row = DeploymentService._target_status(target, SimpleNamespace())
+    service = DeploymentService(targets=(target,))
+    row = service._target_status(target, SimpleNamespace())
     assert row["status"] == "missing"
 
 
@@ -141,7 +143,7 @@ def test_missing_only_skips_existing_runtime(monkeypatch):
     monkeypatch.setattr(
         service,
         "_target_status",
-        lambda target, _client: {
+        lambda target, _client, _environment=None: {
             "provider": target.provider,
             "app": target.app_name,
             "module": target.module,
@@ -197,7 +199,8 @@ def test_target_status_distinguishes_current_and_stale(monkeypatch):
         "modal_gen.deployments.modal.App.lookup",
         lambda *_args, **_kwargs: RemoteApp("sha256-expected"),
     )
-    current = DeploymentService._target_status(target, SimpleNamespace())
+    service = DeploymentService(targets=(target,))
+    current = service._target_status(target, SimpleNamespace())
     assert current["status"] == "current"
     assert current["deployedRevision"] == "sha256-expected"
 
@@ -205,7 +208,7 @@ def test_target_status_distinguishes_current_and_stale(monkeypatch):
         "modal_gen.deployments.modal.App.lookup",
         lambda *_args, **_kwargs: RemoteApp("sha256-old"),
     )
-    stale = DeploymentService._target_status(target, SimpleNamespace())
+    stale = service._target_status(target, SimpleNamespace())
     assert stale["status"] == "stale"
     assert stale["expectedRevision"] == "sha256-expected"
     assert stale["deployedRevision"] == "sha256-old"
@@ -249,3 +252,89 @@ def test_rejects_revision_that_modal_cannot_use_as_deployment_tag():
             targets=(DeploymentTarget("modal-2d", "worker", "runtime.worker", "sha256:bad"),)
         )
     assert exc.value.code == "DEPLOYMENT_REVISION_INVALID"
+
+
+def test_async_status_returns_disconnected_without_credentials():
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker")
+    service = DeploymentService(targets=(target,))
+
+    result = asyncio.run(service.status_async("modal-2d"))
+
+    assert result["connected"] is False
+    assert result["providers"][0]["status"] == "disconnected"
+    assert result["providers"][0]["apps"][0]["status"] == "disconnected"
+
+
+def test_async_status_uses_readiness_ttl_cache(monkeypatch):
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker")
+    service = DeploymentService(targets=(target,), readiness_ttl_s=10.0)
+    service._client = SimpleNamespace()
+    calls = []
+
+    async def fake_status(target, _client, _environment=None):
+        calls.append(target.app_name)
+        return {
+            "provider": target.provider,
+            "app": target.app_name,
+            "module": target.module,
+            "status": "current",
+            "expectedRevision": target.revision,
+            "deployedRevision": target.revision,
+            "models": list(target.models),
+            "required": target.required,
+        }
+
+    monkeypatch.setattr(service, "_target_status_async", fake_status)
+
+    async def scenario():
+        first = await service.status_async("modal-2d")
+        second = await service.status_async("modal-2d")
+        return first, second
+
+    first, second = asyncio.run(scenario())
+    assert first == second
+    assert calls == ["worker"]
+
+
+def test_huggingface_secret_status_never_returns_values(monkeypatch):
+    service = DeploymentService(targets=())
+    service._client = SimpleNamespace()
+    monkeypatch.setattr(
+        "modal_gen.deployments._modal_secret_names",
+        lambda _client: {"huggingface"},
+    )
+
+    status = service.huggingface_secret_status()
+
+    assert status == {
+        "connected": True,
+        "configured": False,
+        "secrets": [
+            {"name": "huggingface", "exists": True},
+            {"name": "hyworld2-hf", "exists": False},
+        ],
+    }
+    assert "hf_" not in repr(status)
+
+
+def test_save_huggingface_token_updates_and_creates_compat_secrets(monkeypatch):
+    service = DeploymentService(targets=())
+    service._client = SimpleNamespace()
+    calls = []
+    listings = iter([{"huggingface"}, {"huggingface", "hyworld2-hf"}])
+    monkeypatch.setattr(
+        "modal_gen.deployments._modal_secret_names",
+        lambda _client: next(listings),
+    )
+    monkeypatch.setattr(
+        "modal_gen.deployments._upsert_modal_secret",
+        lambda name, token, _client, *, exists: calls.append((name, token, exists)),
+    )
+
+    status = service.save_huggingface_token("  hf_test_secret  ")
+
+    assert calls == [
+        ("huggingface", "hf_test_secret", True),
+        ("hyworld2-hf", "hf_test_secret", False),
+    ]
+    assert status["configured"] is True

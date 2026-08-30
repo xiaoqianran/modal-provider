@@ -20,6 +20,14 @@ def connect(token_id: str, token_secret: str) -> None:
         _client = candidate
 
 
+async def connect_async(token_id: str, token_secret: str) -> None:
+    global _client
+    candidate = await modal.Client.from_credentials.aio(token_id.strip(), token_secret.strip())
+    await candidate.hello.aio()
+    with _lock:
+        _client = candidate
+
+
 def disconnect() -> None:
     global _client
     with _lock:

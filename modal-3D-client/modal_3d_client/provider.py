@@ -69,6 +69,10 @@ class Modal3DProvider:
         modal_session.connect(token_id, token_secret)
         return self.connection_status()
 
+    async def connect_async(self, token_id: str, token_secret: str) -> dict[str, object]:
+        await modal_session.connect_async(token_id, token_secret)
+        return self.connection_status()
+
     def disconnect(self) -> dict[str, object]:
         modal_session.disconnect()
         return self.connection_status()

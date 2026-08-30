@@ -56,6 +56,33 @@ class ArtifactService:
         self.store.create_artifact(row)
         return row
 
+    def list(
+        self,
+        *,
+        owner_client: str,
+        owner_origin: str,
+        mime: str | None = None,
+        limit: int = 12,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        rows = self.store.list_artifacts(
+            owner_client, owner_origin, mime=mime, limit=limit, offset=offset
+        )
+        return [
+            {
+                **self.summary(row),
+                "jobId": row["job_id"],
+                "updatedAt": row.get("updated_at"),
+                "model": (row.get("model") or {}).get("id")
+                if isinstance(row.get("model"), dict)
+                else None,
+            }
+            for row in rows
+        ]
+
+    def count(self, *, owner_client: str, owner_origin: str, mime: str | None = None) -> int:
+        return self.store.count_artifacts(owner_client, owner_origin, mime=mime)
+
     def resolve_input(
         self,
         artifact_id: str,
@@ -84,12 +111,9 @@ class ArtifactService:
         owner_client: str,
         owner_origin: str,
     ) -> tuple[dict[str, object], Path]:
-        artifact = self.store.get_artifact(artifact_id, owner_client, owner_origin)
-        if not artifact:
-            raise ConnectorError("ARTIFACT_NOT_FOUND", "Artifact 不存在", 404)
-        job = self.store.get_job(str(artifact["job_id"]), owner_client, owner_origin)
-        if not job:
-            raise ConnectorError("ARTIFACT_NOT_FOUND", "Artifact owner 不存在", 404)
+        artifact, job = self._owned_artifact(
+            artifact_id, owner_client=owner_client, owner_origin=owner_origin
+        )
         digest = str(artifact["hash"])
         if not digest.startswith("sha256:") or len(digest) != 71:
             raise ConnectorError("ARTIFACT_INVALID", "Artifact hash contract 无效", 500)
@@ -127,6 +151,21 @@ class ArtifactService:
         finally:
             temporary.unlink(missing_ok=True)
         return artifact, destination
+
+    def _owned_artifact(
+        self,
+        artifact_id: str,
+        *,
+        owner_client: str,
+        owner_origin: str,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        artifact = self.store.get_artifact(artifact_id, owner_client, owner_origin)
+        if not artifact:
+            raise ConnectorError("ARTIFACT_NOT_FOUND", "Artifact 不存在", 404)
+        job = self.store.get_job(str(artifact["job_id"]), owner_client, owner_origin)
+        if not job:
+            raise ConnectorError("ARTIFACT_NOT_FOUND", "Artifact owner 不存在", 404)
+        return artifact, job
 
     @staticmethod
     def summary(row: dict[str, object]) -> dict[str, object]:
