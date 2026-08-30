@@ -109,6 +109,7 @@ HF_TOKEN=<具备目标模型访问权限的 Hugging Face Token>
 - `modal-gen-client` (`main`) → https://github.com/xiaoqianran/modal-gen-client
 - `modal-EmbodiedGen` (`master`) → https://github.com/xiaoqianran/modal-EmbodiedGen
 - `modal-build` (`master`) → https://github.com/xiaoqianran/modal-build
+- `modal-world` (`master`) → https://github.com/xiaoqianran/modal-world
 
 ### 同步前必须检查
 
@@ -123,6 +124,26 @@ HF_TOKEN=<具备目标模型访问权限的 Hugging Face Token>
 ```bash
 ./scripts/check-standalone-sync.sh modal-2D modal-2D-client modal-gen-client
 ```
+
+安全同步必须使用仓库内置脚本，而不是整目录覆盖：
+
+```bash
+# 默认只做 dry-run，不写远端
+./scripts/sync-standalone.sh modal-build
+./scripts/sync-standalone.sh modal-world
+
+# 审查输出后才允许普通 fast-forward push
+./scripts/sync-standalone.sh modal-world --push
+```
+
+该脚本有以下硬约束：
+
+- 源 package 必须是已提交的干净状态；
+- `.git` 与 `.github` 永远不参与复制，standalone 自己的 CI / Release workflow 保留；
+- 发现 standalone-only 普通文件时默认拒绝删除，必须审查后显式传 `--allow-delete`；
+- 只执行普通 branch push，不使用 `--force`、不推 tag；
+- 不调用 `gh release`，因此不会创建、覆盖或删除 GitHub Release / Release assets；
+- push 后必须重新读取远端 branch HEAD 并与本地 commit 对齐。
 
 输出含义：
 
