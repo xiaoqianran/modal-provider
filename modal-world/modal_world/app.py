@@ -845,7 +845,7 @@ def preflight_worldgen_case000_stage5() -> dict:
     volumes={"/models": model_cache, "/worldgen": worldgen_outputs},
     timeout=20 * 60,
 )
-def worldgen_case000_stage5_smoke() -> dict:
+def worldgen_case000_stage5_smoke(job_id: str = "case000") -> dict:
     """Run a short real 3DGS optimization to validate the final world-generation stage."""
     import json
     import os
@@ -861,7 +861,7 @@ def worldgen_case000_stage5_smoke() -> dict:
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     os.environ["PYTHONFAULTHANDLER"] = "1"
 
-    target = Path("/worldgen/case000")
+    target = resolve_worldgen_job_root(job_id)
     data_dir = target / "gs_data"
     result_dir = target / "gs_smoke_result"
     if result_dir.exists():
