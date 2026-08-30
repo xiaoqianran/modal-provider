@@ -61,3 +61,10 @@ Public bundles can be installed with `scripts/install_release.sh`. The restricte
 Modal Volume and should later be mounted/installed by the HYWorld2 worker without compiling it again.
 Model checkpoints are stored separately in Modal Volume or a pinned Hugging Face snapshot; they are
 never GitHub Release assets.
+
+## Validated ComfyUI runtime
+
+`comfyui_modal` also contains the cost-controlled Python 3.12 + CUDA 13.0 + PyTorch 2.9.1 runtime
+validated on Modal `RTX-PRO-6000`. Its ABI is recorded in
+`env/hyworld2-comfyui-py312-cu130-torch291-sm120-v1.json`. Do not install the Python 3.11 / CUDA
+12.8 / PyTorch 2.7.1 release wheels into that runtime; native wheel ABIs must match exactly.
