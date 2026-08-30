@@ -21,3 +21,16 @@ def test_stage5_smoke_uses_job_isolated_worldgen_root():
     assert "target = resolve_worldgen_job_root(job_id)" in section
     assert 'Path("/worldgen/case000")' not in section
     assert 'result_dir = target / "gs_smoke_result"' in section
+
+
+def test_stage5_smoke_reuses_persistent_runtime_cache_and_requires_preloaded_vgg():
+    source = Path("modal_world/app.py").read_text()
+    start = source.index("@app.function(\n    image=hyworld2_worldgen_stage5_image,\n    gpu=GPU")
+    section = source[start:]
+    assert '"/runtime-cache": runtime_cache' in section
+    assert "model_cache.with_mount_options(read_only=True)" in section
+    assert "TORCH_EXTENSIONS_DIR" in section
+    assert "TORCHINDUCTOR_CACHE_DIR" in section
+    assert "TRITON_CACHE_DIR" in section
+    assert "vgg16-397923af.pth" in section
+    assert "Stage 5 VGG16 cache missing" in section

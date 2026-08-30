@@ -861,7 +861,7 @@ def worldgen_case000_stage4(job_id: str = "case000") -> dict:
     volumes={"/models": model_cache, "/worldgen": worldgen_outputs},
     timeout=45 * 60,
 )
-def preflight_worldgen_case000_stage5() -> dict:
+def preflight_worldgen_case000_stage5(job_id: str = "case000") -> dict:
     """CPU-only Stage 5 preflight: cache LPIPS and parse the real GS dataset."""
     import json
     import os
@@ -874,7 +874,8 @@ def preflight_worldgen_case000_stage5() -> dict:
     os.environ["XDG_CACHE_HOME"] = "/models/cache"
     os.environ["PYTHONPATH"] = f"{HYWORLD2_SOURCE}/hyworld2/worldgen:{HYWORLD2_SOURCE}"
 
-    data_dir = Path("/worldgen/case000/gs_data")
+    target = resolve_worldgen_job_root(job_id)
+    data_dir = target / "gs_data"
     required = [
         data_dir / "cameras.json",
         data_dir / "points.ply",
@@ -965,7 +966,11 @@ def preflight_worldgen_case000_stage5() -> dict:
     gpu=GPU,
     cpu=16.0,
     memory=65536,
-    volumes={"/models": model_cache, "/worldgen": worldgen_outputs},
+    volumes={
+        "/models": model_cache.with_mount_options(read_only=True),
+        "/runtime-cache": runtime_cache,
+        "/worldgen": worldgen_outputs,
+    },
     timeout=20 * 60,
 )
 def worldgen_case000_stage5_smoke(job_id: str = "case000") -> dict:
@@ -983,6 +988,11 @@ def worldgen_case000_stage5_smoke(job_id: str = "case000") -> dict:
     os.environ["XDG_CACHE_HOME"] = "/models/cache"
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     os.environ["PYTHONFAULTHANDLER"] = "1"
+    os.environ["CUDA_CACHE_PATH"] = "/runtime-cache/cuda-cache"
+    os.environ["CUDA_CACHE_MAXSIZE"] = str(4 * 1024**3)
+    os.environ["TORCH_EXTENSIONS_DIR"] = "/runtime-cache/torch-extensions"
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/runtime-cache/torchinductor"
+    os.environ["TRITON_CACHE_DIR"] = "/runtime-cache/triton"
 
     target = resolve_worldgen_job_root(job_id)
     data_dir = target / "gs_data"
@@ -998,6 +1008,11 @@ def worldgen_case000_stage5_smoke(job_id: str = "case000") -> dict:
     missing = [str(path) for path in required if not path.exists()]
     if missing:
         raise RuntimeError(f"Stage 5 smoke missing GS data: {missing}")
+    vgg_cache = Path("/models/torch/hub/checkpoints/vgg16-397923af.pth")
+    if not vgg_cache.is_file():
+        raise RuntimeError(
+            "Stage 5 VGG16 cache missing; run preflight_worldgen_case000_stage5 first"
+        )
 
     worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
     log_path = target / "stage5_smoke.log"
@@ -1101,6 +1116,7 @@ def worldgen_case000_stage5_smoke(job_id: str = "case000") -> dict:
         "spz_count": len(spzs),
     }
     timing_path.write_text(json.dumps(timing, indent=2) + "\n")
+    runtime_cache.commit()
     worldgen_outputs.commit()
     if completed.returncode != 0:
         raise RuntimeError(
