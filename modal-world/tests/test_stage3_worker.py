@@ -122,3 +122,13 @@ def test_stage3_phase2_frame_alignment_has_detail_profiling():
         assert name in patch
     assert '"alignment_phase2_detail": alignment_phase2_detail' in worker
     assert 'alignment_phase2_detail["unattributed"]' in worker
+
+
+def test_stage3_percentile_ranking_stays_on_gpu():
+    patch = Path("modal_world/stage3_patch.py").read_text()
+    assert "def compute_depth_percentile_map_torch" in patch
+    assert "torch.sort(valid_depths).values" in patch
+    assert "torch.searchsorted(sorted_depths, valid_depths, right=True)" in patch
+    assert "guided_depth_percentile_t" in patch
+    assert "mono_depth_percentile_t" in patch
+    assert "guided_mono_mask.float().sum()" in patch

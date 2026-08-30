@@ -94,6 +94,22 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
         )
         source = source.replace(marker, timing + marker, 1)
 
+    percentile_helper_marker = "def calculate_camera_distance(cam1_extrinsic, cam2_extrinsic):\n"
+    if source.count(percentile_helper_marker) != 1:
+        raise RuntimeError("expected pinned percentile helper insertion marker not found")
+    percentile_helper = (
+        "def compute_depth_percentile_map_torch(depth, depth_mask):\n"
+        "    percentile_map = torch.zeros_like(depth, dtype=torch.float32)\n"
+        "    valid_depths = depth[depth_mask]\n"
+        "    if valid_depths.numel() == 0:\n"
+        "        return percentile_map\n"
+        "    sorted_depths = torch.sort(valid_depths).values\n"
+        "    ranks = torch.searchsorted(sorted_depths, valid_depths, right=True)\n"
+        "    percentile_map[depth_mask] = ranks.to(torch.float32) * (100.0 / valid_depths.numel())\n"
+        "    return percentile_map\n\n\n"
+    )
+    source = source.replace(percentile_helper_marker, percentile_helper + percentile_helper_marker, 1)
+
     phase2_marker = (
         "        # Phase 2: Preprocessing -- precompute MoGe depth and SAM3 sky masks by video.\n"
     )
@@ -252,6 +268,57 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
         + '                self.alignment_phase2_detail["ransac"] += time.perf_counter() - _phase2_detail_started\n',
         1,
     )
+
+    percentile_compute_old = (
+        "                    guided_depth_np = guided_depth.cpu().numpy()\n"
+        "                    # Compute percentile maps for guided depth and mono depth.\n"
+        "                    guided_mono_mask = (guided_depth_mask & mono_depth_mask).cpu().numpy()\n"
+        "                    mono_depth_np = mono_depth.cpu().numpy()\n"
+        "                    guided_depth_percentile = compute_depth_percentile_map(guided_depth_np, guided_mono_mask)\n"
+        "                    mono_depth_percentile = compute_depth_percentile_map(mono_depth_np, guided_mono_mask)\n"
+        "                    percentile_mask = np.abs(guided_depth_percentile - mono_depth_percentile) > self.percentile_threshold\n"
+        "                    percentile_mask = torch.from_numpy(percentile_mask).bool().to(self.device)\n"
+    )
+    percentile_compute_new = (
+        "                    # Keep percentile ranking on GPU for the normal production path.\n"
+        "                    guided_mono_mask = guided_depth_mask & mono_depth_mask\n"
+        "                    guided_depth_percentile_t = compute_depth_percentile_map_torch(\n"
+        "                        guided_depth, guided_mono_mask\n"
+        "                    )\n"
+        "                    mono_depth_percentile_t = compute_depth_percentile_map_torch(\n"
+        "                        mono_depth, guided_mono_mask\n"
+        "                    )\n"
+        "                    percentile_mask = (\n"
+        "                        torch.abs(guided_depth_percentile_t - mono_depth_percentile_t)\n"
+        "                        > self.percentile_threshold\n"
+        "                    )\n"
+    )
+    if source.count(percentile_compute_old) != 1:
+        raise RuntimeError("expected pinned CPU percentile compute block not found")
+    source = source.replace(percentile_compute_old, percentile_compute_new, 1)
+
+    debug_marker = "                    if debug_mode:\n                        # Visualize debug outputs.\n"
+    debug_replacement = (
+        "                    if debug_mode:\n"
+        "                        guided_depth_np = guided_depth.cpu().numpy()\n"
+        "                        mono_depth_np = mono_depth.cpu().numpy()\n"
+        "                        guided_depth_percentile = guided_depth_percentile_t.cpu().numpy()\n"
+        "                        mono_depth_percentile = mono_depth_percentile_t.cpu().numpy()\n"
+        "                        # Visualize debug outputs.\n"
+    )
+    if source.count(debug_marker) != 1:
+        raise RuntimeError("expected pinned percentile debug marker not found")
+    source = source.replace(debug_marker, debug_replacement, 1)
+
+    percentile_log_old = (
+        '                                    f" depth percentile error ratio: {percentile_mask.float().sum() / (guided_mono_mask.sum() + 1e-7):.5f}", "info")\n'
+    )
+    percentile_log_new = (
+        '                                    f" depth percentile error ratio: {percentile_mask.float().sum() / (guided_mono_mask.float().sum() + 1e-7):.5f}", "info")\n'
+    )
+    if source.count(percentile_log_old) != 1:
+        raise RuntimeError("expected pinned percentile log line not found")
+    source = source.replace(percentile_log_old, percentile_log_new, 1)
 
     alignment_pos = source.index(alignment_start)
     next_method = source.find("\n    def ", alignment_pos + len(alignment_start))
