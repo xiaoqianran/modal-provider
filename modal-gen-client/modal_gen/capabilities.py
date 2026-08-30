@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from .constants import CONNECTOR_ID, CONNECTOR_VERSION, CONTRACT_VERSION
 from .errors import ProviderError
 from .providers.protocol import ProviderAdapter
-from .runtime_state import project_runtime_readiness
+from .runtime_state import project_runtime_failure, project_runtime_readiness
 from .storage import Store
 
 
@@ -99,9 +99,12 @@ class CapabilityRegistry:
     ) -> dict[str, object]:
         if self.deployments is None or not self.deployments.connected:
             return descriptor
-        readiness = self.deployments.cached_status(provider_id)
-        if readiness is None:
-            return descriptor
+        try:
+            readiness = self.deployments.cached_status(provider_id)
+            if readiness is None:
+                readiness = self.deployments.status(provider_id)
+        except Exception as exc:
+            return project_runtime_failure(descriptor, provider_id, exc)
         return project_runtime_readiness(descriptor, readiness)
 
     async def _with_runtime_readiness_async(
@@ -115,9 +118,81 @@ class CapabilityRegistry:
             return descriptor
         try:
             readiness = await self.deployments.status_async(provider_id, force=force_runtime)
-        except Exception:
-            return descriptor
+        except Exception as exc:
+            return project_runtime_failure(descriptor, provider_id, exc)
         return project_runtime_readiness(descriptor, readiness)
+
+    def ensure_submission_ready(
+        self, provider_id: str, operation: str, inputs: dict[str, object]
+    ) -> None:
+        """Verify the selected runtime immediately before provider dispatch."""
+
+        if self.deployments is None or not self.deployments.manages_provider(provider_id):
+            return
+        adapter = self.adapter(provider_id)
+        descriptor = adapter.descriptor()
+        try:
+            connection = adapter.connection_status()
+        except (AttributeError, ProviderError):
+            connection = {}
+        if connection.get("managed") is False:
+            return
+        if not self.deployments.connected:
+            raise ProviderError("JOB_RUNTIME_UNAVAILABLE", "Provider Runtime 当前未连接", 409)
+
+        capability = self._operation(descriptor, operation)
+        model_schema = self._model_schema(capability)
+        requested_model = inputs.get("model")
+        model = str(requested_model).strip() if isinstance(requested_model, str) else ""
+        if not model and model_schema is not None:
+            default_model = model_schema.get("default")
+            if isinstance(default_model, str):
+                model = default_model.strip()
+
+        try:
+            readiness = self.deployments.submission_status(provider_id, model or None)
+        except Exception as exc:
+            raise ProviderError(
+                "JOB_RUNTIME_UNAVAILABLE", f"Provider Runtime 状态校验失败: {exc}", 409
+            ) from exc
+
+        projected = project_runtime_readiness(descriptor, readiness)
+        projected_capability = self._operation(projected, operation)
+        if (
+            projected.get("status") != "available"
+            or projected_capability.get("status") != "available"
+        ):
+            raise ProviderError("JOB_RUNTIME_UNAVAILABLE", "Provider Runtime 当前不可提交", 409)
+        if model:
+            live_schema = self._model_schema(projected_capability)
+            live_models = live_schema.get("enum") if live_schema is not None else None
+            if isinstance(live_models, list) and model not in live_models:
+                raise ProviderError(
+                    "JOB_RUNTIME_UNAVAILABLE", f"模型 {model} 当前 Runtime 不可用", 409
+                )
+
+    @staticmethod
+    def _operation(descriptor: dict[str, object], operation: str) -> dict[str, object]:
+        capabilities = descriptor.get("capabilities")
+        if isinstance(capabilities, list):
+            for capability in capabilities:
+                if isinstance(capability, dict) and capability.get("operation") == operation:
+                    return capability
+        raise ProviderError("JOB_CAPABILITY_UNAVAILABLE", "Capability 当前不可用", 409)
+
+    @staticmethod
+    def _model_schema(capability: dict[str, object]) -> dict[str, object] | None:
+        input_desc = capability.get("input")
+        if not isinstance(input_desc, dict):
+            return None
+        schema = input_desc.get("schema")
+        if not isinstance(schema, dict):
+            return None
+        properties = schema.get("properties")
+        if not isinstance(properties, dict):
+            return None
+        model = properties.get("model")
+        return model if isinstance(model, dict) else None
 
     def get(self, hash_value: str) -> dict[str, object] | None:
         return self.store.get_snapshot(hash_value)

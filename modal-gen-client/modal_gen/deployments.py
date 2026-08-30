@@ -238,6 +238,9 @@ class DeploymentService:
             raise ConnectorError("DEPLOYMENT_PROVIDER_UNKNOWN", f"未知 Provider: {provider}", 422)
         return selected
 
+    def manages_provider(self, provider: str) -> bool:
+        return any(target.provider == provider for target in self._targets_all)
+
     def _select_targets(
         self,
         provider: str | None,
@@ -262,6 +265,26 @@ class DeploymentService:
         client = self._require_client()
         rows = [self._target_status(target, client) for target in self._targets(provider)]
         return self._summary(rows)
+
+    def submission_status(self, provider: str, model: str | None = None) -> dict[str, object]:
+        """Read only the runtime targets required for one submission."""
+
+        client = self._require_client()
+        targets = self._targets(provider)
+        model_targets = tuple(
+            target for target in targets if model is not None and model in target.models
+        )
+        if model is not None and not model_targets:
+            raise ConnectorError("DEPLOYMENT_MODEL_UNKNOWN", f"未知 Runtime 模型: {model}", 422)
+        selected = tuple(
+            dict.fromkeys(
+                target for target in targets if target.required or target in model_targets
+            )
+        )
+        if not selected:
+            selected = targets
+        rows = [self._target_status(target, client) for target in selected]
+        return {"connected": True, **self._summary(rows)}
 
     async def status_async(
         self,

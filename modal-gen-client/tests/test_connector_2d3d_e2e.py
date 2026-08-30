@@ -58,6 +58,16 @@ class Fake2DJobs:
         return self.descriptor, self.path
 
 
+class StubModal2DProvider(Modal2DProvider):
+    def deployment_manifest(self) -> dict[str, object]:
+        return {"provider": self.id, "targets": []}
+
+
+class StubModal3DProvider(Modal3DProvider):
+    def deployment_manifest(self) -> dict[str, object]:
+        return {"provider": self.id, "targets": []}
+
+
 class Fake3DJobs:
     def __init__(self, root: Path) -> None:
         self.path = root / "model.glb"
@@ -160,7 +170,7 @@ def test_connector_composes_builtin_2d_artifact_into_builtin_3d(tmp_path: Path, 
     )
     jobs_2d = Fake2DJobs(tmp_path)
     jobs_3d = Fake3DJobs(tmp_path)
-    adapters = adapt_providers([Modal2DProvider(jobs_2d), Modal3DProvider(jobs_3d)])
+    adapters = adapt_providers([StubModal2DProvider(jobs_2d), StubModal3DProvider(jobs_3d)])
     runtime = build_runtime(Store(tmp_path / "connector.sqlite3"), adapters=adapters)
     _token, session = pair(runtime)
     snapshot = runtime.capabilities.get(str(session["capability_hash"]))

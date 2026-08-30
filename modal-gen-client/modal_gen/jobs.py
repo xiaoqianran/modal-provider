@@ -79,6 +79,7 @@ class JobService:
 
         relations = self._relations(payload.get("parent"), owner_client, owner_origin)
         inputs = safe_json(payload["inputs"], "inputs")
+        self.capabilities.ensure_submission_ready(provider_id, operation, inputs)
         options = safe_json(payload.get("options") or {}, "options")
         profile = None if payload.get("profile") is None else str(payload["profile"])
         adapter = self.capabilities.adapter(provider_id)

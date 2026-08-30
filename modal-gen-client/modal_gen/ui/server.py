@@ -413,7 +413,12 @@ class LiveGateway:
             self.session_data = second["session"]
             return second
 
-    def _ensure_session(self) -> None:
+    def _ensure_session(self, snapshot: dict | None = None) -> None:
+        if snapshot is not None and self.token and self.session_data:
+            session_hash = self.session_data.get("capabilityHash")
+            if session_hash != snapshot.get("hash"):
+                self.token = None
+                self.session_data = None
         if not self.token:
             self.session()
 
@@ -496,7 +501,7 @@ class LiveGateway:
         }
         body["requestHash"] = request_hash(body)
         body["idempotencyKey"] = idempotency_key(body)
-        self._ensure_session()
+        self._ensure_session(snapshot)
         try:
             payload = self._req(
                 "POST",

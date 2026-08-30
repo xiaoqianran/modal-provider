@@ -125,3 +125,83 @@ def test_async_snapshot_can_force_runtime_readiness_refresh(tmp_path):
 
     assert snapshot["providers"][0]["status"] == "available"
     assert calls == [("modal-x", True)]
+
+
+def test_async_readiness_failure_fails_closed(tmp_path):
+    class BrokenDeployments(Deployments):
+        async def status_async(self, _provider, *, force=False):
+            assert force is True
+            raise RuntimeError("control plane unavailable")
+
+    registry = CapabilityRegistry(Store(tmp_path / "db.sqlite3"), [Adapter()], BrokenDeployments())
+    provider = asyncio.run(registry.snapshot_async(force_runtime=True))["providers"][0]
+    capability = provider["capabilities"][0]
+
+    assert provider["status"] == "disabled"
+    assert provider["health"] == "unavailable"
+    assert capability["status"] == "disabled"
+    assert capability["input"]["schema"]["properties"]["model"]["enum"] == []
+    assert capability["readyModels"] == []
+    assert {row["state"] for row in capability["modelReadiness"]} == {"error"}
+    assert "control plane unavailable" in capability["runtimeBlockers"][0]["error"]
+
+
+def test_sync_readiness_without_cache_queries_live_status(tmp_path):
+    calls = []
+
+    class UncachedDeployments(Deployments):
+        def cached_status(self, _provider):
+            return None
+
+        def status(self, provider):
+            calls.append(provider)
+            return super().cached_status(provider)
+
+    registry = CapabilityRegistry(
+        Store(tmp_path / "db.sqlite3"), [Adapter()], UncachedDeployments()
+    )
+    provider = registry.snapshot()["providers"][0]
+
+    assert provider["status"] == "available"
+    assert calls == ["modal-x"]
+
+
+def test_submission_runtime_gate_rejects_missing_selected_worker(tmp_path):
+    class SubmissionDeployments:
+        connected = True
+
+        @staticmethod
+        def manages_provider(provider):
+            return provider == "modal-x"
+
+        @staticmethod
+        def submission_status(provider, model):
+            assert (provider, model) == ("modal-x", "ready")
+            return {
+                "providers": [
+                    {
+                        "id": "modal-x",
+                        "status": "partial",
+                        "apps": [
+                            {
+                                "app": "ready-app",
+                                "status": "missing",
+                                "required": False,
+                                "models": ["ready"],
+                                "error": "App not found",
+                            }
+                        ],
+                    }
+                ]
+            }
+
+    registry = CapabilityRegistry(
+        Store(tmp_path / "db.sqlite3"), [Adapter()], SubmissionDeployments()
+    )
+
+    try:
+        registry.ensure_submission_ready("modal-x", "generate", {"model": "ready"})
+    except Exception as exc:
+        assert getattr(exc, "code", None) == "JOB_RUNTIME_UNAVAILABLE"
+    else:
+        raise AssertionError("missing worker must block submission")

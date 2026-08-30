@@ -572,3 +572,34 @@ def test_force_deploy_stale_runtime_publishes_latest_code(monkeypatch):
     assert result["providers"][0]["status"] == "current"
     assert len(calls) == 1
     assert calls[0]["strategy"] == "rolling"
+
+
+def test_submission_status_checks_required_and_selected_model_only(monkeypatch):
+    targets = (
+        DeploymentTarget("modal-3d", "prep", "runtime.prep", required=True),
+        DeploymentTarget("modal-3d", "worker-a", "runtime.a", models=("model-a",)),
+        DeploymentTarget("modal-3d", "worker-b", "runtime.b", models=("model-b",)),
+    )
+    service = DeploymentService(targets=targets)
+    service._client = SimpleNamespace()
+    seen = []
+
+    def fake_status(target, _client, environment_name=None):
+        seen.append(target.app_name)
+        return {
+            "provider": target.provider,
+            "app": target.app_name,
+            "module": target.module,
+            "status": "current",
+            "expectedRevision": target.revision,
+            "deployedRevision": target.revision,
+            "models": list(target.models),
+            "required": target.required,
+            "runnable": True,
+        }
+
+    monkeypatch.setattr(service, "_target_status", fake_status)
+    result = service.submission_status("modal-3d", "model-b")
+
+    assert seen == ["prep", "worker-b"]
+    assert result["providers"][0]["status"] == "current"

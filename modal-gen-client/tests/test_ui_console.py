@@ -582,6 +582,8 @@ def test_runtime_ui_exposes_resync_and_model_value_sync() -> None:
     assert "重新同步状态" in connect
     assert 'apiGet("deployments?refresh=1")' in connect
     assert "loadCapabilities({ refresh: true })" in connect
+    assert "loadCapabilities({ refresh: true })" in create
+    assert "Runtime 状态校验失败" in create
     assert "values[key] = readFieldControl(ref.control, ref.spec)" in create
     assert "required && spec.enum.length === 1" in create
 
@@ -638,3 +640,24 @@ def test_jobs_ui_prevents_overlapping_auto_refresh_and_marks_sync_delay() -> Non
     assert "if (silent && activeRefreshes > 0) return;" in source
     assert "activeRefreshes = Math.max(0, activeRefreshes - 1);" in source
     assert "状态同步延迟" in source
+
+
+def test_live_gateway_rebuilds_session_when_capability_hash_changes(monkeypatch) -> None:
+    from modal_gen.ui.server import LiveGateway
+
+    gateway = LiveGateway()
+    gateway.token = "old-token"
+    gateway.session_data = {"capabilityHash": "sha256:old"}
+    calls = []
+
+    def fake_session():
+        calls.append(True)
+        gateway.token = "new-token"
+        gateway.session_data = {"capabilityHash": "sha256:new"}
+        return {"status": "paired"}
+
+    monkeypatch.setattr(gateway, "session", fake_session)
+    gateway._ensure_session({"hash": "sha256:new"})
+
+    assert calls == [True]
+    assert gateway.token == "new-token"

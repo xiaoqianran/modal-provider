@@ -22,7 +22,7 @@ export async function mountCreate(root) {
 
   let snap;
   try {
-    snap = await loadCapabilities();
+    snap = await loadCapabilities({ refresh: true });
   } catch (e) {
     loading.replaceWith(stateEmpty("无法读取能力快照", String(e.message || e)));
     return;
@@ -151,6 +151,29 @@ export async function mountCreate(root) {
       if (!ok) { statusLine.textContent = "请修正标红的字段。"; statusLine.style.color = "var(--danger)"; return; }
 
       submitBtn.disabled = true;
+      try {
+        const freshSnapshot = await loadCapabilities({ refresh: true });
+        const freshProvider = (freshSnapshot.providers || []).find((item) => item.id === sel.p.id);
+        const freshCapability = (freshProvider?.capabilities || []).find((item) => item.operation === cap.operation);
+        const selectedModel = values.model;
+        const runnableModels = freshCapability?.input?.schema?.properties?.model?.enum;
+        const modelUnavailable = selectedModel && Array.isArray(runnableModels) && !runnableModels.includes(selectedModel);
+        if (!freshCapability || !canSubmitCapability(freshCapability) || modelUnavailable) {
+          statusLine.style.color = "var(--danger)";
+          statusLine.textContent = modelUnavailable
+            ? `模型 ${selectedModel} 的 Runtime 当前不可用，请重新同步后再提交。`
+            : "Provider Runtime 当前不可提交，请重新同步状态。";
+          submitBtn.disabled = false;
+          syncSubmitLabel();
+          return;
+        }
+      } catch (error) {
+        statusLine.style.color = "var(--danger)";
+        statusLine.textContent = `Runtime 状态校验失败：${String(error.message || error)}`;
+        submitBtn.disabled = false;
+        syncSubmitLabel();
+        return;
+      }
       const prompts = promptRef ? parsePromptLines(promptRef.control.value) : [null];
       const baseInputs = { ...values };
       if (props.sourceArtifact) baseInputs.sourceArtifact = values.sourceArtifact;
