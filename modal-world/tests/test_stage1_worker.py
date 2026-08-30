@@ -86,3 +86,11 @@ def test_stage1_skips_unused_open3d_reconstruction_debug_mesh():
     assert "candidate sphere/torus geometry below is debug-only" in patch
     assert 'if False and len(vis_all_candidates) > 0:' in patch
     assert "sphere.translate()" in patch
+
+
+def test_stage1_save_artifacts_avoids_open3d_rotation():
+    patch = Path("modal_world/stage1_patch.py").read_text()
+    assert "avoid Open3D native rotation in artifact export" in patch
+    assert "mesh_verts_rotated = np.ascontiguousarray" in patch
+    assert "mesh_min_bound = mesh_verts_rotated.min(axis=0)" in patch
+    assert "mesh_max_bound = mesh_verts_rotated.max(axis=0)" in patch

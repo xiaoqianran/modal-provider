@@ -156,6 +156,33 @@ def patch_stage1_worldnav(source_root: str | Path) -> None:
         raise RuntimeError("expected pinned Open3D rotation block not found")
     navi_source = navi_source.replace(old_rotation, new_rotation, 1)
 
+    save_artifacts_old = """    R_back = mesh.get_rotation_matrix_from_xyz((np.pi / 2, 0, 0))
+
+
+    mesh.rotate(R_back, center=(0, 0, 0))
+    mesh_min_bound = mesh.get_min_bound()
+    mesh_max_bound = mesh.get_max_bound()
+    mesh_verts_rotated = np.asarray(mesh.vertices)
+    mesh_faces_rotated = np.asarray(mesh.triangles)
+"""
+    save_artifacts_new = """    # modal-world: avoid Open3D native rotation in artifact export; it segfaults on this runtime.
+    # This is exactly get_rotation_matrix_from_xyz((+pi/2, 0, 0)).
+    R_back = np.array(
+        [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]],
+        dtype=np.float64,
+    )
+    mesh_verts_rotated = np.ascontiguousarray(
+        np.asarray(mesh.vertices, dtype=np.float64) @ R_back.T,
+        dtype=np.float64,
+    )
+    mesh_min_bound = mesh_verts_rotated.min(axis=0)
+    mesh_max_bound = mesh_verts_rotated.max(axis=0)
+    mesh_faces_rotated = np.asarray(mesh.triangles)
+"""
+    if navi_source.count(save_artifacts_old) != 1:
+        raise RuntimeError("expected pinned save_artifacts Open3D rotation block not found")
+    navi_source = navi_source.replace(save_artifacts_old, save_artifacts_new, 1)
+
     debug_mesh_old = "    if len(vis_all_candidates) > 0:\n"
     debug_mesh_new = (
         "    # modal-world: candidate sphere/torus geometry below is debug-only; it is neither saved nor returned.\n"
