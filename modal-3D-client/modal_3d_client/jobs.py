@@ -24,7 +24,7 @@ from modal.exception import (
 from modal.exception import ConnectionError as ModalConnectionError
 from modal.exception import TimeoutError as ModalTimeoutError
 
-from . import artifacts, generation, models
+from . import artifacts, background, generation, models
 from .constants import CLIENT_INPUT_PREFIX
 from .contracts import ContractError
 from .modal_session import NotConnectedError, client
@@ -151,9 +151,7 @@ class JobStore:
             """
         )
 
-    def _rebuild_legacy_table(
-        self, db: sqlite3.Connection, schema: dict[str, tuple]
-    ) -> None:
+    def _rebuild_legacy_table(self, db: sqlite3.Connection, schema: dict[str, tuple]) -> None:
         """Atomically normalize every historical jobs schema to the current one."""
 
         columns = set(schema)
@@ -258,7 +256,9 @@ class JobStore:
                     json.dumps(job.result, separators=(",", ":")) if job.result else None,
                     job.error_code,
                     None if job.retryable is None else int(job.retryable),
-                    json.dumps(job.conditioning, separators=(",", ":")) if job.conditioning else None,
+                    json.dumps(job.conditioning, separators=(",", ":"))
+                    if job.conditioning
+                    else None,
                 ),
             )
         with self._lock:
@@ -335,6 +335,86 @@ class JobService:
                 mask=mask,
             )
 
+    def submit_remote_source(
+        self,
+        source_path: str,
+        *,
+        source_sha256: str,
+        model: str,
+        profile: str = "recommended",
+        seed: int = 42,
+        job_id: str | None = None,
+    ) -> dict[str, object]:
+        local_id = job_id or f"job_{uuid.uuid4().hex}"
+        if not _JOB_ID.fullmatch(local_id):
+            raise ContractError("job_id must be a URL-safe identifier")
+        with self._submission_lock(local_id):
+            models.options_for(model, profile, seed)
+            existing = self._existing(local_id, model, profile, seed, source_sha256)
+            if existing is not None:
+                return existing.public()
+            try:
+                generation.prefetch(model)
+            except _RECOVERABLE:
+                pass
+            prepared = background.prepare_source(source_path)
+            if str(prepared.get("source_sha256") or "") != source_sha256:
+                raise ContractError("prepared source identity changed")
+            input_path = str(prepared.get("path") or "")
+            if not input_path.startswith(CLIENT_INPUT_PREFIX):
+                raise ContractError(f"prepared input must live under {CLIENT_INPUT_PREFIX}")
+            return self._create_and_bind(
+                local_id=local_id,
+                model=model,
+                profile=profile,
+                seed=seed,
+                input_path=input_path,
+                input_sha256=source_sha256,
+                conditioning=dict(prepared.get("conditioning") or {}),
+            ).public()
+
+    def _existing(
+        self, local_id: str, model: str, profile: str, seed: int, input_sha256: str
+    ) -> Job | None:
+        try:
+            existing = self.store.get(local_id)
+        except KeyError:
+            return None
+        expected = (model, profile, seed, input_sha256)
+        actual = (existing.model, existing.profile, existing.seed, existing.input_sha256)
+        if actual != expected:
+            raise ContractError("job_id is already bound to another request")
+        return existing
+
+    def _create_and_bind(
+        self,
+        *,
+        local_id: str,
+        model: str,
+        profile: str,
+        seed: int,
+        input_path: str,
+        input_sha256: str,
+        conditioning: dict[str, object],
+    ) -> Job:
+        timestamp = _now()
+        intent = Job(
+            id=local_id,
+            model=model,
+            profile=profile,
+            seed=seed,
+            input_path=input_path,
+            input_sha256=input_sha256,
+            remote_call_id=None,
+            status="submitting",
+            created_at=timestamp,
+            updated_at=timestamp,
+            retryable=True,
+            conditioning=conditioning,
+        )
+        self.store.save(intent)
+        return self._bind(intent)
+
     def _submit_locked(
         self,
         source_image: bytes,
@@ -350,15 +430,8 @@ class JobService:
             raise ContractError("job_id must be a URL-safe identifier")
         models.options_for(model, profile, seed)
         local_input = artifacts.validate_source_image(source_image)
-        try:
-            existing = self.store.get(local_id)
-        except KeyError:
-            existing = None
+        existing = self._existing(local_id, model, profile, seed, str(local_input["sha256"]))
         if existing is not None:
-            expected = (model, profile, seed, str(local_input["sha256"]))
-            actual = (existing.model, existing.profile, existing.seed, existing.input_sha256)
-            if actual != expected:
-                raise ContractError("job_id is already bound to another request")
             return existing.public()
 
         # The model is already known at this point. Start its GPU container now so
@@ -374,23 +447,15 @@ class JobService:
         input_path = str(uploaded["path"])
         if not input_path.startswith(CLIENT_INPUT_PREFIX):
             raise ContractError(f"uploaded input must live under {CLIENT_INPUT_PREFIX}")
-        timestamp = _now()
-        intent = Job(
-            id=local_id,
+        return self._create_and_bind(
+            local_id=local_id,
             model=model,
             profile=profile,
             seed=seed,
             input_path=input_path,
             input_sha256=str(uploaded["sha256"]),
-            remote_call_id=None,
-            status="submitting",
-            created_at=timestamp,
-            updated_at=timestamp,
-            retryable=True,
             conditioning=dict(uploaded["conditioning"]),  # type: ignore[arg-type]
-        )
-        self.store.save(intent)
-        return self._bind(intent).public()
+        ).public()
 
     def _bind(self, job: Job) -> Job:
         if job.status == "cancel_requested":

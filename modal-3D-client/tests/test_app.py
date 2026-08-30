@@ -79,9 +79,7 @@ def test_submit_offloads_blocking_work_so_cancel_route_stays_responsive(source_j
                 )
             )
             assert await asyncio.to_thread(entered.wait, 1)
-            cancelled = await asyncio.wait_for(
-                client.delete("/v1/jobs/req_blocking"), timeout=0.5
-            )
+            cancelled = await asyncio.wait_for(client.delete("/v1/jobs/req_blocking"), timeout=0.5)
             assert cancelled.status_code == 200
             assert cancelled.json()["status"] == "cancel_requested"
             release.set()

@@ -9,3 +9,9 @@ dist/
 .DS_Store
 .codegraph/
 node_modules/
+.secrets/
+.real-cloud-smoke/
+.real-cloud-smoke*.log
+.real-cloud-smoke*.pid
+.tmp-modal-gen-smoke*.log
+.tmp_real_cloud_smoke*.py

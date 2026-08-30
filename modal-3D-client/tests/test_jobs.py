@@ -128,15 +128,21 @@ def bind(svc: jobs.JobService, monkeypatch, *, submit=None) -> None:
     monkeypatch.setattr(generation, "submit", submit or (lambda *args: Call()))
 
 
-def test_submit_prefetches_model_before_conditioning_and_generation(tmp_path, monkeypatch, source_png):
+def test_submit_prefetches_model_before_conditioning_and_generation(
+    tmp_path, monkeypatch, source_png
+):
     svc = service(tmp_path)
     events = []
     monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
-    monkeypatch.setattr(generation, "prefetch", lambda model: events.append(("warmup", model)) or Call())
+    monkeypatch.setattr(
+        generation, "prefetch", lambda model: events.append(("warmup", model)) or Call()
+    )
     monkeypatch.setattr(
         artifacts,
         "upload_source",
-        lambda data, *, mask=None: events.append(("condition", mask)) or upload_stub(data, mask=mask),
+        lambda data, *, mask=None: (
+            events.append(("condition", mask)) or upload_stub(data, mask=mask)
+        ),
     )
     monkeypatch.setattr(
         generation,
@@ -170,9 +176,7 @@ def test_prefetch_connection_failure_is_only_a_latency_miss(tmp_path, monkeypatc
     assert svc.store.get("req_prefetch_best_effort").remote_call_id == "fc_generate"
 
 
-def test_concurrent_same_job_id_only_prefetches_and_submits_once(
-    tmp_path, monkeypatch, source_png
-):
+def test_concurrent_same_job_id_only_prefetches_and_submits_once(tmp_path, monkeypatch, source_png):
     svc = service(tmp_path)
     entered = threading.Event()
     release = threading.Event()
@@ -203,13 +207,9 @@ def test_concurrent_same_job_id_only_prefetches_and_submits_once(
     monkeypatch.setattr(generation, "submit", submit)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        first = pool.submit(
-            svc.submit, source_png, model="fastsam3d-plus-plus", job_id="req_race"
-        )
+        first = pool.submit(svc.submit, source_png, model="fastsam3d-plus-plus", job_id="req_race")
         assert entered.wait(timeout=1)
-        second = pool.submit(
-            svc.submit, source_png, model="fastsam3d-plus-plus", job_id="req_race"
-        )
+        second = pool.submit(svc.submit, source_png, model="fastsam3d-plus-plus", job_id="req_race")
         time.sleep(0.05)
         release.set()
         first_state = first.result(timeout=2)
@@ -289,9 +289,7 @@ def test_submit_rejects_same_id_for_different_input(tmp_path, monkeypatch, sourc
         )
 
 
-def test_success_surfaces_locally_produced_conditioning_evidence(
-    tmp_path, monkeypatch, source_png
-):
+def test_success_surfaces_locally_produced_conditioning_evidence(tmp_path, monkeypatch, source_png):
     """Conditioning is local now, so it is persisted with the job, not returned by the GPU."""
     svc = service(tmp_path)
     bind(svc, monkeypatch)

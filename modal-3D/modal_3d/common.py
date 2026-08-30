@@ -11,11 +11,13 @@ from .png import alpha_range as _png_rgba_alpha_range
 # Windows can be serialized into the Modal class definition and fail to unpickle
 # inside Linux containers.
 ARTIFACT_ROOT = "/artifacts"
-# Clients upload finished canonical inputs here. Modal never preprocesses.
+ARTIFACT_VOLUME = "modal-gen-artifacts"
+# Model workers consume only canonical inputs here. Shared raw sources are prepared by
+# RemBgWorker before a model worker is spawned.
 CLIENT_INPUT_NAMESPACE = "client-inputs"
 # Historical capability field name: this is now the direct worker deployment
 # revision, not a CPU adapter revision. Keep the value/field stable for v3 clients.
-WORKER_ADAPTER_REVISION = "modal-3d.worker-adapter.v4"
+WORKER_ADAPTER_REVISION = "modal-3d.worker-adapter.v5"
 CANONICAL_INPUT = {
     "role": "canonical_rgba",
     "mime": "image/png",

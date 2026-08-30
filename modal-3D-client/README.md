@@ -10,7 +10,7 @@ Caller / AgentScape UI / Agent
 │ Local API                                       │
 │   │                                             │
 │   ├─ Capability / Model cache                   │
-│   ├─ Source image upload → modal-3d-artifacts   │
+│   ├─ Source/canonical Artifact → modal-gen-artifacts   │
 │   ├─ Durable Job mirror / idempotent rebind     │
 │   └─ GLB Volume fetch / verify / SHA cache      │
 └──────────────────────┬───────────────────────────┘
@@ -38,6 +38,8 @@ GET    /v1/jobs/{id}/artifact
 ```
 
 `POST /v1/jobs` 接受 `PNG / JPEG / WebP` 原图。模型在请求进入时已经确定，因此 Sidecar 会立即异步 `spawn Model.warmup()`，让目标 L40S 在输入处理期间并行冷启动。可信 alpha/caller mask 直接在本地做 conditioning；普通 opaque 图片会由 Sidecar 直接调用 T4 `RemBgWorker.process` 获取 mask，同时目标 L40S 已在加载。mask 返回后，crop/refine/letterbox/canonicalization 仍全部在本地完成，再上传 1024×1024 RGBA 到 `client-inputs/` 并提交 `Model.generate_job`。不存在 Modal Gateway/CPU 转发层。
+
+当它作为 `modal-gen-client` 的 Provider 被调用时还有一条更短的 shared-source fast path：如果来源 Artifact 已经位于 `modal-gen-artifacts/sources/sha256/...`，Provider 只传递 Artifact identity/path，不把图片下载到本机；`RemBgWorker.prepare` 直接在 Modal 读取、必要时做 BiRefNet、生成 canonical RGBA，再交给目标 3D Worker。只有云端缺少该 source 时才回退到本地 materialize + 一次上传。
 
 同一个 `job_id + source sha256 + model/profile/seed` 是稳定的本地 request identity。任务状态和 `FunctionCall.object_id` 持久化在本地 SQLite；客户端通过 `FunctionCall.from_id()` 轮询/取消。不存在 `modal-3d-gateway` 或远端 job-key registry。
 

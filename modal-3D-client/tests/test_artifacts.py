@@ -112,11 +112,14 @@ def test_upload_source_auto_predicts_mask_for_opaque_sources(monkeypatch, source
     monkeypatch.setattr(
         artifacts.background,
         "predict_mask",
-        lambda data: calls.append(data) or {
-            "mask_bytes": mask_png,
-            "engine": "birefnet-general-lite",
-            "elapsed_ms": 12.5,
-        },
+        lambda data: (
+            calls.append(data)
+            or {
+                "mask_bytes": mask_png,
+                "engine": "birefnet-general-lite",
+                "elapsed_ms": 12.5,
+            }
+        ),
     )
     result = artifacts.upload_source(source_jpeg)
     assert calls == [source_jpeg]
@@ -204,3 +207,47 @@ def test_cached_artifact_uses_public_descriptor_without_remote_path(
     assert path == cache
     assert public["id"] == "art_cached"
     assert "path" not in public
+
+
+def test_fetch_falls_back_to_legacy_volume_for_historical_glb(
+    tmp_path: Path, monkeypatch, glb_bytes
+):
+    sha = hashlib.sha256(glb_bytes).hexdigest()
+
+    class MissingVolume(Volume):
+        def read_file(self, path):
+            self.paths.append(path)
+            raise FileNotFoundError(path)
+
+    current = MissingVolume()
+    legacy = Volume([glb_bytes])
+    names = []
+    monkeypatch.setenv("MODAL_3D_CLIENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(artifacts, "_volume", lambda: current)
+    monkeypatch.setattr(artifacts, "client", lambda: object())
+
+    def from_name(name, **kwargs):
+        names.append(name)
+        return legacy
+
+    monkeypatch.setattr(artifacts.modal.Volume, "from_name", from_name)
+    descriptor = {
+        "id": "art_legacy",
+        "role": "primary-glb",
+        "mediaType": "model/gltf-binary",
+        "digest": f"sha256:{sha}",
+        "mime": "model/gltf-binary",
+        "sha256": sha,
+        "bytes": len(glb_bytes),
+        "path": "generated/legacy.glb",
+        "producer": {
+            "provider": "modal-3d",
+            "operation": "modal-3d.asset.image_to_3d.v1",
+            "model": "fastsam3d-plus-plus",
+        },
+    }
+    _public, path = artifacts.fetch(descriptor, model="fastsam3d-plus-plus")
+    assert path.read_bytes() == glb_bytes
+    assert current.paths == ["generated/legacy.glb"]
+    assert names == ["modal-3d-artifacts"]
+    assert legacy.paths == ["generated/legacy.glb"]

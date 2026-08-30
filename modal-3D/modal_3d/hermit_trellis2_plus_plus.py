@@ -10,7 +10,7 @@ from pathlib import Path
 
 import modal
 
-from .common import pinned_hf_snapshot, run_generation_job, worker_capability
+from .common import ARTIFACT_VOLUME, pinned_hf_snapshot, run_generation_job, worker_capability
 
 APP_NAME = "modal-3d-hermit-trellis2-plus-plus"
 MODEL_ID = "microsoft/TRELLIS.2-4B"
@@ -29,7 +29,7 @@ WHEELS_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{BUI
 
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-trellis2-weights", create_if_missing=True)
-artifacts = modal.Volume.from_name("modal-3d-artifacts", create_if_missing=True)
+artifacts = modal.Volume.from_name(ARTIFACT_VOLUME, create_if_missing=True)
 
 CAPABILITY = worker_capability(
     "hermit-trellis2-plus-plus",
@@ -167,9 +167,7 @@ def sync_weights() -> dict:
     external_decoder = args["models"].get("sparse_structure_decoder")
     expected_decoder = "microsoft/TRELLIS-image-large/ckpts/ss_dec_conv3d_16l8_fp16"
     if external_decoder != expected_decoder:
-        raise RuntimeError(
-            f"unexpected Hermit sparse_structure_decoder: {external_decoder!r}"
-        )
+        raise RuntimeError(f"unexpected Hermit sparse_structure_decoder: {external_decoder!r}")
     dino_name = args["image_cond_model"]["args"].get("model_name")
     if dino_name != DINO_ID:
         raise RuntimeError(f"unexpected Hermit DINO model: {dino_name!r}")

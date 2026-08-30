@@ -3,8 +3,15 @@ from __future__ import annotations
 import copy
 
 import pytest
+from modal_3d.common import WORKER_ADAPTER_REVISION
 
-from modal_3d_client.capabilities import IncompatibleCapability, _validate_document
+from modal_3d_client.capabilities import (
+    IncompatibleCapability,
+    _validate_document,
+)
+from modal_3d_client.capabilities import (
+    capabilities_document as installed_capabilities_document,
+)
 
 
 def capability_document() -> dict[str, object]:
@@ -18,7 +25,7 @@ def capability_document() -> dict[str, object]:
             "job_transport": "modal.FunctionCall",
             "entrypoint": "direct_class_method",
             "input_path_prefix": "client-inputs/",
-            "artifact_volume": "modal-3d-artifacts",
+            "artifact_volume": "modal-gen-artifacts",
             "artifact_path_field": "path",
             "input_contract": {
                 "role": "canonical_rgba",
@@ -46,6 +53,7 @@ def capability_document() -> dict[str, object]:
                     "method_name": "generate_job",
                 },
                 "profiles": [{"id": "recommended", "options": {}}],
+                "deployment": {"adapter_revision": WORKER_ADAPTER_REVISION},
             }
         ],
     }
@@ -89,9 +97,17 @@ def test_worker_without_direct_generate_job_is_rejected():
 
 
 def test_installed_capability_document_is_valid_and_routable():
-    from modal_3d_client import capabilities
     from modal_3d_client.workers import WORKERS
 
-    document = capabilities.capabilities_document()
+    document = installed_capabilities_document()
     assert document["contract"] == "modal-3d.capabilities.v3"
     assert {model["id"] for model in document["models"]} == set(WORKERS)
+
+
+def test_installed_manifest_uses_current_worker_revision():
+    document = installed_capabilities_document()
+    assert document["models"]
+    assert all(
+        model["deployment"]["adapter_revision"] == WORKER_ADAPTER_REVISION
+        for model in document["models"]
+    )

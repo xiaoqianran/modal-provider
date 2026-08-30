@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path, PurePosixPath
 
 import modal
+from modal.exception import NotFoundError
 from PIL import Image
 
 from . import background
@@ -16,6 +17,7 @@ from .conditioning import BackgroundMaskRequired, condition_image
 from .constants import (
     ARTIFACTS_VOLUME,
     CLIENT_INPUT_PREFIX,
+    LEGACY_ARTIFACTS_VOLUME,
     OUTPUT_MIME,
     OUTPUT_ROLE,
     SOURCE_MAX_BYTES,
@@ -29,6 +31,20 @@ _CHUNK_SIZE = 1024 * 1024
 
 def _volume() -> modal.Volume:
     return modal.Volume.from_name(ARTIFACTS_VOLUME, client=client())
+
+
+def _artifact_chunks(remote_path: str):
+    emitted = False
+    try:
+        for chunk in _volume().read_file(remote_path):
+            emitted = True
+            yield chunk
+        return
+    except (FileNotFoundError, NotFoundError):
+        if emitted or not remote_path.startswith("generated/"):
+            raise
+    legacy = modal.Volume.from_name(LEGACY_ARTIFACTS_VOLUME, client=client())
+    yield from legacy.read_file(remote_path)
 
 
 def _safe_path(value: str) -> str:
@@ -72,6 +88,35 @@ def validate_source_image(data: bytes) -> dict[str, object]:
         "height": height,
         "mode": mode,
     }
+
+
+def source_remote_path(sha256: str) -> str:
+    if len(sha256) != 64 or any(ch not in "0123456789abcdef" for ch in sha256):
+        raise ContractError("source SHA-256 is invalid")
+    return f"sources/sha256/{sha256[:2]}/{sha256}"
+
+
+def remote_source_exists(sha256: str) -> bool:
+    path = PurePosixPath(source_remote_path(sha256))
+    try:
+        entries = _volume().listdir(path.parent.as_posix())
+    except (FileNotFoundError, OSError, NotFoundError):
+        return False
+    return any(
+        PurePosixPath(str(getattr(entry, "path", ""))).name == path.name for entry in entries
+    )
+
+
+def upload_remote_source(data: bytes, *, expected_sha256: str | None = None) -> dict[str, object]:
+    descriptor = validate_source_image(data)
+    sha256 = str(descriptor["sha256"])
+    if expected_sha256 is not None and sha256 != expected_sha256:
+        raise ContractError("source bytes do not match the declared SHA-256")
+    path = source_remote_path(sha256)
+    if not remote_source_exists(sha256):
+        with _volume().batch_upload(force=True) as batch:
+            batch.put_file(io.BytesIO(data), path)
+    return {**descriptor, "path": path}
 
 
 _CONDITIONING_EVIDENCE_FIELDS = (
@@ -163,13 +208,15 @@ def fetch(descriptor: object, *, model: str) -> tuple[dict[str, object], Path]:
         return _public_descriptor(artifact, model, sha256), destination
 
     remote_path = _safe_path(str(artifact["path"]))
-    fd, temporary_name = tempfile.mkstemp(prefix=".artifact-", suffix=".part", dir=destination.parent)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=".artifact-", suffix=".part", dir=destination.parent
+    )
     temporary = Path(temporary_name)
     digest = hashlib.sha256()
     total = 0
     try:
         with os.fdopen(fd, "wb") as stream:
-            for chunk in _volume().read_file(remote_path):
+            for chunk in _artifact_chunks(remote_path):
                 if not isinstance(chunk, bytes):
                     raise ContractError("artifact transport must yield bytes")
                 stream.write(chunk)
@@ -186,9 +233,7 @@ def fetch(descriptor: object, *, model: str) -> tuple[dict[str, object], Path]:
     return _public_descriptor(artifact, model, sha256), destination
 
 
-def _public_descriptor(
-    artifact: dict[str, object], model: str, sha256: str
-) -> dict[str, object]:
+def _public_descriptor(artifact: dict[str, object], model: str, sha256: str) -> dict[str, object]:
     public = {key: value for key, value in artifact.items() if key != "path"}
     public.update(
         {

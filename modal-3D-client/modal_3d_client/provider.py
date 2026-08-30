@@ -6,7 +6,7 @@ from pathlib import Path
 
 from modal_3d.deployment import deployment_manifest as runtime_deployment_manifest
 
-from . import capabilities, modal_session, models
+from . import artifacts, capabilities, modal_session, models
 from .constants import OPERATION, OUTPUT_ROLE, SOURCE_MAX_BYTES
 from .contracts import ContractError
 from .jobs import JobService
@@ -109,24 +109,55 @@ class Modal3DProvider:
         resolver = getattr(context, "artifacts", None)
         if resolver is None:
             raise ProviderFault("PROVIDER_CONTEXT_INVALID", "artifact resolver is missing", 500)
-        artifact = resolver.resolve_input(
-            str(source.get("id") or ""),
-            owner_client=str(getattr(context, "owner_client", "")),
-            owner_origin=str(getattr(context, "owner_origin", "")),
+        artifact_id = str(source.get("id") or "")
+        owner_client = str(getattr(context, "owner_client", ""))
+        owner_origin = str(getattr(context, "owner_origin", ""))
+        describe = getattr(resolver, "describe_input", None)
+        artifact = (
+            describe(artifact_id, owner_client=owner_client, owner_origin=owner_origin)
+            if callable(describe)
+            else resolver.resolve_input(
+                artifact_id, owner_client=owner_client, owner_origin=owner_origin
+            )
         )
         _match_source(source, artifact)
         if artifact.bytes > SOURCE_MAX_BYTES:
             raise ProviderFault(
                 "PROVIDER_SOURCE_TOO_LARGE", "source artifact exceeds provider limit", 422
             )
+        source_sha256 = str(artifact.hash).removeprefix("sha256:")
+        jobs = self.jobs
         try:
-            state = self.jobs.submit(
-                artifact.path.read_bytes(),
-                model=model.strip(),
-                profile=profile or "recommended",
-                seed=seed,
-                job_id=_provider_job_id(context, "3d"),
-            )
+            submit_remote = getattr(jobs, "submit_remote_source", None)
+            if not callable(submit_remote):
+                local = resolver.resolve_input(
+                    artifact_id, owner_client=owner_client, owner_origin=owner_origin
+                )
+                _match_source(source, local)
+                state = jobs.submit(
+                    local.path.read_bytes(),
+                    model=model.strip(),
+                    profile=profile or "recommended",
+                    seed=seed,
+                    job_id=_provider_job_id(context, "3d"),
+                )
+            else:
+                if not artifacts.remote_source_exists(source_sha256):
+                    local = resolver.resolve_input(
+                        artifact_id, owner_client=owner_client, owner_origin=owner_origin
+                    )
+                    _match_source(source, local)
+                    artifacts.upload_remote_source(
+                        local.path.read_bytes(), expected_sha256=source_sha256
+                    )
+                state = submit_remote(
+                    artifacts.source_remote_path(source_sha256),
+                    source_sha256=source_sha256,
+                    model=model.strip(),
+                    profile=profile or "recommended",
+                    seed=seed,
+                    job_id=_provider_job_id(context, "3d"),
+                )
         except (ContractError, models.CapabilityError) as exc:
             raise ProviderFault("PROVIDER_REQUEST_INVALID", str(exc), 422) from exc
         return _job(state)

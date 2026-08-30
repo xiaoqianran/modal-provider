@@ -10,7 +10,7 @@ from pathlib import Path
 
 import modal
 
-from .common import run_generation_job, worker_capability
+from .common import ARTIFACT_VOLUME, run_generation_job, worker_capability
 
 APP_NAME = "modal-3d-hunyuan"
 MODEL_ID = "tencent/Hunyuan3D-2.1"
@@ -26,13 +26,11 @@ FORK = "Archerkattri/hunyuan2.1-plus-plus"
 FORK_COMMIT = "9efd760fbec8ab490e68b330225ea1fab10de7fd"
 GPU = "L40S"
 PAINT_TAG = "hunyuan3d-2.1-paint-py311-cu124-torch251-sm89-v2"
-PAINT_BUNDLE_URL = (
-    f"https://github.com/xiaoqianran/modal-build/releases/download/{PAINT_TAG}/{PAINT_TAG}.bundle.zip"
-)
+PAINT_BUNDLE_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{PAINT_TAG}/{PAINT_TAG}.bundle.zip"
 
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-hunyuan21-weights", create_if_missing=True)
-artifacts = modal.Volume.from_name("modal-3d-artifacts", create_if_missing=True)
+artifacts = modal.Volume.from_name(ARTIFACT_VOLUME, create_if_missing=True)
 
 CAPABILITY = worker_capability(
     "hunyuan2.1-plus-plus",

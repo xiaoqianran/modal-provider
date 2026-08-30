@@ -4,6 +4,16 @@ import hashlib
 from pathlib import Path
 
 
+def _weights(volume: str, required_paths: list[str]) -> list[dict[str, object]]:
+    return [
+        {
+            "volume": volume,
+            "requiredPaths": required_paths,
+            "prepare": [{"function": "sync_weights"}],
+        }
+    ]
+
+
 def runtime_revision() -> str:
     root = Path(__file__).resolve().parent
     digest = hashlib.sha256()
@@ -28,6 +38,13 @@ def deployment_manifest() -> dict[str, object]:
                 "kind": "preprocess",
                 "required": True,
                 "revision": revision,
+                "weights": _weights(
+                    "modal-3d-birefnet-weights",
+                    [
+                        "rembg/manifest.json",
+                        "rembg/models/birefnet-general-lite/birefnet-general-lite.onnx",
+                    ],
+                ),
             },
             {
                 "app": "modal-3d-fastsam3d",
@@ -35,6 +52,10 @@ def deployment_manifest() -> dict[str, object]:
                 "kind": "worker",
                 "models": ["fastsam3d-plus-plus"],
                 "revision": revision,
+                "weights": _weights(
+                    "modal-3d-fastsam3d-weights",
+                    ["sam3d/checkpoints/pipeline.fast.yaml"],
+                ),
             },
             {
                 "app": "modal-3d-hunyuan",
@@ -42,6 +63,10 @@ def deployment_manifest() -> dict[str, object]:
                 "kind": "worker",
                 "models": ["hunyuan2.1-plus-plus"],
                 "revision": revision,
+                "weights": _weights(
+                    "modal-3d-hunyuan21-weights",
+                    ["RealESRGAN_x4plus.pth"],
+                ),
             },
             {
                 "app": "modal-3d-hermit-trellis2-plus-plus",
@@ -49,6 +74,10 @@ def deployment_manifest() -> dict[str, object]:
                 "kind": "worker",
                 "models": ["hermit-trellis2-plus-plus"],
                 "revision": revision,
+                "weights": _weights(
+                    "modal-3d-trellis2-weights",
+                    ["TRELLIS.2-4B/pipeline.modal.json"],
+                ),
             },
             {
                 "app": "modal-3d-pixal3d",
@@ -56,6 +85,10 @@ def deployment_manifest() -> dict[str, object]:
                 "kind": "worker",
                 "models": ["pixal3d"],
                 "revision": revision,
+                "weights": _weights(
+                    "modal-3d-pixal3d-weights",
+                    ["torch/hub/checkpoints/naf_release.pth"],
+                ),
             },
         ],
     }

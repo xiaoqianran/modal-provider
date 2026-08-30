@@ -361,7 +361,7 @@ def test_batch_job_spawns_gpu_worker_directly_and_persists_multiple_artifacts(
     tmp_path: Path, monkeypatch, png_artifact
 ):
     _, descriptor = png_artifact
-    second = dict(descriptor, id="art_def", remote_path="generated/art_def.png")
+    second = dict(descriptor, id="art_def")
     worker = WorkerClass()
     poll = PollCall(
         {
@@ -387,7 +387,7 @@ def test_batch_job_spawns_gpu_worker_directly_and_persists_multiple_artifacts(
 
 def test_batch_artifact_fetch_requires_index(tmp_path: Path, monkeypatch, png_artifact):
     _, descriptor = png_artifact
-    second = dict(descriptor, id="art_def", remote_path="generated/art_def.png")
+    second = dict(descriptor, id="art_def")
     store = jobs.JobStore(tmp_path / "jobs.sqlite3")
     now = "2026-08-28T00:00:00+00:00"
     store.save(

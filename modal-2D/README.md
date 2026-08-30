@@ -51,8 +51,19 @@ primary-image PNG
 ```bash
 uv sync --dev
 uv run pytest -q
-uv run modal deploy -m modal_2d.app
+./scripts/deploy-all.sh
 ```
+
+`deploy-all.sh` 会先逐个检查并预取模型权重；任一下载失败时立即终止，不会继续部署
+worker。通过 `modal-gen-client` 发起部署时也执行同样的检查、下载和二次校验。公开的
+SANA-Sprint 不强制要求 Token；统一部署其他需要授权的 Hugging Face 模型时，必须先配置
+Modal `main` 环境中的 `huggingface` Secret，并提供 `HF_TOKEN`。
+
+## 验收记录
+
+2026-08-31：本地 `30 passed`，约 9 秒；Ruff 全部通过。真实 Modal 空权重 Volume
+自动下载并校验后部署 SANA Worker，约 2 分 45 秒；随后真实 prompt 生成
+`1024×1024 image/png`，约 10 秒。
 
 `modal-sana` 仅作为已验证的 SANA-Sprint / diffusers / L40S 运行参考；本仓没有继承它的 Web、ledger、SQLModel 或 batch scheduler。这里的 batch 只是一个深 Provider capability：同一 worker 对多个 seed 顺序推理。
 

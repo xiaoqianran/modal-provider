@@ -17,9 +17,13 @@ $module = [IO.Path]::ChangeExtension($relativePath, $null) -replace '[\\/]', '.'
 
 Push-Location $repoRoot
 try {
+    & uv run modal run -m "${module}::sync_weights"
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
     # There is no registry step. Deploy the selected worker module directly;
     # the client resolves generation/mask workers from local static configuration.
-    & modal deploy -m $module
+    & uv run modal deploy -m $module
     exit $LASTEXITCODE
 }
 finally {

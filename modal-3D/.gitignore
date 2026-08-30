@@ -6,3 +6,5 @@ __pycache__/
 outputs/
 benchmarks/artifacts/
 .codegraph/
+.verification-input/
+.tmp_caps_generated.json

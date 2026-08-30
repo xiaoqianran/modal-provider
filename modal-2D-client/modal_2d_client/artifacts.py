@@ -8,7 +8,7 @@ from pathlib import Path
 
 import modal
 
-from .constants import ARTIFACT_VOLUME
+from .constants import ARTIFACT_VOLUME, LEGACY_ARTIFACT_VOLUME
 from .contracts import ContractError, validate_artifact
 from .modal_session import client
 from .storage import data_dir
@@ -38,7 +38,10 @@ def fetch(descriptor: dict[str, object]) -> Path:
 
 
 def _volume_chunks(remote_path: str) -> Iterable[bytes]:
-    volume = modal.Volume.from_name(ARTIFACT_VOLUME, client=client())
+    volume_name = (
+        LEGACY_ARTIFACT_VOLUME if remote_path.startswith("generated/") else ARTIFACT_VOLUME
+    )
+    volume = modal.Volume.from_name(volume_name, client=client())
     return volume.read_file(remote_path)
 
 

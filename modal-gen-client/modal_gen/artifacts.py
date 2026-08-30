@@ -9,7 +9,11 @@ from pathlib import Path
 from .capabilities import CapabilityRegistry
 from .errors import ConnectorError
 from .paths import artifact_cache_dir
-from .providers.protocol import ConnectorArtifactInput, ProviderArtifact
+from .providers.protocol import (
+    ConnectorArtifactDescriptor,
+    ConnectorArtifactInput,
+    ProviderArtifact,
+)
 from .storage import Store
 
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
@@ -82,6 +86,24 @@ class ArtifactService:
 
     def count(self, *, owner_client: str, owner_origin: str, mime: str | None = None) -> int:
         return self.store.count_artifacts(owner_client, owner_origin, mime=mime)
+
+    def describe_input(
+        self,
+        artifact_id: str,
+        *,
+        owner_client: str,
+        owner_origin: str,
+    ) -> ConnectorArtifactDescriptor:
+        artifact, _job = self._owned_artifact(
+            artifact_id, owner_client=owner_client, owner_origin=owner_origin
+        )
+        return ConnectorArtifactDescriptor(
+            id=str(artifact["id"]),
+            role=str(artifact["role"]),
+            mime=str(artifact["mime"]),
+            bytes=int(artifact["bytes"]),
+            hash=str(artifact["hash"]),
+        )
 
     def resolve_input(
         self,

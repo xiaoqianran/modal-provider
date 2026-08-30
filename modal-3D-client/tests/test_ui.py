@@ -53,7 +53,11 @@ def test_session_middleware_exempts_ui_paths(monkeypatch):
 
 def test_cors_allows_any_origin_by_default():
     client = TestClient(create_app())
-    for origin in ("https://izmky1i1hd-3213.cnb.run", "https://anything-else.test", "http://localhost:5173"):
+    for origin in (
+        "https://izmky1i1hd-3213.cnb.run",
+        "https://anything-else.test",
+        "http://localhost:5173",
+    ):
         res = client.get("/health", headers={"Origin": origin})
         assert res.status_code == 200
         assert res.headers["access-control-allow-origin"] == "*"

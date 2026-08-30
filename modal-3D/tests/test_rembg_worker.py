@@ -4,13 +4,21 @@ import hashlib
 import json
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 
 from modal_3d import rembg_worker
 
 
 class RemBgWorkerContractTests(unittest.TestCase):
+    def test_runtime_paths_are_posix_safe_for_windows_deploy(self) -> None:
+        self.assertIsInstance(rembg_worker.WEIGHT_ROOT, PurePosixPath)
+        self.assertIsInstance(rembg_worker.MODEL_PATH, PurePosixPath)
+        self.assertIsInstance(rembg_worker.WEIGHT_MANIFEST, PurePosixPath)
+        self.assertIsInstance(rembg_worker.ARTIFACT_ROOT, PurePosixPath)
+        self.assertEqual(str(rembg_worker.WEIGHT_ROOT), "/weights/rembg")
+        self.assertEqual(str(rembg_worker.ARTIFACT_ROOT), "/artifacts")
+
     def test_weight_manifest_and_file_are_verified(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             data = b"pinned-birefnet-weight"
@@ -71,6 +79,8 @@ class RemBgWorkerContractTests(unittest.TestCase):
         self.assertIn('gpu="T4"', source)
         self.assertIn("max_containers=1", source)
         self.assertIn("def process(self, data: bytes)", source)
+        self.assertIn("def prepare(self, source_path: str)", source)
+        self.assertIn("rel.parts[2] != source_sha256[:2]", source)
         self.assertIn("def sync_weights()", source)
         self.assertNotIn("@modal.asgi_app", source)
         self.assertNotIn("def condition(", source)

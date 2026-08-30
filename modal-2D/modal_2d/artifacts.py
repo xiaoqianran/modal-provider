@@ -13,7 +13,6 @@ from .constants import (
     OPERATION,
     PROVIDER,
 )
-from .contracts import validate_artifact_id
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 IHDR = b"IHDR"
@@ -35,18 +34,16 @@ def write_png(root: Path, data: bytes) -> dict[str, object]:
     width, height = inspect_png_header(data)
     sha256 = hashlib.sha256(data).hexdigest()
     artifact_id = f"art_{uuid.uuid4().hex}"
-    relative = Path("generated") / f"{artifact_id}.png"
+    relative = Path("sources") / "sha256" / sha256[:2] / sha256
     destination = root / relative
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(".png.part")
-    try:
-        with temporary.open("wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, destination)
-    finally:
-        temporary.unlink(missing_ok=True)
+    # The worker calls Volume.commit() only after this function succeeds, so the
+    # commit is the publication boundary. Writing the content-addressed final
+    # path directly avoids persisting FUSE rename temporaries in the Volume.
+    with destination.open("wb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
     return {
         "id": artifact_id,
         "role": ARTIFACT_ROLE,
@@ -62,7 +59,3 @@ def write_png(root: Path, data: bytes) -> dict[str, object]:
         "height": height,
         "remote_path": relative.as_posix(),
     }
-
-
-def artifact_path(root: Path, artifact_id: str) -> Path:
-    return root / "generated" / f"{validate_artifact_id(artifact_id)}.png"

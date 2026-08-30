@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath
 
 import modal
 
-from .common import run_generation_job, worker_capability
+from .common import ARTIFACT_VOLUME, run_generation_job, worker_capability
 
 APP_NAME = "modal-3d-fastsam3d"
 GPU = "L40S"
@@ -24,9 +24,7 @@ UTILS3D_COMMIT = "3913c65d81e05e47b9f367250cf8c0f7462a0900"
 DINO_COMMIT = "7764ea0f912e53c92e82eb78a2a1631e92725fc8"
 PYTORCH3D_COMMIT = "75ebeeaea0908c5527e7b1e305fbc7681382db47"
 BUILD_TAG = "fastsam3d-pytorch3d-py311-cu121-torch251-sm89-v1"
-PYTORCH3D_WHEELS_URL = (
-    f"https://github.com/xiaoqianran/modal-build/releases/download/{BUILD_TAG}/{BUILD_TAG}.wheels.zip"
-)
+PYTORCH3D_WHEELS_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{BUILD_TAG}/{BUILD_TAG}.wheels.zip"
 
 # These paths are interpreted by Linux image-build/runtime code. PurePosixPath
 # keeps their spelling stable when the deployment command itself runs on Windows.
@@ -36,7 +34,7 @@ PIPELINE = MODEL_DIR / "checkpoints/pipeline.fast.yaml"
 
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-fastsam3d-weights", create_if_missing=True)
-artifacts = modal.Volume.from_name("modal-3d-artifacts", create_if_missing=True)
+artifacts = modal.Volume.from_name(ARTIFACT_VOLUME, create_if_missing=True)
 
 CAPABILITY = worker_capability(
     "fastsam3d-plus-plus",
@@ -102,9 +100,7 @@ download_image = (
 
 runtime_image = (
     modal.Image.from_registry("nvidia/cuda:12.1.1-devel-ubuntu22.04", add_python="3.11")
-    .apt_install(
-        "git", "curl", "unzip", "libgl1", "libglib2.0-0", "libgomp1"
-    )
+    .apt_install("git", "curl", "unzip", "libgl1", "libglib2.0-0", "libgomp1")
     .uv_pip_install(
         "torch==2.5.1",
         "torchvision==0.20.1",
@@ -238,8 +234,14 @@ def sync_weights() -> dict:
         ("ss_generator.yaml", "ss_generator_faster.yaml"),
         ("slat_generator.yaml", "slat_generator_faster.yaml"),
         ("compile_model: true", "compile_model: false"),
-        ("slat_decoder_gs_4_config_path: slat_decoder_gs_4.yaml", "slat_decoder_gs_4_config_path: null"),
-        ("slat_decoder_gs_4_ckpt_path: slat_decoder_gs_4.ckpt", "slat_decoder_gs_4_ckpt_path: null"),
+        (
+            "slat_decoder_gs_4_config_path: slat_decoder_gs_4.yaml",
+            "slat_decoder_gs_4_config_path: null",
+        ),
+        (
+            "slat_decoder_gs_4_ckpt_path: slat_decoder_gs_4.ckpt",
+            "slat_decoder_gs_4_ckpt_path: null",
+        ),
     ):
         if old not in pipeline:
             raise RuntimeError(f"pipeline config changed: missing {old}")
@@ -282,6 +284,7 @@ class Model:
         import torch
         from hydra.utils import instantiate
         from omegaconf import OmegaConf
+
         imports_s = time.perf_counter() - imports_t0
 
         cuda_check_t0 = time.perf_counter()

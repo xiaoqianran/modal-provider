@@ -163,7 +163,7 @@ function connectionPanel(connections, hfSecret) {
     placeholder: "as-...",
   });
   const status = h("div", { class: "connect-hint" },
-    "粘贴完整 Modal CLI 命令会自动提取凭证。凭证仅保存在当前 Agent 进程内存。"
+    "粘贴完整 Modal CLI 命令会自动提取凭证。验证成功后会保存在本机 .secrets/modal.json，并在下次启动时自动恢复。"
   );
   const connect = h("button", { class: "btn btn--primary connect-action", type: "button" },
     icon("plug", 15), "连接 Modal"
@@ -219,7 +219,7 @@ function connectionPanel(connections, hfSecret) {
     if (!parsed) {
       status.textContent = command.value.trim()
         ? "未识别到完整的 --token-id 和 --token-secret。"
-        : "粘贴完整 Modal CLI 命令会自动提取凭证。凭证仅保存在当前 Agent 进程内存。";
+        : "粘贴完整 Modal CLI 命令会自动提取凭证。验证成功后会保存在本机 .secrets/modal.json，并在下次启动时自动恢复。";
       return;
     }
     tokenId.value = parsed.tokenId;
@@ -299,7 +299,7 @@ function connectionPanel(connections, hfSecret) {
 
   const managed = connections.filter((item) => item.managed !== false);
   return h("div", { class: "modal-settings" },
-    h("p", { class: "drawer-copy" }, "一组凭证同时用于本机 2D / 3D Provider。凭证仅保存在当前 Agent 进程内存。"),
+    h("p", { class: "drawer-copy" }, "一组凭证同时用于本机 2D / 3D Provider。连接成功后持久化到本机 .secrets/modal.json；新凭据会覆盖旧凭据。"),
     h("div", { class: "connect-status-grid" },
       ...managed.map((item) => h("div", { class: "connect-provider" },
         h("span", { class: `connect-provider__dot ${item.connected ? "is-on" : ""}` }),

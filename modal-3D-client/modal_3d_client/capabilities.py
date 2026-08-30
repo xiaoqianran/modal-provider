@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from modal_3d.common import WORKER_ADAPTER_REVISION
+
 from .constants import (
     ARTIFACTS_VOLUME,
     CANONICAL_SIZE,
@@ -112,6 +114,14 @@ def _validate_document(value: object) -> dict[str, object]:
         entrypoint = item.get("generation_entrypoint")
         if not isinstance(entrypoint, dict) or entrypoint.get("method_name") != "generate_job":
             raise IncompatibleCapability("modal-3D worker lacks a direct generate_job entrypoint")
+        deployment = item.get("deployment")
+        if (
+            not isinstance(deployment, dict)
+            or deployment.get("adapter_revision") != WORKER_ADAPTER_REVISION
+        ):
+            raise IncompatibleCapability(
+                f"modal-3D worker manifest is stale; expected {WORKER_ADAPTER_REVISION}"
+            )
         normalized.append(dict(item))
     doc["models"] = normalized
     return doc

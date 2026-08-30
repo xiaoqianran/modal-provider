@@ -74,7 +74,7 @@ class FakeCapabilities:
             "prefetch_function": "prefetch",
             "batch_max_size": 8,
             "artifact_function": "read_artifact",
-            "artifact_volume": "modal-2d-artifacts",
+            "artifact_volume": "modal-gen-artifacts",
             "artifact_path_field": "remote_path",
             "job_transport": "modal.FunctionCall",
         },
@@ -319,7 +319,7 @@ class FakeJobService:
             "sha256": digest,
             "width": 1024,
             "height": 1024,
-            "remote_path": f"generated/{artifact_id}.png",
+            "remote_path": f"sources/sha256/{digest[:2]}/{digest}",
         }
 
     def _seed_jobs(self) -> None:

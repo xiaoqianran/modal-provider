@@ -13,7 +13,7 @@ from pathlib import Path
 
 import modal
 
-from .common import pinned_hf_snapshot, run_generation_job, worker_capability
+from .common import ARTIFACT_VOLUME, pinned_hf_snapshot, run_generation_job, worker_capability
 
 APP_NAME = "modal-3d-pixal3d"
 GPU = "L40S"
@@ -32,7 +32,7 @@ WHEELS_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{TAG
 
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-pixal3d-weights", create_if_missing=True)
-artifacts = modal.Volume.from_name("modal-3d-artifacts", create_if_missing=True)
+artifacts = modal.Volume.from_name(ARTIFACT_VOLUME, create_if_missing=True)
 
 CAPABILITY = worker_capability(
     "pixal3d",

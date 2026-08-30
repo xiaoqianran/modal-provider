@@ -102,7 +102,7 @@ def capability_document() -> dict:
             "job_transport": JOB_TRANSPORT,
             "entrypoint": "direct_class_method",
             "input_path_prefix": CLIENT_INPUT_PREFIX,
-            "artifact_volume": "modal-3d-artifacts",
+            "artifact_volume": "modal-gen-artifacts",
             "artifact_path_field": "path",
             "input_contract": {
                 "role": "canonical_rgba",

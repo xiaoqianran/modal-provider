@@ -8,6 +8,7 @@ from modal.exception import NotFoundError
 
 from modal_gen.deployments import DeploymentService, DeploymentTarget
 from modal_gen.errors import ConnectorError
+from modal_gen.weights import PrepareCall, WeightSpec
 
 
 def test_deploy_requires_in_memory_credentials():
@@ -252,6 +253,101 @@ def test_rejects_revision_that_modal_cannot_use_as_deployment_tag():
             targets=(DeploymentTarget("modal-2d", "worker", "runtime.worker", "sha256:bad"),)
         )
     assert exc.value.code == "DEPLOYMENT_REVISION_INVALID"
+
+
+def test_manifest_declares_weight_preparation():
+    class Adapter:
+        id = "modal-x"
+
+        def deployment_manifest(self):
+            return {
+                "provider": self.id,
+                "targets": [
+                    {
+                        "app": "worker",
+                        "module": "runtime.worker",
+                        "weights": [
+                            {
+                                "volume": "model-weights",
+                                "requiredPaths": ["model/config.json"],
+                                "prepare": [{"function": "sync_weights"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+
+    target = DeploymentService([Adapter()])._targets("modal-x")[0]
+    assert target.weights == (
+        WeightSpec(
+            volume="model-weights",
+            required_paths=("model/config.json",),
+            prepare=(PrepareCall("runtime.worker", "sync_weights"),),
+        ),
+    )
+
+
+def test_weights_are_verified_before_runtime_deployment(monkeypatch):
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        weights=(
+            WeightSpec(
+                "model-weights",
+                ("model/config.json",),
+                (PrepareCall("runtime.worker", "sync_weights"),),
+            ),
+        ),
+    )
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+    calls = []
+
+    monkeypatch.setattr(
+        service._weights,
+        "ensure",
+        lambda *_args, **_kwargs: calls.append("weights") or {"status": "ready"},
+    )
+
+    class App:
+        def deploy(self, **_kwargs):
+            calls.append("deploy")
+            return self
+
+    monkeypatch.setattr(
+        "modal_gen.deployments.importlib.import_module",
+        lambda _name: SimpleNamespace(app=App()),
+    )
+    result = service.deploy("modal-x")
+    assert result["providers"][0]["status"] == "current"
+    assert calls == ["weights", "deploy"]
+
+
+def test_weight_failure_prevents_runtime_deployment(monkeypatch):
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        weights=(WeightSpec("weights", ("model.bin",), (PrepareCall("m", "sync"),)),),
+    )
+    service = DeploymentService(targets=(target,), max_attempts=1)
+    service._client = SimpleNamespace()
+    monkeypatch.setattr(
+        service._weights,
+        "ensure",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("download failed")),
+    )
+    imported = []
+    monkeypatch.setattr(
+        "modal_gen.deployments.importlib.import_module",
+        lambda name: imported.append(name),
+    )
+
+    app = service.deploy("modal-x")["providers"][0]["apps"][0]
+    assert app["status"] == "failed"
+    assert app["error"] == "download failed"
+    assert imported == []
 
 
 def test_async_status_returns_disconnected_without_credentials():

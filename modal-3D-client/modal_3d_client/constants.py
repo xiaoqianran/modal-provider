@@ -5,11 +5,12 @@ OPERATION = "modal-3d.asset.image_to_3d.v1"
 CAPABILITY_KIND = "asset3d.generate"
 OUTPUT_ROLE = "primary-glb"
 OUTPUT_MIME = "model/gltf-binary"
-ARTIFACTS_VOLUME = "modal-3d-artifacts"
+ARTIFACTS_VOLUME = "modal-gen-artifacts"
+LEGACY_ARTIFACTS_VOLUME = "modal-3d-artifacts"
 JOB_TRANSPORT = "modal.FunctionCall"
 
-# The client prepares the final canonical RGBA locally and uploads it here.
-# Modal never preprocesses: there is no source-inputs/ conditioning path.
+# Canonical 3D inputs live here. Connector handoff prefers shared raw sources;
+# explicit/manual uploads retain the existing local-conditioning fallback.
 CLIENT_INPUT_PREFIX = "client-inputs/"
 CANONICAL_SIZE = 1024
 

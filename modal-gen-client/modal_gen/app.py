@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import os
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from .artifacts import ArtifactService
 from .capabilities import CapabilityRegistry
 from .constants import SESSION_PATH, allow_any_origin
+from .credentials import CredentialStore
 from .deployments import DeploymentService
 from .errors import ConnectorError
 from .jobs import JobService
@@ -20,6 +23,7 @@ from .sessions import SessionService, normalize_origin
 from .storage import Store
 
 _DEFAULT_AGENT_TOKEN = "wangran"
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -59,7 +63,35 @@ def runtime() -> Runtime:
 
 
 def create_app(state: Runtime | None = None) -> FastAPI:
-    app = FastAPI(title="modal-gen Connector", version="0.1.0", docs_url=None, redoc_url=None)
+    credentials = CredentialStore()
+
+    async def restore_saved_credentials() -> None:
+        if state is not None:
+            return
+        saved = credentials.load()
+        if saved is None:
+            return
+        target = runtime()
+        try:
+            await target.deployments.connect_async(saved.token_id, saved.token_secret)
+            await target.capabilities.connect_all_async(saved.token_id, saved.token_secret)
+        except Exception as exc:
+            target.deployments.disconnect()
+            target.capabilities.disconnect_all()
+            _LOG.warning("无法自动恢复已保存的 Modal 凭据: %s", exc)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        await restore_saved_credentials()
+        yield
+
+    app = FastAPI(
+        title="modal-gen Connector",
+        version="0.1.0",
+        docs_url=None,
+        redoc_url=None,
+        lifespan=lifespan,
+    )
 
     def current() -> Runtime:
         return state or runtime()
@@ -104,6 +136,8 @@ def create_app(state: Runtime | None = None) -> FastAPI:
             raise ConnectorError("PROVIDER_CREDENTIALS_REQUIRED", "Modal credentials 不能为空", 422)
         await current().deployments.connect_async(token_id, token_secret)
         rows = await current().capabilities.connect_all_async(token_id, token_secret)
+        if state is None:
+            credentials.save(token_id, token_secret)
         return {"providers": rows}
 
     @app.post("/v1/providers/disconnect")

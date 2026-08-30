@@ -27,11 +27,11 @@ def test_fetch_reads_volume_directly_and_caches_atomically(
 
     path = artifacts.fetch(descriptor)
     assert path.read_bytes() == data
-    assert volume.paths == ["generated/art_abc.png"]
+    assert volume.paths == [f"sources/sha256/{descriptor['sha256'][:2]}/{descriptor['sha256']}"]
     assert not list(tmp_path.rglob("*.part"))
 
     assert artifacts.fetch(descriptor) == path
-    assert volume.paths == ["generated/art_abc.png"]
+    assert volume.paths == [f"sources/sha256/{descriptor['sha256'][:2]}/{descriptor['sha256']}"]
 
 
 def test_fetch_requires_direct_volume_path(tmp_path: Path, monkeypatch, png_artifact):
@@ -53,3 +53,24 @@ def test_fetch_rejects_corrupt_volume(tmp_path: Path, monkeypatch, png_artifact)
     with pytest.raises(ContractError):
         artifacts.fetch(descriptor)
     assert not list(tmp_path.rglob("*.part"))
+
+
+def test_fetch_reads_legacy_volume_for_historical_descriptor(
+    tmp_path: Path, monkeypatch, png_artifact
+):
+    data, descriptor = png_artifact
+    descriptor = dict(descriptor, remote_path=f"generated/{descriptor['id']}.png")
+    volume = RemoteVolume([data])
+    volume_names = []
+    monkeypatch.setenv("MODAL_2D_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(artifacts, "client", lambda: object())
+
+    def from_name(name, **kwargs):
+        volume_names.append(name)
+        return volume
+
+    monkeypatch.setattr(artifacts.modal.Volume, "from_name", from_name)
+    path = artifacts.fetch(descriptor)
+    assert path.read_bytes() == data
+    assert volume_names == ["modal-2d-artifacts"]
+    assert volume.paths == [f"generated/{descriptor['id']}.png"]

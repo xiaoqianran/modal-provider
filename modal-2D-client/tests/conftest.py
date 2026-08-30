@@ -13,7 +13,7 @@ def capability_doc():
         "generation": {
             "entrypoint": "direct_class_method",
             "batch_max_size": 8,
-            "artifact_volume": "modal-2d-artifacts",
+            "artifact_volume": "modal-gen-artifacts",
             "artifact_path_field": "remote_path",
             "job_transport": "modal.FunctionCall",
         },
@@ -63,5 +63,5 @@ def png_artifact():
         "sha256": sha256,
         "width": 1024,
         "height": 1024,
-        "remote_path": "generated/art_abc.png",
+        "remote_path": f"sources/sha256/{sha256[:2]}/{sha256}",
     }

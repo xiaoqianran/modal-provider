@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from modal_2d.artifacts import artifact_path, inspect_png_header, write_png
+from modal_2d.artifacts import inspect_png_header, write_png
 
 
 def png_header(width: int = 1024, height: int = 1024) -> bytes:
@@ -35,7 +35,7 @@ def test_write_png_is_atomic_and_described(tmp_path: Path):
     assert descriptor["mime"] == "image/png"
     assert descriptor["bytes"] == len(data)
     assert descriptor["sha256"] == sha256
-    assert artifact_path(tmp_path, descriptor["id"]) == path
+    assert descriptor["remote_path"] == f"sources/sha256/{sha256[:2]}/{sha256}"
     assert not list(tmp_path.rglob("*.part"))
 
 

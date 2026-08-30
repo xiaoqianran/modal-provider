@@ -11,9 +11,7 @@ class ContractError(ValueError):
     pass
 
 
-def validate_artifact(
-    value: object, *, model: str, require_path: bool = True
-) -> dict[str, object]:
+def validate_artifact(value: object, *, model: str, require_path: bool = True) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ContractError("artifact must be an object")
     artifact = dict(value)

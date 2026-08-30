@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from .constants import MODELS_VOLUME
 from .models import MODELS
 
 _MODULES = {
@@ -33,13 +34,32 @@ def deployment_manifest() -> dict[str, object]:
     for model in MODELS:
         if model.worker_app in seen:
             continue
+        worker_models = [item for item in MODELS if item.worker_app == model.worker_app]
         targets.append(
             {
                 "app": model.worker_app,
                 "module": _MODULES[model.worker_app],
                 "kind": "worker",
                 "revision": revision,
-                "models": [item.id for item in MODELS if item.worker_app == model.worker_app],
+                "models": [item.id for item in worker_models],
+                "weights": [
+                    {
+                        "volume": MODELS_VOLUME,
+                        "requiredPaths": [
+                            path
+                            for item in worker_models
+                            for path in (f"{item.id}/.complete", f"{item.id}/{item.snapshot_file}")
+                        ],
+                        "prepare": [
+                            {
+                                "module": "modal_2d.app",
+                                "function": "prefetch",
+                                "arguments": [item.id],
+                            }
+                            for item in worker_models
+                        ],
+                    }
+                ],
             }
         )
         seen.add(model.worker_app)

@@ -16,6 +16,15 @@ class ProviderArtifact:
 
 
 @dataclass(frozen=True, slots=True)
+class ConnectorArtifactDescriptor:
+    id: str
+    role: str
+    mime: str
+    bytes: int
+    hash: str
+
+
+@dataclass(frozen=True, slots=True)
 class ConnectorArtifactInput:
     id: str
     role: str
@@ -26,6 +35,14 @@ class ConnectorArtifactInput:
 
 
 class ArtifactResolver(Protocol):
+    def describe_input(
+        self,
+        artifact_id: str,
+        *,
+        owner_client: str,
+        owner_origin: str,
+    ) -> ConnectorArtifactDescriptor: ...
+
     def resolve_input(
         self,
         artifact_id: str,

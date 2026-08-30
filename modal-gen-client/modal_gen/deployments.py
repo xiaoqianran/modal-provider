@@ -17,6 +17,7 @@ from modal.exception import InternalError, NotFoundError, ServiceError
 from modal.exception import TimeoutError as ModalTimeoutError
 
 from .errors import ConnectorError
+from .weights import WeightProvisioner, WeightSpec
 
 _DEPLOY_RETRYABLE = (
     ModalConnectionError,
@@ -35,6 +36,7 @@ class DeploymentTarget:
     revision: str | None = None
     models: tuple[str, ...] = ()
     required: bool = False
+    weights: tuple[WeightSpec, ...] = ()
 
 
 def _now() -> str:
@@ -94,6 +96,7 @@ class DeploymentService:
         self._target_locks = {
             (target.provider, target.app_name): threading.Lock() for target in self._targets_all
         }
+        self._weights = WeightProvisioner()
         self._jobs: dict[str, dict[str, object]] = {}
         self._active_requests: dict[tuple[object, ...], str] = {}
         self._job_request_keys: dict[str, tuple[object, ...]] = {}
@@ -137,6 +140,18 @@ class DeploymentService:
                     if isinstance(raw_models, list)
                     else ()
                 )
+                raw_weights = item.get("weights", [])
+                if not isinstance(raw_weights, list):
+                    raise ConnectorError(
+                        "DEPLOYMENT_MANIFEST_INVALID", "Runtime weights 必须是数组", 500
+                    )
+                try:
+                    weights = tuple(
+                        WeightSpec.from_manifest(value, default_module=module)
+                        for value in raw_weights
+                    )
+                except ValueError as exc:
+                    raise ConnectorError("DEPLOYMENT_MANIFEST_INVALID", str(exc), 500) from exc
                 rows.append(
                     DeploymentTarget(
                         provider=provider,
@@ -145,6 +160,7 @@ class DeploymentService:
                         revision=revision,
                         models=models,
                         required=item.get("required") is True,
+                        weights=weights,
                     )
                 )
                 seen.add(key)
@@ -354,8 +370,18 @@ class DeploymentService:
         *,
         strategy: str,
         environment_name: str | None,
+        on_phase=None,
     ) -> dict[str, object]:
         try:
+            weights = self._weights.ensure(
+                target.app_name,
+                target.weights,
+                client,
+                environment_name,
+                on_phase=on_phase,
+            )
+            if on_phase is not None:
+                on_phase("deploying")
             module = importlib.import_module(target.module)
             app = module.app
             deployed = app.deploy(
@@ -378,6 +404,7 @@ class DeploymentService:
                 "deployedRevision": target.revision,
                 "models": list(target.models),
                 "required": target.required,
+                "weights": weights,
             }
         except Exception as exc:
             return {
@@ -400,6 +427,7 @@ class DeploymentService:
         strategy: str,
         environment_name: str | None,
         on_attempt=None,
+        on_phase=None,
     ) -> dict[str, object]:
         last: dict[str, object] | None = None
         for attempt in range(1, self._max_attempts + 1):
@@ -410,6 +438,7 @@ class DeploymentService:
                 client,
                 strategy=strategy,
                 environment_name=environment_name,
+                on_phase=on_phase,
             )
             last["attempts"] = attempt
             if last.get("status") != "failed" or last.get("retryable") is not True:
@@ -540,8 +569,11 @@ class DeploymentService:
         lock = self._target_locks.setdefault((target.provider, target.app_name), threading.Lock())
 
         def on_attempt(attempt: int) -> None:
-            status = "deploying" if attempt == 1 else "retrying"
+            status = "preparing" if attempt == 1 else "retrying"
             self._update_target_job_status(job_id, index, status, attempts=attempt)
+
+        def on_phase(status: str) -> None:
+            self._update_target_job_status(job_id, index, status)
 
         with lock:
             row = self._deploy_target_with_retry(
@@ -550,6 +582,7 @@ class DeploymentService:
                 strategy=strategy,
                 environment_name=environment_name,
                 on_attempt=on_attempt,
+                on_phase=on_phase,
             )
         self._update_target_job_status(
             job_id,
@@ -652,6 +685,15 @@ class DeploymentService:
             status, error = "missing", str(exc)
         except Exception as exc:
             status, error = "error", str(exc)
+        weights = None
+        if status != "error" and target.weights:
+            try:
+                weights = await self._weights.status_async(target.weights, client, environment_name)
+                if weights["status"] != "ready":
+                    status = "missing"
+                    error = "required model weights are missing"
+            except Exception as exc:
+                status, error = "error", str(exc)
         row: dict[str, object] = {
             "provider": target.provider,
             "app": target.app_name,
@@ -662,6 +704,8 @@ class DeploymentService:
             "models": list(target.models),
             "required": target.required,
         }
+        if weights is not None:
+            row["weights"] = weights
         if error:
             row["error"] = error
         return row
@@ -691,6 +735,15 @@ class DeploymentService:
             status, error = "missing", str(exc)
         except Exception as exc:
             status, error = "error", str(exc)
+        weights = None
+        if status != "error" and target.weights:
+            try:
+                weights = self._weights.status(target.weights, client, environment_name)
+                if weights["status"] != "ready":
+                    status = "missing"
+                    error = "required model weights are missing"
+            except Exception as exc:
+                status, error = "error", str(exc)
         row: dict[str, object] = {
             "provider": target.provider,
             "app": target.app_name,
@@ -701,6 +754,8 @@ class DeploymentService:
             "models": list(target.models),
             "required": target.required,
         }
+        if weights is not None:
+            row["weights"] = weights
         if error:
             row["error"] = error
         return row
