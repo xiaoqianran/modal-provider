@@ -102,7 +102,8 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
     source = source.replace(
         phase2_marker,
         phase2_marker
-        + '        self.alignment_phase2_profile = {"tensor_prep": 0.0, "moge_infer": 0.0, "sam3_sky": 0.0, "frame_align_total": 0.0}\n',
+        + '        self.alignment_phase2_profile = {"tensor_prep": 0.0, "moge_infer": 0.0, "sam3_sky": 0.0, "frame_align_total": 0.0}\n'
+        + '        self.alignment_phase2_detail = {"frame_prep": 0.0, "guided_depth": 0.0, "percentile": 0.0, "normal_mask": 0.0, "ransac": 0.0}\n',
         1,
     )
 
@@ -162,6 +163,93 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
         frame_done,
         '            self.alignment_phase2_profile["frame_align_total"] += time.perf_counter() - _phase2_frames_started\n'
         + frame_done,
+        1,
+    )
+
+    # Phase 2 frame-alignment detail profiling. This is instrumentation only;
+    # it must not change any HY-World alignment inputs, thresholds, or outputs.
+    frame_prep_start = '                mono_depth_mask = mono_depths[local_i]["mask"][0]\n'
+    frame_prep_end = "                # == Global PCD Rendering (obtaining guided_depth) ==\n"
+    if source.count(frame_prep_start) != 1 or source.count(frame_prep_end) != 1:
+        raise RuntimeError("expected pinned frame-prep markers not found")
+    source = source.replace(
+        frame_prep_start,
+        "                _phase2_detail_started = time.perf_counter()\n" + frame_prep_start,
+        1,
+    )
+    source = source.replace(
+        frame_prep_end,
+        '                self.alignment_phase2_detail["frame_prep"] += time.perf_counter() - _phase2_detail_started\n'
+        + frame_prep_end,
+        1,
+    )
+
+    guided_call = "                    guided_depth, guided_depth_mask, guided_normal = get_guided_depth_infos_v2(w2c=updated_tar_w2cs[local_i], K=updated_tar_Ks[local_i],\n"
+    guided_after = "                    guided_depth_np = guided_depth.cpu().numpy()\n"
+    if source.count(guided_call) != 1 or source.count(guided_after) != 1:
+        raise RuntimeError("expected pinned guided-depth markers not found")
+    source = source.replace(
+        guided_call,
+        "                    _phase2_detail_started = time.perf_counter()\n" + guided_call,
+        1,
+    )
+    source = source.replace(
+        guided_after,
+        '                    self.alignment_phase2_detail["guided_depth"] += time.perf_counter() - _phase2_detail_started\n'
+        + "                    _phase2_detail_started = time.perf_counter()\n"
+        + guided_after,
+        1,
+    )
+
+    percentile_end = (
+        "                    guided_depth_mask = guided_depth_mask & ~percentile_mask\n"
+    )
+    if source.count(percentile_end) != 1:
+        raise RuntimeError("expected pinned percentile marker not found")
+    source = source.replace(
+        percentile_end,
+        percentile_end
+        + '                    self.alignment_phase2_detail["percentile"] += time.perf_counter() - _phase2_detail_started\n',
+        1,
+    )
+
+    normal_start = "                # normal update mask; depth alignment avoids samples with normal angles greater than 90 degrees.\n"
+    normal_end = "                valid_mask = guided_depth_mask & mono_depth_mask & mono_edge_mask & normal_mask\n"
+    if source.count(normal_start) != 1 or source.count(normal_end) != 1:
+        raise RuntimeError("expected pinned normal-mask markers not found")
+    source = source.replace(
+        normal_start,
+        "                _phase2_detail_started = time.perf_counter()\n" + normal_start,
+        1,
+    )
+    source = source.replace(
+        normal_end,
+        normal_end
+        + '                self.alignment_phase2_detail["normal_mask"] += time.perf_counter() - _phase2_detail_started\n',
+        1,
+    )
+
+    ransac_start = "                # Initialize with least squares.\n                ransac = RANSACRegressor(\n"
+    ransac_except = '                except:\n                    color_print(f"[Rank{self.rank}] RANSAC failed for {view_id}/{traj_id}/{fname}, continue...", "error")\n'
+    ransac_success = "                b = ransac.estimator_.model.intercept_[0]\n"
+    if any(source.count(marker) != 1 for marker in (ransac_start, ransac_except, ransac_success)):
+        raise RuntimeError("expected pinned RANSAC markers not found")
+    source = source.replace(
+        ransac_start,
+        "                _phase2_detail_started = time.perf_counter()\n" + ransac_start,
+        1,
+    )
+    source = source.replace(
+        ransac_except,
+        "                except:\n"
+        + '                    self.alignment_phase2_detail["ransac"] += time.perf_counter() - _phase2_detail_started\n'
+        + '                    color_print(f"[Rank{self.rank}] RANSAC failed for {view_id}/{traj_id}/{fname}, continue...", "error")\n',
+        1,
+    )
+    source = source.replace(
+        ransac_success,
+        ransac_success
+        + '                self.alignment_phase2_detail["ransac"] += time.perf_counter() - _phase2_detail_started\n',
         1,
     )
 

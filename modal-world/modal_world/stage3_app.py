@@ -374,6 +374,18 @@ class WorldStereoWorker:
                 name: round(value, 4)
                 for name, value in getattr(memory_bank, "alignment_phase2_profile", {}).items()
             }
+            alignment_phase2_detail = {
+                name: round(value, 4)
+                for name, value in getattr(memory_bank, "alignment_phase2_detail", {}).items()
+            }
+            alignment_phase2_detail["unattributed"] = round(
+                max(
+                    0.0,
+                    alignment_phase2_profile.get("frame_align_total", 0.0)
+                    - sum(alignment_phase2_detail.values()),
+                ),
+                4,
+            )
             with timer.track("[IO] Save final aligned pointcloud (update memory)"):
                 memory_bank.export_pcd(
                     str(target / f"render_results/generation_bank_{_MODEL_TYPE}"),
@@ -395,6 +407,7 @@ class WorldStereoWorker:
             "aligned_pcd_exists": aligned_pcd.is_file(),
             "alignment_profile": alignment_profile,
             "alignment_phase2_profile": alignment_phase2_profile,
+            "alignment_phase2_detail": alignment_phase2_detail,
             "timer_records": {
                 name: [round(value, 4) for value in values]
                 for name, values in timer.records.items()

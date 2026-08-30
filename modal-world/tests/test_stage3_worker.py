@@ -109,3 +109,12 @@ def test_stage3_phase2_has_subprofiling():
     for name in ("tensor_prep", "moge_infer", "sam3_sky", "frame_align_total"):
         assert name in patch
     assert '"alignment_phase2_profile": alignment_phase2_profile' in worker
+
+
+def test_stage3_phase2_frame_alignment_has_detail_profiling():
+    patch = Path("modal_world/stage3_patch.py").read_text()
+    worker = Path("modal_world/stage3_app.py").read_text()
+    for name in ("frame_prep", "guided_depth", "percentile", "normal_mask", "ransac"):
+        assert name in patch
+    assert '"alignment_phase2_detail": alignment_phase2_detail' in worker
+    assert 'alignment_phase2_detail["unattributed"]' in worker
