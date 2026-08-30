@@ -132,6 +132,9 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         provider = payload.get("provider")
         if provider is not None and not isinstance(provider, str):
             raise ConnectorError("DEPLOYMENT_PROVIDER_INVALID", "provider 必须是字符串", 422)
+        app_name = payload.get("app")
+        if app_name is not None and not isinstance(app_name, str):
+            raise ConnectorError("DEPLOYMENT_APP_INVALID", "app 必须是字符串", 422)
         strategy = payload.get("strategy", "rolling")
         if not isinstance(strategy, str):
             raise ConnectorError("DEPLOYMENT_STRATEGY_INVALID", "strategy 必须是字符串", 422)
@@ -141,6 +144,7 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         return await run_in_threadpool(
             current().deployments.deploy,
             provider,
+            app_name=app_name,
             strategy=strategy,
             environment_name=environment_name or None,
         )

@@ -48,3 +48,44 @@ def test_deploy_uses_runtime_app_definition(monkeypatch):
     assert result["providers"][0]["status"] == "deployed"
     assert calls[0]["name"] == "test-app"
     assert calls[0]["strategy"] == "rolling"
+
+
+def test_deploy_can_target_one_runtime_app(monkeypatch):
+    service = DeploymentService()
+    service._client = SimpleNamespace()
+    targets = (
+        DeploymentTarget("modal-3d", "app-a", "runtime.a"),
+        DeploymentTarget("modal-3d", "app-b", "runtime.b"),
+    )
+    imported = []
+
+    class FakeApp:
+        def __init__(self, name):
+            self.name = name
+
+        def deploy(self, **_kwargs):
+            imported.append(self.name)
+
+    monkeypatch.setattr(service, "_targets", lambda _provider=None: targets)
+    monkeypatch.setattr(service, "_ensure_source_paths", lambda: None)
+    monkeypatch.setattr(
+        "modal_gen.deployments.importlib.import_module",
+        lambda name: SimpleNamespace(app=FakeApp(name)),
+    )
+
+    result = service.deploy("modal-3d", app_name="app-b")
+    assert imported == ["runtime.b"]
+    assert result["providers"][0]["apps"][0]["app"] == "app-b"
+
+
+def test_deploy_rejects_unknown_runtime_app(monkeypatch):
+    service = DeploymentService()
+    service._client = SimpleNamespace()
+    monkeypatch.setattr(
+        service,
+        "_targets",
+        lambda _provider=None: (DeploymentTarget("modal-2d", "known", "runtime.known"),),
+    )
+    with pytest.raises(ConnectorError) as exc:
+        service.deploy("modal-2d", app_name="missing")
+    assert exc.value.code == "DEPLOYMENT_APP_UNKNOWN"

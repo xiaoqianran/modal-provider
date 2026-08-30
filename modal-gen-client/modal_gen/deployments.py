@@ -73,6 +73,7 @@ class DeploymentService:
         self,
         provider: str | None = None,
         *,
+        app_name: str | None = None,
         strategy: str = "rolling",
         environment_name: str | None = None,
     ) -> dict[str, object]:
@@ -83,7 +84,14 @@ class DeploymentService:
         client = self._require_client()
         rows: list[dict[str, object]] = []
         with self._lock:
-            for target in self._targets(provider):
+            targets = self._targets(provider)
+            if app_name is not None:
+                targets = tuple(target for target in targets if target.app_name == app_name)
+                if not targets:
+                    raise ConnectorError(
+                        "DEPLOYMENT_APP_UNKNOWN", f"未知 Runtime App: {app_name}", 422
+                    )
+            for target in targets:
                 try:
                     self._ensure_source_paths()
                     module = importlib.import_module(target.module)

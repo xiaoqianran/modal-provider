@@ -99,11 +99,17 @@ class DemoGateway:
             ]
         }
 
-    def deploy(self, provider: str = "all") -> dict:
+    def deploy(self, provider: str = "all", app_name: str | None = None) -> dict:
         rows = self.deployments()
-        if provider == "all":
-            return rows
-        return {"providers": [row for row in rows["providers"] if row["id"] == provider]}
+        selected = (
+            rows["providers"]
+            if provider == "all"
+            else [row for row in rows["providers"] if row["id"] == provider]
+        )
+        if app_name:
+            for row in selected:
+                row["apps"] = [item for item in row.get("apps", []) if item.get("app") == app_name]
+        return {"providers": selected}
 
     def jobs(self, status=None, q="", page=1, page_size=25) -> dict:
         return self.engine.list_jobs(status=status, q=q, page=page, page_size=page_size)
@@ -240,11 +246,14 @@ class LiveGateway:
             timeout=30.0,
         )
 
-    def deploy(self, provider: str = "all") -> dict:
+    def deploy(self, provider: str = "all", app_name: str | None = None) -> dict:
+        body = {"provider": provider}
+        if app_name:
+            body["app"] = app_name
         return self._req(
             "POST",
             "/v1/deployments/deploy",
-            json_body={"provider": provider},
+            json_body=body,
             headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
             timeout=60 * 30,
         )
@@ -563,7 +572,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({"error": str(exc)}, 502)
         if name == "deployments/deploy":
             try:
-                return self._send_json(g.deploy(body.get("provider", "all")))
+                return self._send_json(g.deploy(body.get("provider", "all"), body.get("app")))
             except RuntimeError as exc:
                 return self._send_json({"error": str(exc)}, 502)
         if name == "jobs":

@@ -342,13 +342,84 @@ function skeletonRows(n) {
 }
 
 function deploymentPanel(rows) {
+  const body = h("div", { class: "panel__body stack" });
+  const deployAll = deploymentAction("全部部署", "all", null, body);
+  body.append(h("div", { class: "row spread" },
+    h("p", { class: "muted" }, "直接调用 Modal SDK 部署；凭证仅保存在当前 Agent 进程内存。"),
+    deployAll
+  ));
+
+  for (const row of rows) {
+    const providerLabel = row.id === "modal-2d" ? "2D Runtime" : row.id === "modal-3d" ? "3D Runtime" : row.id;
+    const providerAction = deploymentAction(
+      row.status === "deployed" ? "重新部署" : "部署",
+      row.id,
+      null,
+      body
+    );
+    body.append(h("div", { class: "cap-row" },
+      h("div", { class: "row spread" },
+        h("div", { class: "stack" },
+          h("strong", {}, providerLabel),
+          h("span", { class: "muted mono" }, `${(row.apps || []).length} apps`)
+        ),
+        h("div", { class: "row" }, deploymentStatusBadge(row.status), providerAction)
+      ),
+      h("div", { class: "stack" }, ...(row.apps || []).map((app) => runtimeAppRow(row.id, app, body)))
+    ));
+  }
+
   return h("div", { class: "panel" },
     h("div", { class: "panel__head" }, h("h2", { class: "panel__title" }, "Modal Runtime")),
-    h("div", { class: "panel__body stack" },
-      ...rows.map((row) => h("div", { class: "row spread" },
-        h("strong", {}, row.id === "modal-2d" ? "2D Runtime" : row.id === "modal-3d" ? "3D Runtime" : row.id),
-        providerBadge(row.status === "deployed" ? "available" : row.status === "partial" ? "degraded" : "unavailable")
-      ))
-    )
+    body
   );
+}
+
+function runtimeAppRow(provider, app, refreshHost) {
+  const action = deploymentAction(app.status === "deployed" ? "重新部署" : "部署", provider, app.app, refreshHost, true);
+  return h("div", { class: "row spread" },
+    h("div", { class: "stack" },
+      h("span", { class: "mono" }, app.app || "—"),
+      app.error && app.status === "error" ? h("span", { class: "muted" }, app.error) : null
+    ),
+    h("div", { class: "row" }, deploymentStatusBadge(app.status), action)
+  );
+}
+
+function deploymentStatusBadge(status) {
+  const mapped = status === "deployed" ? "available" : status === "partial" ? "degraded" : "unavailable";
+  const label = status === "deployed" ? "已部署" : status === "missing" ? "未部署" : status === "partial" ? "部分部署" : status === "error" ? "状态异常" : "失败";
+  return h("span", { class: `badge badge--${mapped === "available" ? "ok" : mapped === "degraded" ? "warn" : "neutral"}` }, label);
+}
+
+function deploymentAction(label, provider, appName, refreshHost, compact = false) {
+  const button = h("button", { class: `btn ${compact ? "btn--sm" : ""}`, type: "button" }, label);
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.textContent = "部署中…";
+    try {
+      const payload = { provider };
+      if (appName) payload.app = appName;
+      const result = await apiPost("deployments/deploy", payload);
+      const failed = (result.providers || []).some((item) => item.status === "failed");
+      toast(failed ? "Runtime 部署失败" : "Runtime 部署完成", failed ? "danger" : "ok");
+      await refreshDeploymentPanel(refreshHost);
+    } catch (error) {
+      toast(String(error.message || error), "danger");
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  });
+  return button;
+}
+
+async function refreshDeploymentPanel(host) {
+  if (!host?.parentElement) return;
+  try {
+    const deployments = await apiGet("deployments");
+    host.parentElement.replaceWith(deploymentPanel(deployments.providers || []));
+  } catch (error) {
+    toast(`读取 Runtime 状态失败：${String(error.message || error)}`, "danger");
+  }
 }
