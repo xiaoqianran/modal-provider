@@ -154,7 +154,18 @@ def patch_stage1_worldnav(source_root: str | Path) -> None:
 """
     if navi_source.count(old_rotation) != 1:
         raise RuntimeError("expected pinned Open3D rotation block not found")
-    navi_utils_path.write_text(navi_source.replace(old_rotation, new_rotation, 1))
+    navi_source = navi_source.replace(old_rotation, new_rotation, 1)
+
+    debug_mesh_old = "    if len(vis_all_candidates) > 0:\n"
+    debug_mesh_new = (
+        "    # modal-world: candidate sphere/torus geometry below is debug-only; it is neither saved nor returned.\n"
+        "    # Open3D 0.18 segfaults in sphere.translate() on the Blackwell runtime, so skip this no-op visualization.\n"
+        "    if False and len(vis_all_candidates) > 0:\n"
+    )
+    if navi_source.count(debug_mesh_old) != 1:
+        raise RuntimeError("expected pinned reconstruction-candidate debug mesh block not found")
+    navi_source = navi_source.replace(debug_mesh_old, debug_mesh_new, 1)
+    navi_utils_path.write_text(navi_source)
 
     traj_path = worldgen_root / "traj_generate.py"
     traj_source = traj_path.read_text()

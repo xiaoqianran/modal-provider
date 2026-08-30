@@ -79,3 +79,10 @@ def test_stage1_rejects_hidden_navmesh_failures():
     ):
         assert marker in worker
     assert "failed despite a zero subprocess exit" in worker
+
+
+def test_stage1_skips_unused_open3d_reconstruction_debug_mesh():
+    patch = Path("modal_world/stage1_patch.py").read_text()
+    assert "candidate sphere/torus geometry below is debug-only" in patch
+    assert 'if False and len(vis_all_candidates) > 0:' in patch
+    assert "sphere.translate()" in patch
