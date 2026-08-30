@@ -24,6 +24,7 @@ export async function mountJobs(root) {
   let autoPoll = true;
   let timer = null;
   let refreshSeq = 0;
+  let activeRefreshes = 0;
 
   const toolbar = h("div", { class: "toolbar" });
   const filterChips = h("div", { class: "row" });
@@ -50,6 +51,8 @@ export async function mountJobs(root) {
   }
 
   async function refresh({ silent = false } = {}) {
+    if (silent && activeRefreshes > 0) return;
+    activeRefreshes += 1;
     const requestSeq = ++refreshSeq;
     const requestStatus = status;
     const requestQuery = q;
@@ -65,6 +68,8 @@ export async function mountJobs(root) {
     } catch (e) {
       if (requestSeq !== refreshSeq) return;
       tableHost.replaceChildren(stateEmpty("无法读取任务", String(e.message || e), { iconName: "alert" }));
+    } finally {
+      activeRefreshes = Math.max(0, activeRefreshes - 1);
     }
   }
 
@@ -89,7 +94,12 @@ export async function mountJobs(root) {
         h("td", { class: "col-mono" }, trunc(row.id)),
         h("td", {}, row.provider),
         h("td", {}, trunc(row.operation, 16, 10)),
-        h("td", {}, jobBadge(row.status)),
+        h("td", {},
+          jobBadge(row.status),
+          row.syncDelayed
+            ? h("div", { class: "muted", title: row.syncError || "状态同步延迟", style: "font-size: var(--fs-11); margin-top: 2px" }, "状态同步延迟")
+            : null
+        ),
         h("td", { class: "mono" }, row.model?.id || "—"),
         h("td", { class: "dim tabular" }, fmtTime(row.createdAt)),
         h("td", { class: "dim tabular" }, dur),

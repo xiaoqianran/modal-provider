@@ -584,3 +584,57 @@ def test_runtime_ui_exposes_resync_and_model_value_sync() -> None:
     assert "loadCapabilities({ refresh: true })" in connect
     assert "values[key] = readFieldControl(ref.control, ref.spec)" in create
     assert "required && spec.enum.length === 1" in create
+
+
+def test_live_gateway_active_job_refresh_is_bounded_and_surfaces_delay(monkeypatch) -> None:
+    from modal_gen.ui.server import LiveGateway
+
+    gateway = LiveGateway()
+    gateway.token = "session-token"
+    running = {
+        "id": "job_running",
+        "status": "running",
+        "provider": "modal-3d",
+        "operation": "modal-3d.asset.image_to_3d.v1",
+    }
+    calls = []
+
+    def fake_req(method, path, **kwargs):
+        calls.append((method, path, kwargs.get("timeout")))
+        if path.startswith("/connector/v1/jobs?"):
+            return {"jobs": [running], "total": 1}
+        if path == "/connector/v1/jobs/job_running":
+            raise RuntimeError("connector unreachable: timed out")
+        raise AssertionError(path)
+
+    monkeypatch.setattr(gateway, "_req", fake_req)
+    result = gateway.jobs(page=1, page_size=25)
+    assert result["jobs"][0]["status"] == "running"
+    assert result["jobs"][0]["syncDelayed"] is True
+    assert "timed out" in result["jobs"][0]["syncError"]
+    assert calls[-1] == ("GET", "/connector/v1/jobs/job_running", 20.0)
+
+
+def test_live_gateway_job_detail_uses_generation_timeout(monkeypatch) -> None:
+    from modal_gen.ui.server import LiveGateway
+
+    gateway = LiveGateway()
+    gateway.token = "session-token"
+    captured = {}
+
+    def fake_req(method, path, **kwargs):
+        captured.update({"method": method, "path": path, **kwargs})
+        return {"job": {"id": "job_done", "status": "succeeded"}}
+
+    monkeypatch.setattr(gateway, "_req", fake_req)
+    result = gateway.job("job_done")
+    assert result["status"] == "succeeded"
+    assert captured["path"] == "/connector/v1/jobs/job_done"
+    assert captured["timeout"] == 20.0
+
+
+def test_jobs_ui_prevents_overlapping_auto_refresh_and_marks_sync_delay() -> None:
+    source = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_jobs.js").read_text(encoding="utf-8")
+    assert "if (silent && activeRefreshes > 0) return;" in source
+    assert "activeRefreshes = Math.max(0, activeRefreshes - 1);" in source
+    assert "状态同步延迟" in source
