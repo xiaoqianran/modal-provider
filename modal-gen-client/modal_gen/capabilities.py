@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from .constants import CONNECTOR_ID, CONNECTOR_VERSION, CONTRACT_VERSION
 from .errors import ProviderError
 from .providers.protocol import ProviderAdapter
+from .runtime_state import project_runtime_readiness
 from .storage import Store
 
 
@@ -95,7 +96,7 @@ class CapabilityRegistry:
         readiness = self.deployments.cached_status(provider_id)
         if readiness is None:
             return descriptor
-        return self._merge_runtime_readiness(descriptor, readiness)
+        return project_runtime_readiness(descriptor, readiness)
 
     async def _with_runtime_readiness_async(
         self, provider_id: str, descriptor: dict[str, object]
@@ -106,136 +107,7 @@ class CapabilityRegistry:
             readiness = await self.deployments.status_async(provider_id)
         except Exception:
             return descriptor
-        return self._merge_runtime_readiness(descriptor, readiness)
-
-    @staticmethod
-    def _merge_runtime_readiness(
-        descriptor: dict[str, object], readiness: dict[str, object]
-    ) -> dict[str, object]:
-        providers = readiness.get("providers")
-        if not isinstance(providers, list) or not providers:
-            return descriptor
-        runtime = providers[0]
-        apps = runtime.get("apps") if isinstance(runtime, dict) else None
-        if not isinstance(apps, list):
-            return descriptor
-        descriptor = dict(descriptor)
-        descriptor["runtimeReadiness"] = runtime
-
-        def app_runnable(item: dict[str, object]) -> bool:
-            explicit = item.get("runnable")
-            if isinstance(explicit, bool):
-                return explicit
-            weights = item.get("weights")
-            weights_ready = not isinstance(weights, dict) or weights.get("status") == "ready"
-            return item.get("status") == "current" and weights_ready
-
-        required_blockers = [
-            {
-                "app": str(item.get("app") or "unknown"),
-                "status": str(item.get("status") or "unknown"),
-                "error": item.get("error") or item.get("weightError"),
-            }
-            for item in apps
-            if isinstance(item, dict) and item.get("required") is True and not app_runnable(item)
-        ]
-        required_bad = bool(required_blockers)
-        ready_models = {
-            model
-            for item in apps
-            if isinstance(item, dict) and app_runnable(item)
-            for model in item.get("models", [])
-            if isinstance(model, str)
-        }
-        model_readiness = []
-        for app in apps:
-            if not isinstance(app, dict):
-                continue
-            deployment_status = str(app.get("status") or "unknown")
-            weights = app.get("weights")
-            weights_status = (
-                str(weights.get("status") or "unknown")
-                if isinstance(weights, dict)
-                else "not_required"
-            )
-            for model in app.get("models", []):
-                if not isinstance(model, str):
-                    continue
-                runnable = app_runnable(app)
-                if runnable:
-                    state = "ready"
-                elif deployment_status == "stale":
-                    state = "outdated"
-                elif deployment_status == "missing":
-                    state = "not_deployed"
-                elif deployment_status == "error":
-                    state = "error"
-                elif weights_status != "ready":
-                    state = "weights_missing"
-                else:
-                    state = "blocked"
-                model_readiness.append(
-                    {
-                        "model": model,
-                        "app": str(app.get("app") or "unknown"),
-                        "state": state,
-                        "runnable": runnable,
-                        "deploymentStatus": deployment_status,
-                        "weightsStatus": weights_status,
-                        "error": app.get("error") or app.get("weightError"),
-                    }
-                )
-
-        capabilities = descriptor.get("capabilities")
-        if not isinstance(capabilities, list):
-            return descriptor
-        updated = []
-        any_available = False
-        for capability in capabilities:
-            if not isinstance(capability, dict):
-                updated.append(capability)
-                continue
-            item = dict(capability)
-            input_desc = item.get("input")
-            if isinstance(input_desc, dict):
-                input_desc = dict(input_desc)
-                schema = input_desc.get("schema")
-                if isinstance(schema, dict):
-                    schema = dict(schema)
-                    props = schema.get("properties")
-                    if isinstance(props, dict) and isinstance(props.get("model"), dict):
-                        props = dict(props)
-                        model_schema = dict(props["model"])
-                        enum = model_schema.get("enum")
-                        if isinstance(enum, list):
-                            item["declaredModels"] = list(enum)
-                            item["modelReadiness"] = [
-                                row for row in model_readiness if row["model"] in enum
-                            ]
-                            model_schema["enum"] = [m for m in enum if m in ready_models]
-                            item["readyModels"] = list(model_schema["enum"])
-                            if not model_schema["enum"]:
-                                item["status"] = "disabled"
-                            elif required_bad:
-                                item["status"] = "degraded"
-                                item["runtimeBlockers"] = required_blockers
-                                any_available = True
-                            else:
-                                any_available = True
-                        props["model"] = model_schema
-                        schema["properties"] = props
-                    input_desc["schema"] = schema
-                item["input"] = input_desc
-            updated.append(item)
-        descriptor["capabilities"] = updated
-        if not any_available:
-            descriptor["status"] = "disabled"
-            descriptor["health"] = "unavailable"
-        elif required_bad:
-            descriptor["status"] = "degraded"
-            descriptor["health"] = "degraded"
-            descriptor["runtimeBlockers"] = required_blockers
-        return descriptor
+        return project_runtime_readiness(descriptor, readiness)
 
     def get(self, hash_value: str) -> dict[str, object] | None:
         return self.store.get_snapshot(hash_value)
