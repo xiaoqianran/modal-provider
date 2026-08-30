@@ -22,7 +22,7 @@ def test_stage2_uses_persistent_worker_and_runtime_cache():
     assert "point_rendering(" in worker
     assert "device_num=1" in worker
     assert '"hyworld2-runtime-cache-v2", create_if_missing=True, version=2' in worker
-    assert 'model_cache.with_mount_options(read_only=True)' in worker
+    assert "model_cache.with_mount_options(read_only=True)" in worker
     for key in (
         "CUDA_CACHE_PATH",
         "TORCH_EXTENSIONS_DIR",

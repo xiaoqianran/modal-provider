@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from glob import glob
@@ -11,7 +12,12 @@ from typing import Any
 
 import modal
 
-from .hyworld2_runtime import GPU, HYWORLD2_REVISION, HYWORLD2_SOURCE, hyworld2_worldgen_stage1_image
+from .hyworld2_runtime import (
+    GPU,
+    HYWORLD2_REVISION,
+    HYWORLD2_SOURCE,
+    hyworld2_worldgen_stage1_image,
+)
 from .worldgen_job import (
     build_stage_manifest,
     fingerprint_files,
@@ -77,10 +83,11 @@ class WorldNavRenderer:
                 sys.path.insert(0, path)
 
         import torch
-        from modal_world.qwen_vlm_server import Qwen3VLEngine, start_openai_server
         from src.general_utils import set_seed
         from src.pointcloud import multi_gpu_point_rendering, point_rendering
         from src.vlm_utils import get_traj_caption
+
+        from modal_world.qwen_vlm_server import Qwen3VLEngine, start_openai_server
 
         self.torch = torch
         self.device = torch.device("cuda:0")
@@ -129,6 +136,130 @@ class WorldNavRenderer:
             server.shutdown()
             server.server_close()
 
+    @modal.method()
+    def generate_nav(self, job_id: str = "case000", force: bool = False) -> dict[str, Any]:
+        """Run WorldNav Stage 1 while reusing the persistent Qwen server."""
+        import subprocess
+        import urllib.request
+
+        import torch
+
+        target = resolve_worldgen_job_root(job_id)
+        if job_id == "case000":
+            source_case = Path(HYWORLD2_SOURCE) / "examples/worldgen/case000"
+            if not target.exists():
+                shutil.copytree(source_case, target)
+            elif not (target / "panorama.png").is_file():
+                shutil.copy2(source_case / "panorama.png", target / "panorama.png")
+        elif not (target / "panorama.png").is_file():
+            raise RuntimeError(
+                f"Stage 1 panorama is missing for job {job_id!r}: {target / 'panorama.png'}"
+            )
+
+        panorama = target / "panorama.png"
+        manifest = build_stage_manifest(
+            job_id=job_id,
+            stage="stage1",
+            hyworld_revision=HYWORLD2_REVISION,
+            input_fingerprint=fingerprint_files([panorama], root=target),
+            config={
+                "profile": "persistent-worldnav-v1",
+                "llm": _MODEL_ID,
+                "mesh_resolution": [480, 960],
+                "apply_nav_traj": True,
+                "apply_up_route": True,
+                "apply_recon_iteration": True,
+            },
+        )
+        required = [
+            target / "meta_info.json",
+            target / "objects.json",
+            target / "camera_trajectory/target_camera.json",
+            target / "render_results/global_pcd.ply",
+        ]
+        if not force and all(path.exists() for path in required):
+            manifest_ok = manifest_matches(target, "stage1", manifest)
+            legacy_adopted = (
+                job_id == "case000" and not stage_manifest_path(target, "stage1").exists()
+            )
+            if manifest_ok or legacy_adopted:
+                if legacy_adopted:
+                    write_stage_manifest(target, "stage1", manifest)
+                    worldgen_outputs.commit()
+                return {
+                    "resumed": True,
+                    "manifest_adopted": legacy_adopted,
+                    "worker_call_index": self.call_count,
+                    "model_load_s": round(self.model_load_s, 3),
+                    "required_outputs": len(required),
+                }
+
+        with urllib.request.urlopen("http://127.0.0.1:8000/v1/models", timeout=5) as response:
+            if response.status != 200:
+                raise RuntimeError(f"persistent Qwen3-VL server unhealthy: {response.status}")
+
+        call_index = self.call_count
+        self.call_count += 1
+        torch.cuda.reset_peak_memory_stats()
+        worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
+        log_path = target / "stage1.log"
+        command = [
+            sys.executable,
+            "-X",
+            "faulthandler",
+            "-u",
+            "traj_generate.py",
+            "--target_path",
+            str(target),
+            "--llm_addr",
+            "127.0.0.1",
+            "--llm_port",
+            "8000",
+            "--llm_name",
+            _MODEL_ID,
+            "--apply_nav_traj",
+            "--apply_up_route",
+            "--apply_recon_iteration",
+            "--force_vlm",
+        ]
+        env = os.environ.copy()
+        env["PYTHONPATH"] = f"{worldgen_root}:{HYWORLD2_SOURCE}"
+        env["PYTHONFAULTHANDLER"] = "1"
+        env["MODAL_WORLD_MESH_DEBUG_DIR"] = str(target / "mesh_debug")
+        started = time.perf_counter()
+        with log_path.open("w") as log:
+            completed = subprocess.run(
+                command,
+                cwd=worldgen_root,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+                timeout=90 * 60,
+            )
+        stage1_s = time.perf_counter() - started
+        if completed.returncode != 0:
+            worldgen_outputs.commit()
+            tail = log_path.read_text(errors="replace")[-20000:]
+            raise RuntimeError(f"WorldGen Stage 1 failed with exit {completed.returncode}:\n{tail}")
+        missing = [str(path) for path in required if not path.exists()]
+        if missing:
+            worldgen_outputs.commit()
+            raise RuntimeError(f"Stage 1 completed but outputs are missing: {missing}")
+
+        write_stage_manifest(target, "stage1", manifest)
+        runtime_cache.commit()
+        worldgen_outputs.commit()
+        return {
+            "stage1_s": round(stage1_s, 3),
+            "model_load_s": round(self.model_load_s, 3),
+            "worker_call_index": call_index,
+            "peak_allocated_gb": round(torch.cuda.max_memory_allocated() / 1024**3, 3),
+            "target": str(target),
+            "stage1_log_tail": log_path.read_text(errors="replace")[-8000:],
+        }
+
     @staticmethod
     def _manifest(job_id: str, target: Path) -> tuple[dict[str, Any], list[Path]]:
         camera_files = sorted(target.glob("render_results/*/traj*/camera.json"))
@@ -156,10 +287,10 @@ class WorldNavRenderer:
     def render(self, job_id: str = "case000", force: bool = False) -> dict[str, Any]:
         import numpy as np
         import torch
-        import torchvision.transforms as transforms
         import trimesh
         from diffusers.utils import export_to_video
         from PIL import Image
+        from torchvision import transforms
 
         target = resolve_worldgen_job_root(job_id)
         if not (target / "camera_trajectory/target_camera.json").is_file():
@@ -171,7 +302,11 @@ class WorldNavRenderer:
         renders = sorted(target.glob("render_results/*/traj*/render.mp4"))
         masks = sorted(target.glob("render_results/*/traj*/render_mask.mp4"))
         captions = sorted(target.glob("render_results/*/traj*/traj_caption.json"))
-        if not force and camera_files and len(camera_files) == len(renders) == len(masks) == len(captions):
+        if (
+            not force
+            and camera_files
+            and len(camera_files) == len(renders) == len(masks) == len(captions)
+        ):
             valid_captions = True
             for caption in captions:
                 payload = json.loads(caption.read_text())
@@ -275,7 +410,7 @@ class WorldNavRenderer:
                 caption = self.get_traj_caption("127.0.0.1", 8000, _MODEL_ID, render_path)
                 output_path.write_text(json.dumps({"prompt": caption}, indent=2) + "\n")
                 return render_path, True, None
-            except Exception as exc:  # preserve which trajectory failed
+            except Exception as exc:  # noqa: BLE001 - preserve which trajectory failed
                 return render_path, False, str(exc)
 
         caption_started = time.perf_counter()
@@ -297,7 +432,11 @@ class WorldNavRenderer:
         renders = sorted(target.glob("render_results/*/traj*/render.mp4"))
         masks = sorted(target.glob("render_results/*/traj*/render_mask.mp4"))
         captions = sorted(target.glob("render_results/*/traj*/traj_caption.json"))
-        if len(renders) != len(camera_files) or len(masks) != len(camera_files) or len(captions) != len(camera_files):
+        if (
+            len(renders) != len(camera_files)
+            or len(masks) != len(camera_files)
+            or len(captions) != len(camera_files)
+        ):
             raise RuntimeError(
                 "Stage 2 output count mismatch: "
                 f"cameras={len(camera_files)} renders={len(renders)} masks={len(masks)} captions={len(captions)}"

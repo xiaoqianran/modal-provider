@@ -4,6 +4,7 @@ from typing import Any
 
 import modal
 
+from .stage1_patch import patch_stage1_worldnav
 from .stage2_patch import patch_stage2_single_gpu
 from .stage3_patch import patch_stage3_runtime
 from .stage4_patch import patch_stage4_single_gpu
@@ -136,6 +137,7 @@ hyworld2_worldmirror_image = (
 
 hyworld2_worldgen_stage1_image = (
     hyworld2_worldmirror_image.apt_install("ffmpeg", "libgomp1")
+    .run_function(patch_stage1_worldnav, args=(HYWORLD2_SOURCE,))
     .run_function(patch_stage2_single_gpu, args=(HYWORLD2_SOURCE,))
     .run_function(patch_stage4_single_gpu, args=(HYWORLD2_SOURCE,))
     .pip_install(
