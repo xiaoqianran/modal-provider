@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
+import os
 import shutil
 import subprocess
 import sys
@@ -19,6 +19,27 @@ class PackageSpec:
     branch: str
 
 
+@dataclass(frozen=True)
+class GitEntry:
+    mode: str
+    oid: str
+
+
+@dataclass(frozen=True)
+class SyncPlan:
+    added: tuple[str, ...]
+    modified: tuple[str, ...]
+    deleted: tuple[str, ...]
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.added or self.modified or self.deleted)
+
+    @property
+    def paths(self) -> tuple[str, ...]:
+        return (*self.added, *self.modified, *self.deleted)
+
+
 PACKAGES: dict[str, PackageSpec] = {
     "modal-2D": PackageSpec("https://github.com/xiaoqianran/modal-2D.git", "main"),
     "modal-2D-client": PackageSpec("https://github.com/xiaoqianran/modal-2D-client.git", "main"),
@@ -31,29 +52,7 @@ PACKAGES: dict[str, PackageSpec] = {
 }
 
 PROTECTED_TOP_LEVEL = frozenset({".git", ".github"})
-IGNORED_NAMES = frozenset(
-    {
-        ".venv",
-        "__pycache__",
-        ".pytest_cache",
-        ".ruff_cache",
-        "node_modules",
-        "build",
-        "dist",
-        "coverage",
-    }
-)
-
-
-@dataclass(frozen=True)
-class SyncPlan:
-    added: tuple[str, ...]
-    modified: tuple[str, ...]
-    deleted: tuple[str, ...]
-
-    @property
-    def changed(self) -> bool:
-        return bool(self.added or self.modified or self.deleted)
+SUPPORTED_BLOB_MODES = frozenset({"100644", "100755", "120000"})
 
 
 def _run(
@@ -70,64 +69,103 @@ def _run(
     )
 
 
+def _run_bytes(*args: str, cwd: Path) -> bytes:
+    result = subprocess.run(
+        args,
+        cwd=cwd,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return result.stdout
+
+
 def _repo_root() -> Path:
     result = _run("git", "rev-parse", "--show-toplevel")
     return Path(result.stdout.strip()).resolve()
 
 
-def _is_ignored(relative: Path) -> bool:
-    if not relative.parts:
-        return False
-    if relative.parts[0] in PROTECTED_TOP_LEVEL:
-        return True
-    return any(part in IGNORED_NAMES or part.endswith(".egg-info") for part in relative.parts)
+def _source_status(root: Path, package: str) -> str:
+    return _run(
+        "git",
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        "--",
+        package,
+        cwd=root,
+    ).stdout.strip()
 
 
-def _digest(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+def _assert_source_clean(root: Path, package: str) -> None:
+    status = _source_status(root, package)
+    if status:
+        raise RuntimeError(
+            f"{package} has uncommitted source changes; commit or stash them before standalone sync"
+        )
 
 
-def _manifest(root: Path) -> dict[str, str]:
-    files: dict[str, str] = {}
-    for path in root.rglob("*"):
-        if not path.is_file():
+def _revision(root: Path) -> str:
+    return _run("git", "rev-parse", "HEAD", cwd=root).stdout.strip()
+
+
+def _package_tree(root: Path, package: str, revision: str) -> str:
+    return _run("git", "rev-parse", f"{revision}:{package}", cwd=root).stdout.strip()
+
+
+def _assert_source_stable(root: Path, package: str, pinned_tree: str) -> None:
+    _assert_source_clean(root, package)
+    current_tree = _package_tree(root, package, "HEAD")
+    if current_tree != pinned_tree:
+        raise RuntimeError(
+            f"{package} changed while sync was running; refusing stale push, rerun from the new canonical HEAD"
+        )
+
+
+def _git_entries(repo: Path, revision: str = "HEAD", prefix: str | None = None) -> dict[str, GitEntry]:
+    args = ["git", "ls-tree", "-r", revision]
+    if prefix:
+        args.extend(["--", prefix])
+    result = _run(*args, cwd=repo)
+    entries: dict[str, GitEntry] = {}
+    prefix_text = f"{prefix}/" if prefix else ""
+
+    for line in result.stdout.splitlines():
+        metadata, path = line.split("\t", 1)
+        mode, kind, oid = metadata.split()
+        if kind not in {"blob", "commit"}:
+            raise RuntimeError(f"unsupported git tree entry kind {kind}: {path}")
+        if prefix:
+            if not path.startswith(prefix_text):
+                continue
+            path = path[len(prefix_text) :]
+        relative = Path(path)
+        if relative.parts and relative.parts[0] in PROTECTED_TOP_LEVEL:
             continue
-        relative = path.relative_to(root)
-        if _is_ignored(relative):
-            continue
-        files[relative.as_posix()] = _digest(path)
-    return files
+        entries[relative.as_posix()] = GitEntry(mode=mode, oid=oid)
+    return entries
 
 
-def _compare_trees(source: Path, target: Path) -> SyncPlan:
-    source_files = _manifest(source)
-    target_files = _manifest(target)
-    source_names = set(source_files)
-    target_names = set(target_files)
+def _compare_entries(source: dict[str, GitEntry], target: dict[str, GitEntry]) -> SyncPlan:
+    source_names = set(source)
+    target_names = set(target)
     return SyncPlan(
         added=tuple(sorted(source_names - target_names)),
         modified=tuple(
-            sorted(
-                name
-                for name in source_names & target_names
-                if source_files[name] != target_files[name]
-            )
+            sorted(name for name in source_names & target_names if source[name] != target[name])
         ),
         deleted=tuple(sorted(target_names - source_names)),
     )
 
 
-def _print_plan(package: str, plan: SyncPlan) -> None:
+def _print_plan(package: str, plan: SyncPlan, revision: str) -> None:
+    short_revision = revision[:12]
     if not plan.changed:
-        print(f"SYNC    {package:<20} no source drift")
+        print(f"SYNC    {package:<20} source={short_revision} no committed drift")
         return
     print(
-        f"DRIFT   {package:<20} +{len(plan.added)} "
-        f"~{len(plan.modified)} -{len(plan.deleted)}"
+        f"DRIFT   {package:<20} source={short_revision} "
+        f"+{len(plan.added)} ~{len(plan.modified)} -{len(plan.deleted)}"
     )
     for marker, paths in (("+", plan.added), ("~", plan.modified), ("-", plan.deleted)):
         for path in paths[:80]:
@@ -146,74 +184,6 @@ def _validate_plan(plan: SyncPlan, allow_delete: bool) -> None:
         )
 
 
-def _copy_file(source: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
-
-
-def _apply_plan(source: Path, target: Path, plan: SyncPlan) -> None:
-    for relative in plan.deleted:
-        path = target / relative
-        if path.exists():
-            path.unlink()
-    for relative in (*plan.added, *plan.modified):
-        _copy_file(source / relative, target / relative)
-
-    for directory in sorted(
-        (path for path in target.rglob("*") if path.is_dir()),
-        key=lambda path: len(path.parts),
-        reverse=True,
-    ):
-        relative = directory.relative_to(target)
-        if _is_ignored(relative):
-            continue
-        try:
-            directory.rmdir()
-        except OSError:
-            pass
-
-
-def _assert_source_clean(root: Path, package: str) -> None:
-    result = _run(
-        "git",
-        "status",
-        "--porcelain=v1",
-        "--untracked-files=all",
-        "--",
-        package,
-        cwd=root,
-    )
-    if result.stdout.strip():
-        raise RuntimeError(
-            f"{package} has uncommitted source changes; commit or stash them before standalone sync"
-        )
-
-
-def _source_modes(root: Path, package: str) -> dict[str, str]:
-    result = _run("git", "ls-tree", "-r", "HEAD", "--", package, cwd=root)
-    prefix = f"{package}/"
-    modes: dict[str, str] = {}
-    for line in result.stdout.splitlines():
-        metadata, path = line.split("\t", 1)
-        mode, _kind, _object_id = metadata.split()
-        if path.startswith(prefix):
-            modes[path[len(prefix) :]] = mode
-    return modes
-
-
-def _apply_index_modes(target: Path, source_modes: dict[str, str], paths: tuple[str, ...]) -> None:
-    for relative in paths:
-        mode = source_modes.get(relative)
-        if mode == "100755":
-            _run("git", "update-index", "--chmod=+x", "--", relative, cwd=target)
-        elif mode == "100644":
-            _run("git", "update-index", "--chmod=-x", "--", relative, cwd=target)
-        else:
-            raise RuntimeError(
-                f"refusing sync for unsupported or untracked source mode: {relative} ({mode})"
-            )
-
-
 def _clone(spec: PackageSpec, destination: Path) -> None:
     _run(
         "git",
@@ -229,23 +199,139 @@ def _clone(spec: PackageSpec, destination: Path) -> None:
     )
 
 
+def _remove_path(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
+
+
+def _read_blob(source_repo: Path, entry: GitEntry) -> bytes:
+    if entry.mode not in SUPPORTED_BLOB_MODES:
+        raise RuntimeError(f"unsupported git mode for standalone sync: {entry.mode}")
+    return _run_bytes("git", "cat-file", "blob", entry.oid, cwd=source_repo)
+
+
+def _write_entry(source_repo: Path, target: Path, relative: str, entry: GitEntry) -> None:
+    path = target / relative
+    _remove_path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    blob = _read_blob(source_repo, entry)
+
+    if entry.mode == "120000":
+        link_target = blob.decode("utf-8")
+        try:
+            os.symlink(link_target, path)
+        except (OSError, NotImplementedError):
+            path.write_bytes(blob)
+        return
+
+    path.write_bytes(blob)
+    try:
+        path.chmod(0o755 if entry.mode == "100755" else 0o644)
+    except OSError:
+        pass
+
+
+def _prune_empty_parents(target: Path, relative: str) -> None:
+    directory = (target / relative).parent
+    while directory != target:
+        if directory.name in PROTECTED_TOP_LEVEL:
+            return
+        try:
+            directory.rmdir()
+        except OSError:
+            return
+        directory = directory.parent
+
+
+def _apply_plan(
+    source_repo: Path,
+    source_entries: dict[str, GitEntry],
+    target: Path,
+    plan: SyncPlan,
+) -> None:
+    for relative in plan.deleted:
+        _remove_path(target / relative)
+        _prune_empty_parents(target, relative)
+    for relative in (*plan.added, *plan.modified):
+        _write_entry(source_repo, target, relative, source_entries[relative])
+
+
+def _apply_index_modes(
+    source_repo: Path,
+    target: Path,
+    source_entries: dict[str, GitEntry],
+    paths: tuple[str, ...],
+) -> None:
+    for relative in paths:
+        entry = source_entries[relative]
+        if entry.mode == "100755":
+            _run("git", "update-index", "--chmod=+x", "--", relative, cwd=target)
+        elif entry.mode == "100644":
+            _run("git", "update-index", "--chmod=-x", "--", relative, cwd=target)
+        elif entry.mode == "120000":
+            blob = _read_blob(source_repo, entry)
+            hashed = subprocess.run(
+                ["git", "hash-object", "-w", "--stdin"],
+                cwd=target,
+                check=True,
+                input=blob,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            ).stdout.decode().strip()
+            if hashed != entry.oid:
+                raise RuntimeError(f"blob verification failed for symlink: {relative}")
+            _run(
+                "git",
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                f"120000,{entry.oid},{relative}",
+                cwd=target,
+            )
+        else:
+            raise RuntimeError(f"unsupported git mode for standalone sync: {entry.mode} {relative}")
+
+
 def _assert_protected_unchanged(target: Path) -> None:
     result = _run("git", "status", "--porcelain=v1", "--", ".github", cwd=target)
     if result.stdout.strip():
         raise RuntimeError("refusing sync: standalone .github changed")
 
 
+def _assert_staged_paths(target: Path, plan: SyncPlan) -> None:
+    staged = {
+        line.strip()
+        for line in _run("git", "diff", "--cached", "--name-only", cwd=target).stdout.splitlines()
+        if line.strip()
+    }
+    expected = set(plan.paths)
+    if staged != expected:
+        raise RuntimeError(
+            f"refusing sync: staged path set differs from reviewed plan; expected={sorted(expected)} "
+            f"actual={sorted(staged)}"
+        )
+
+
 def _check(package: str, root: Path) -> bool:
     spec = PACKAGES[package]
-    source = root / package
-    if not source.is_dir():
-        raise RuntimeError(f"missing package directory: {source}")
+    if not (root / package).is_dir():
+        raise RuntimeError(f"missing package directory: {root / package}")
+
+    source_revision = _revision(root)
+    source_entries = _git_entries(root, source_revision, package)
+    dirty = _source_status(root, package)
+    if dirty:
+        print(f"DIRTY   {package:<20} local source has uncommitted changes; comparing committed HEAD only")
+
     with tempfile.TemporaryDirectory(prefix=f"{package}-check-") as temp:
         target = Path(temp) / package
         _clone(spec, target)
-        plan = _compare_trees(source, target)
-        _print_plan(package, plan)
-        return not plan.changed
+        target_entries = _git_entries(target)
+        plan = _compare_entries(source_entries, target_entries)
+        _print_plan(package, plan, source_revision)
+        return not plan.changed and not dirty
 
 
 def _sync(
@@ -257,16 +343,21 @@ def _sync(
     message: str | None,
 ) -> None:
     spec = PACKAGES[package]
-    source = root / package
-    if not source.is_dir():
-        raise RuntimeError(f"missing package directory: {source}")
+    if not (root / package).is_dir():
+        raise RuntimeError(f"missing package directory: {root / package}")
+
     _assert_source_clean(root, package)
+    source_revision = _revision(root)
+    pinned_tree = _package_tree(root, package, source_revision)
+    source_entries = _git_entries(root, source_revision, package)
 
     with tempfile.TemporaryDirectory(prefix=f"{package}-sync-") as temp:
         target = Path(temp) / package
         _clone(spec, target)
-        plan = _compare_trees(source, target)
-        _print_plan(package, plan)
+        target_entries = _git_entries(target)
+        plan = _compare_entries(source_entries, target_entries)
+        _print_plan(package, plan, source_revision)
+        _assert_source_stable(root, package, pinned_tree)
         if not plan.changed:
             return
         _validate_plan(plan, allow_delete)
@@ -275,17 +366,19 @@ def _sync(
             print("DRY-RUN no files changed; add --push to commit and fast-forward push")
             return
 
-        _apply_plan(source, target, plan)
+        _apply_plan(root, source_entries, target, plan)
         _assert_protected_unchanged(target)
         _run("git", "diff", "--check", cwd=target)
         _run("git", "add", "-A", "--", ".", cwd=target)
-        source_modes = _source_modes(root, package)
-        _apply_index_modes(target, source_modes, (*plan.added, *plan.modified))
+        _apply_index_modes(root, target, source_entries, (*plan.added, *plan.modified))
         _assert_protected_unchanged(target)
+        _assert_staged_paths(target, plan)
+        _assert_source_stable(root, package, pinned_tree)
 
         commit_message = message or f"chore(sync): sync {package} from modal-provider"
         _run("git", "commit", "-m", commit_message, cwd=target, capture=False)
         local_head = _run("git", "rev-parse", "HEAD", cwd=target).stdout.strip()
+        _assert_source_stable(root, package, pinned_tree)
         _run(
             "git",
             "push",
@@ -306,19 +399,23 @@ def _sync(
             raise RuntimeError(
                 f"push verification failed: local={local_head} remote={remote_head or '<missing>'}"
             )
-        print(f"PUSHED  {package:<20} {spec.branch} {local_head[:12]}")
+        _assert_source_stable(root, package, pinned_tree)
+        print(
+            f"PUSHED  {package:<20} {spec.branch} {local_head[:12]} "
+            f"source={source_revision[:12]}"
+        )
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Check or safely sync modal-provider packages to standalone repositories. "
+            "Check or safely sync committed modal-provider package source to standalone repositories. "
             "The sync path never copies .git/.github, never force-pushes, and never touches tags or Releases."
         )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    check = subparsers.add_parser("check", help="compare canonical package source with standalone")
+    check = subparsers.add_parser("check", help="compare committed canonical package source with standalone")
     check.add_argument("packages", nargs="*", choices=sorted(PACKAGES))
 
     sync = subparsers.add_parser("sync", help="dry-run or safely sync one standalone repository")
@@ -356,7 +453,7 @@ def main() -> int:
                 message=args.message,
             )
             return 0
-    except (RuntimeError, subprocess.CalledProcessError) as exc:
+    except (RuntimeError, subprocess.CalledProcessError, UnicodeDecodeError) as exc:
         print(f"ERROR   {exc}", file=sys.stderr)
         return 2
     return 2

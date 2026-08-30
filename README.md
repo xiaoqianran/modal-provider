@@ -139,6 +139,7 @@ HF_TOKEN=<具备目标模型访问权限的 Hugging Face Token>
 该脚本有以下硬约束：
 
 - 源 package 必须是已提交的干净状态；
+- 同步固定到开始时的 committed `HEAD` / package tree；同步过程中若该 package 被并发修改或提交，push 前会直接中止并要求重跑；
 - `.git` 与 `.github` 永远不参与复制，standalone 自己的 CI / Release workflow 保留；
 - 发现 standalone-only 普通文件时默认拒绝删除，必须审查后显式传 `--allow-delete`；
 - 只执行普通 branch push，不使用 `--force`、不推 tag；
