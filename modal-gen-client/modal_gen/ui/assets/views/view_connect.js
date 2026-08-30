@@ -51,6 +51,10 @@ export async function mountConnect(root) {
   loading.remove();
 
   root.append(hubOverview(snap, connections));
+  try {
+    const deployments = await apiGet("deployments");
+    root.append(deploymentPanel(deployments.providers || []));
+  } catch { /* credentials may not be connected yet */ }
 
   const providers = h("div", { class: "stack" });
   const connectionMap = new Map(connections.map((item) => [item.id, item]));
@@ -142,6 +146,7 @@ function connectionPanel(connections) {
     icon("plug", 15), "连接 Modal"
   );
   const disconnect = h("button", { class: "btn", type: "button" }, "断开全部");
+  const deployAll = h("button", { class: "btn", type: "button" }, "部署 2D + 3D");
 
   command.addEventListener("input", () => {
     const parsed = parseModalTokenCommand(command.value);
@@ -190,6 +195,24 @@ function connectionPanel(connections) {
     }
   });
 
+  deployAll.addEventListener("click", async () => {
+    deployAll.disabled = true;
+    status.className = "connect-hint";
+    status.textContent = "正在部署 2D / 3D Runtime；首次部署可能需要构建镜像。";
+    try {
+      const result = await apiPost("deployments/deploy", { provider: "all" });
+      const failed = (result.providers || []).some((item) => item.status === "failed");
+      status.className = failed ? "connect-hint connect-hint--error" : "connect-hint connect-hint--ok";
+      status.textContent = failed ? "部署未全部完成，请查看 Runtime 状态。" : "2D / 3D Runtime 已部署。";
+      toast(failed ? "部分 Runtime 部署失败" : "2D / 3D Runtime 部署完成", failed ? "danger" : "ok");
+    } catch (e) {
+      status.className = "connect-hint connect-hint--error";
+      status.textContent = String(e.message || e);
+    } finally {
+      deployAll.disabled = false;
+    }
+  });
+
   disconnect.addEventListener("click", async () => {
     disconnect.disabled = true;
     try {
@@ -222,7 +245,7 @@ function connectionPanel(connections) {
     status,
     h("label", { class: "drawer-field" }, h("span", {}, "Modal Token ID"), tokenId),
     h("label", { class: "drawer-field" }, h("span", {}, "Modal Token Secret"), tokenSecret),
-    h("div", { class: "drawer-actions" }, disconnect, connect)
+    h("div", { class: "drawer-actions" }, disconnect, deployAll, connect)
   );
 }
 
@@ -316,4 +339,16 @@ function kv(rows) {
 
 function skeletonRows(n) {
   return h("div", {}, ...Array.from({ length: n }, () => h("div", { class: "skeleton skel-row" })));
+}
+
+function deploymentPanel(rows) {
+  return h("div", { class: "panel" },
+    h("div", { class: "panel__head" }, h("h2", { class: "panel__title" }, "Modal Runtime")),
+    h("div", { class: "panel__body stack" },
+      ...rows.map((row) => h("div", { class: "row spread" },
+        h("strong", {}, row.id === "modal-2d" ? "2D Runtime" : row.id === "modal-3d" ? "3D Runtime" : row.id),
+        providerBadge(row.status === "deployed" ? "available" : row.status === "partial" ? "degraded" : "unavailable")
+      ))
+    )
+  );
 }

@@ -6,11 +6,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .artifacts import ArtifactService
 from .capabilities import CapabilityRegistry
 from .constants import SESSION_PATH, allow_any_origin
+from .deployments import DeploymentService
 from .errors import ConnectorError
 from .jobs import JobService
 from .providers.loader import load_providers
@@ -27,6 +29,7 @@ class Runtime:
     sessions: SessionService
     jobs: JobService
     artifacts: ArtifactService
+    deployments: DeploymentService
 
 
 def build_runtime(store: Store | None = None, *, adapters=None) -> Runtime:
@@ -42,6 +45,7 @@ def build_runtime(store: Store | None = None, *, adapters=None) -> Runtime:
         sessions=SessionService(state, registry),
         jobs=JobService(state, registry, artifacts),
         artifacts=artifacts,
+        deployments=DeploymentService(),
     )
 
 
@@ -99,12 +103,47 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         token_secret = payload.get("tokenSecret")
         if not isinstance(token_id, str) or not isinstance(token_secret, str):
             raise ConnectorError("PROVIDER_CREDENTIALS_REQUIRED", "Modal credentials 不能为空", 422)
+        await run_in_threadpool(current().deployments.connect, token_id, token_secret)
         rows = current().capabilities.connect_all(token_id, token_secret)
         return {"providers": rows}
 
     @app.post("/v1/providers/disconnect")
     def disconnect_providers():
-        return {"providers": current().capabilities.disconnect_all()}
+        rows = current().capabilities.disconnect_all()
+        current().deployments.disconnect()
+        return {"providers": rows}
+
+    @app.get("/v1/deployments")
+    def deployments(provider: str | None = None):
+        return current().deployments.status(provider)
+
+    @app.post("/v1/deployments/deploy")
+    async def deploy_runtimes(request: Request):
+        payload = await _json_body(request)
+        token_id = payload.get("tokenId")
+        token_secret = payload.get("tokenSecret")
+        if (
+            isinstance(token_id, str)
+            and isinstance(token_secret, str)
+            and token_id
+            and token_secret
+        ):
+            await run_in_threadpool(current().deployments.connect, token_id, token_secret)
+        provider = payload.get("provider")
+        if provider is not None and not isinstance(provider, str):
+            raise ConnectorError("DEPLOYMENT_PROVIDER_INVALID", "provider 必须是字符串", 422)
+        strategy = payload.get("strategy", "rolling")
+        if not isinstance(strategy, str):
+            raise ConnectorError("DEPLOYMENT_STRATEGY_INVALID", "strategy 必须是字符串", 422)
+        environment_name = payload.get("environment")
+        if environment_name is not None and not isinstance(environment_name, str):
+            raise ConnectorError("DEPLOYMENT_ENV_INVALID", "environment 必须是字符串", 422)
+        return await run_in_threadpool(
+            current().deployments.deploy,
+            provider,
+            strategy=strategy,
+            environment_name=environment_name or None,
+        )
 
     @app.get("/v1/capabilities")
     def local_capabilities():

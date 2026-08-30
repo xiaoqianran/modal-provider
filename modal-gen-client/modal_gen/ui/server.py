@@ -91,6 +91,20 @@ class DemoGateway:
         self._connected = False
         return self.connections()
 
+    def deployments(self) -> dict:
+        return {
+            "providers": [
+                {"id": "modal-2d", "status": "deployed", "apps": []},
+                {"id": "modal-3d", "status": "deployed", "apps": []},
+            ]
+        }
+
+    def deploy(self, provider: str = "all") -> dict:
+        rows = self.deployments()
+        if provider == "all":
+            return rows
+        return {"providers": [row for row in rows["providers"] if row["id"] == provider]}
+
     def jobs(self, status=None, q="", page=1, page_size=25) -> dict:
         return self.engine.list_jobs(status=status, q=q, page=page, page_size=page_size)
 
@@ -217,6 +231,23 @@ class LiveGateway:
         self.session_data = None
         self.snapshot = None
         return result
+
+    def deployments(self) -> dict:
+        return self._req(
+            "GET",
+            "/v1/deployments",
+            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+            timeout=30.0,
+        )
+
+    def deploy(self, provider: str = "all") -> dict:
+        return self._req(
+            "POST",
+            "/v1/deployments/deploy",
+            json_body={"provider": provider},
+            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+            timeout=60 * 30,
+        )
 
     def pairings(self) -> dict:
         snap = self._req("GET", "/v1/pairings", headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN})
@@ -473,6 +504,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(g.pairings())
         if name == "connections":
             return self._send_json(g.connections())
+        if name == "deployments":
+            try:
+                return self._send_json(g.deployments())
+            except RuntimeError as exc:
+                return self._send_json({"error": str(exc)}, 409)
         if name == "jobs":
             params = dict(p.split("=") for p in query.split("&") if "=" in p)
             return self._send_json(
@@ -523,6 +559,11 @@ class Handler(BaseHTTPRequestHandler):
         if name == "providers/disconnect":
             try:
                 return self._send_json(g.disconnect_providers())
+            except RuntimeError as exc:
+                return self._send_json({"error": str(exc)}, 502)
+        if name == "deployments/deploy":
+            try:
+                return self._send_json(g.deploy(body.get("provider", "all")))
             except RuntimeError as exc:
                 return self._send_json({"error": str(exc)}, 502)
         if name == "jobs":
