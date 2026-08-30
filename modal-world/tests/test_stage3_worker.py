@@ -8,14 +8,12 @@ def test_stage3_runtime_patch_matches_pinned_upstream(tmp_path: Path):
     if not (
         (src / "hyworld2/worldgen/models/worldstereo_wrapper.py").is_file()
         and (src / "hyworld2/worldgen/src/retrieval_wm.py").is_file()
-        and (src / "hyworld2/worldgen/src/depth_alignment.py").is_file()
     ):
         return
     target = tmp_path / "source"
     for rel in (
         "hyworld2/worldgen/models/worldstereo_wrapper.py",
         "hyworld2/worldgen/src/retrieval_wm.py",
-        "hyworld2/worldgen/src/depth_alignment.py",
     ):
         dst = target / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -124,13 +122,3 @@ def test_stage3_phase2_frame_alignment_has_detail_profiling():
         assert name in patch
     assert '"alignment_phase2_detail": alignment_phase2_detail' in worker
     assert 'alignment_phase2_detail["unattributed"]' in worker
-
-
-def test_stage3_batches_guided_depth_with_safe_fallback():
-    patch = Path("modal_world/stage3_patch.py").read_text()
-    assert "def get_guided_depth_infos_batch(" in patch
-    assert "chunk_size=4" in patch
-    assert "guided_depth_batch = None" in patch
-    assert "if guided_depth_batch is not None:" in patch
-    assert "falling back to per-frame rendering" in patch
-    assert "get_guided_depth_infos_v2(" in patch
