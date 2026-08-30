@@ -158,8 +158,14 @@ def patch_stage1_worldnav(source_root: str | Path) -> None:
 
     traj_path = worldgen_root / "traj_generate.py"
     traj_source = traj_path.read_text()
+    cache_old = 'HF_CACHE_DIR = os.path.expanduser("~/.cache/huggingface/hub")'
+    cache_new = 'HF_CACHE_DIR = os.environ.get("HUGGINGFACE_HUB_CACHE", os.path.expanduser("~/.cache/huggingface/hub"))'
+    if traj_source.count(cache_old) != 1:
+        raise RuntimeError("expected pinned Stage1 HF cache directory assignment not found")
+    traj_source = traj_source.replace(cache_old, cache_new, 1)
     mesh_resolution_old = "mesh_h, mesh_w = 960, 1920"
     mesh_resolution_new = "mesh_h, mesh_w = 480, 960  # modal-world single-GPU WorldNav mesh"
     if traj_source.count(mesh_resolution_old) != 1:
         raise RuntimeError("expected pinned WorldNav mesh resolution not found")
-    traj_path.write_text(traj_source.replace(mesh_resolution_old, mesh_resolution_new, 1))
+    traj_source = traj_source.replace(mesh_resolution_old, mesh_resolution_new, 1)
+    traj_path.write_text(traj_source)

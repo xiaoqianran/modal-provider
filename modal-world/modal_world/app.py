@@ -217,6 +217,62 @@ def worldgen_case000_stage1(job_id: str = "case000") -> dict:
     return worker_cls().generate_nav.remote(job_id=job_id, force=False)
 
 
+@app.function(
+    image=hyworld2_worldgen_stage1_image,
+    cpu=4.0,
+    memory=16384,
+    volumes={"/models": model_cache},
+    secrets=[hf_secret],
+    timeout=60 * 60,
+)
+def preload_worldnav_stage1_weights() -> dict:
+    """Populate hidden Stage1 HF assets so WorldNav can run fully offline."""
+    import os
+    import time
+    from pathlib import Path
+
+    os.environ["HF_HOME"] = "/models/huggingface"
+    os.environ["HUGGINGFACE_HUB_CACHE"] = "/models/huggingface/hub"
+    os.environ["HF_XET_HIGH_PERFORMANCE"] = "1"
+
+    from huggingface_hub import snapshot_download
+
+    specs = [
+        (
+            "naver-iv/zim-anything-vitl",
+            ["zim_vit_l_2092/**"],
+        ),
+        ("IDEA-Research/grounding-dino-tiny", None),
+        ("Ruicheng/moge-2-vitl-normal", None),
+        ("facebook/sam3", None),
+    ]
+    started = time.perf_counter()
+    repos = {}
+    for repo_id, allow_patterns in specs:
+        repo_started = time.perf_counter()
+        path = snapshot_download(
+            repo_id,
+            allow_patterns=allow_patterns,
+            max_workers=8,
+        )
+        repos[repo_id] = {
+            "path": path,
+            "elapsed_s": round(time.perf_counter() - repo_started, 3),
+        }
+        model_cache.commit()
+
+    zim = Path(repos["naver-iv/zim-anything-vitl"]["path"]) / "zim_vit_l_2092"
+    required = [zim / "encoder.onnx", zim / "decoder.onnx"]
+    missing = [str(path) for path in required if not path.is_file()]
+    if missing:
+        raise RuntimeError(f"Stage1 ZIM preload is incomplete: {missing}")
+    return {
+        "elapsed_s": round(time.perf_counter() - started, 3),
+        "repos": repos,
+        "zim_required_files": [str(path) for path in required],
+    }
+
+
 @app.function(image=base_image, timeout=2 * 60 * 60)
 def worldgen_case000_stage2(job_id: str = "case000") -> dict:
     """Dispatch Stage 2 to the deployed persistent WorldNav renderer worker."""

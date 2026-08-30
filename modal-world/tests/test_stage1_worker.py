@@ -54,3 +54,15 @@ def test_stage1_patch_matches_pinned_upstream(tmp_path: Path):
     assert "skipping Open3D native cleanup/boundary repair" in panorama
     assert "NumPy Z-up -> Y-up rotation" in navi
     assert "mesh_h, mesh_w = 480, 960" in traj
+
+
+def test_stage1_uses_persistent_hf_cache_and_preloads_hidden_models():
+    patch = Path("modal_world/stage1_patch.py").read_text()
+    app = Path("modal_world/app.py").read_text()
+    assert 'os.environ.get("HUGGINGFACE_HUB_CACHE"' in patch
+    assert "def preload_worldnav_stage1_weights" in app
+    assert '"naver-iv/zim-anything-vitl"' in app
+    assert '"IDEA-Research/grounding-dino-tiny"' in app
+    assert '"zim_vit_l_2092/**"' in app
+    assert 'zim / "encoder.onnx"' in app
+    assert 'zim / "decoder.onnx"' in app
