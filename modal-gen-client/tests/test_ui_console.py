@@ -493,7 +493,14 @@ def test_ui_surfaces_deployed_but_blocked_models() -> None:
         encoding="utf-8"
     )
     create = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_create.js").read_text(encoding="utf-8")
-    assert "modelReadiness" in connect
-    assert "已部署 · 版本过旧" in connect
+    presenter = (PROJECT_ROOT / "modal_gen/ui/assets/runtime_presenter.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "capabilityModels" in connect
+    assert "runtime_presenter.js" in connect
     assert "unavailableProviderPanel" in create
-    assert "已部署 / 版本过旧" in create
+    assert "runtime_presenter.js" in create
+    assert 'return capability?.status === "available";' in presenter
+    assert "已部署" in presenter
+    assert "版本过旧" in presenter

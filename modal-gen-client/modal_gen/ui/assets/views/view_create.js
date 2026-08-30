@@ -2,6 +2,7 @@
 // Form is generated from the connector capability descriptor (input.schema),
 // so the UI never hard-codes provider fields.
 import { h, icon, apiGet, apiPost, toast, stateEmpty, store, loadCapabilities, refreshNavCounts } from "../app.js";
+import { canSubmitCapability, capabilityModels, modelStateLabel, runtimeBlockerLabel } from "../runtime_presenter.js";
 
 export async function mountCreate(root) {
   root.append(
@@ -28,16 +29,12 @@ export async function mountCreate(root) {
   }
   loading.remove();
 
-  const isSubmitReady = (capability) => capability?.status === "available"
-    || (capability?.status === "degraded" && !(capability.runtimeBlockers || []).length);
   const providers = (snap.providers || []).map((p) => ({
     p,
-    cap: (p.capabilities || []).find((c) => isSubmitReady(c))
-      || (p.capabilities || []).find((c) => c.status === "degraded")
-      || (p.capabilities || [])[0],
+    cap: (p.capabilities || []).find(canSubmitCapability) || (p.capabilities || [])[0],
   }));
 
-  const available = providers.filter((o) => o.cap && isSubmitReady(o.cap));
+  const available = providers.filter((o) => o.cap && canSubmitCapability(o.cap));
   if (!available.length) {
     root.append(
       stateEmpty(
@@ -57,7 +54,7 @@ export async function mountCreate(root) {
   renderForm(formHost, selected);
 
   // Surface installed-but-not-runnable models instead of making them disappear.
-  const unavailable = providers.filter((o) => !o.cap || !isSubmitReady(o.cap));
+  const unavailable = providers.filter((o) => !o.cap || !canSubmitCapability(o.cap));
   if (unavailable.length) root.append(unavailableProviderPanel(unavailable));
 
   function renderForm(host, sel) {
@@ -74,7 +71,7 @@ export async function mountCreate(root) {
         "option",
         {
           value: o.cap.operation,
-          disabled: !isSubmitReady(o.cap),
+          disabled: !canSubmitCapability(o.cap),
         },
         `${o.p.displayName} · ${o.cap.displayName}`
       ))
@@ -236,10 +233,10 @@ function unavailableProviderPanel(rows) {
   const body = panel.querySelector(".panel__body");
   for (const row of rows) {
     const cap = row.cap || {};
-    const models = Array.isArray(cap.modelReadiness) ? cap.modelReadiness : [];
+    const models = capabilityModels(cap);
     const blockerText = (cap.runtimeBlockers || []).length
-      ? `阻塞：${cap.runtimeBlockers.map((item) => item.app || "required runtime").join("、")}`
-      : "当前 runtime 尚未满足提交条件。";
+      ? `阻塞：${cap.runtimeBlockers.map(runtimeBlockerLabel).join("；")}`
+      : "后端当前标记该能力不可提交。";
     body.append(
       h(
         "div",
@@ -254,7 +251,7 @@ function unavailableProviderPanel(rows) {
             ? models.map((model) => h(
               "span",
               { class: "muted" },
-              `${model.model} · ${createModelStateLabel(model)}`
+              `${model.model} · ${modelStateLabel(model, " / ")}`
             ))
             : [h("span", { class: "muted" }, "没有可用模型状态。")])
         )
@@ -262,17 +259,6 @@ function unavailableProviderPanel(rows) {
     );
   }
   return panel;
-}
-
-function createModelStateLabel(row) {
-  if (row.runnable || row.state === "ready") return "可用";
-  if (row.state === "outdated") {
-    return row.weightsStatus === "missing" ? "已部署 / 版本过旧 / 权重未就绪" : "已部署 / 版本过旧";
-  }
-  if (row.state === "weights_missing") return "已部署 / 权重未就绪";
-  if (row.state === "not_deployed") return "未部署";
-  if (row.state === "error") return `状态异常${row.error ? ` / ${row.error}` : ""}`;
-  return "暂不可用";
 }
 
 function renderSourcePicker(host, values, sourceSpec) {

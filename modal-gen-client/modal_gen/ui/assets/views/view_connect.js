@@ -4,6 +4,7 @@ import {
   loadCapabilities, invalidateCapabilities, refreshCurrentRoute, refreshNavCounts,
 } from "../app.js";
 import { parseModalTokenCommand } from "../modal_credentials.js";
+import { capabilityModels, modelStateLabel, runtimeBlockerLabel } from "../runtime_presenter.js";
 
 export async function mountConnect(root) {
   root.append(
@@ -403,20 +404,15 @@ function providerCard(provider, connection) {
 }
 
 function capabilityCard(capability) {
-  const schema = capability.input?.schema || {};
-  const modelIds = schema.properties?.model?.enum || [];
-  const modelReadiness = Array.isArray(capability.modelReadiness)
-    ? capability.modelReadiness
-    : modelIds.map((model) => ({ model, state: "ready", runnable: true }));
+  const modelReadiness = capabilityModels(capability);
   const roles = capability.output?.roles || [];
   const blockers = Array.isArray(capability.runtimeBlockers) ? capability.runtimeBlockers : [];
   const blockerRows = blockers.map((item) => {
-    const reason = item.error || (item.status === "missing" ? "未部署" : item.status || "不可用");
     return h("div", { class: "capability-blocker" },
       icon("alert", 15),
       h("div", {},
         h("strong", {}, "前处理阻塞"),
-        h("span", {}, `${item.app || "required runtime"} · ${reason}`)
+        h("span", {}, runtimeBlockerLabel(item))
       )
     );
   });
@@ -447,17 +443,6 @@ function capabilityCard(capability) {
       ])
     )
   );
-}
-
-function modelStateLabel(row) {
-  if (row.runnable || row.state === "ready") return "可用";
-  if (row.state === "outdated") {
-    return row.weightsStatus === "missing" ? "已部署 · 版本过旧 · 权重未就绪" : "已部署 · 版本过旧";
-  }
-  if (row.state === "weights_missing") return "已部署 · 权重未就绪";
-  if (row.state === "not_deployed") return "未部署";
-  if (row.state === "error") return `状态异常${row.error ? ` · ${row.error}` : ""}`;
-  return "暂不可用";
 }
 
 function pairingPanel(pending) {
