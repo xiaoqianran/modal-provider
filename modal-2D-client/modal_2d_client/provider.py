@@ -40,9 +40,16 @@ class Modal2DProvider:
     def descriptor(self) -> dict[str, object]:
         try:
             document = capabilities.document(refresh_remote=False)
-            model_ids = [str(item["id"]) for item in document["models"]]  # type: ignore[index]
-        except (NotConnectedError, ContractError):
+        except NotConnectedError:
+            if not modal_session.connected():
+                return self.unavailable_descriptor()
+            try:
+                document = capabilities.document(refresh_remote=True)
+            except (NotConnectedError, ContractError):
+                return self.unavailable_descriptor()
+        except ContractError:
             return self.unavailable_descriptor()
+        model_ids = [str(item["id"]) for item in document["models"]]  # type: ignore[index]
         return _descriptor(model_ids=model_ids, status="available", health="healthy")
 
     def unavailable_descriptor(self) -> dict[str, object]:
