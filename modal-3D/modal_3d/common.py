@@ -69,9 +69,12 @@ def validate_canonical_input(path: Path, input_path: str | None = None) -> dict:
     """Validate canonical PNG bytes and, for content-addressed inputs, their filename hash."""
     metadata = validate_canonical_png(path)
     candidate = Path(input_path).stem if input_path is not None else path.stem
-    if len(candidate) == 64 and all(char in "0123456789abcdef" for char in candidate.lower()):
-        if metadata["sha256"] != candidate.lower():
-            raise ValueError("canonical input SHA256 does not match its content-addressed filename")
+    if (
+        len(candidate) == 64
+        and all(char in "0123456789abcdef" for char in candidate.lower())
+        and metadata["sha256"] != candidate.lower()
+    ):
+        raise ValueError("canonical input SHA256 does not match its content-addressed filename")
     return metadata
 
 
@@ -187,7 +190,6 @@ def read_canonical_input(
     return path.read_bytes()
 
 
-
 def pinned_hf_snapshot(
     cache_dir: str | Path,
     repo_id: str,
@@ -207,12 +209,7 @@ def pinned_hf_snapshot(
     if not revision or any(ch in revision for ch in forbidden):
         raise ValueError("revision must be a simple cache revision")
 
-    snapshot = (
-        Path(cache_dir)
-        / f"models--{repo_id.replace('/', '--')}"
-        / "snapshots"
-        / revision
-    )
+    snapshot = Path(cache_dir) / f"models--{repo_id.replace('/', '--')}" / "snapshots" / revision
     if not snapshot.is_dir():
         raise FileNotFoundError(f"Hugging Face snapshot missing: {snapshot}")
     missing = [name for name in required_files if not (snapshot / name).is_file()]

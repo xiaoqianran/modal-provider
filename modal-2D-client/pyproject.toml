@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.116,<1",
     "modal[api-proxy-support]>=1.5,<2",
+    "modal-2d",
     "pydantic>=2.11,<3",
     "uvicorn>=0.35,<1",
 ]
@@ -36,3 +37,6 @@ select = ["E", "F", "I", "UP", "B"]
 
 [project.entry-points."modal_gen.providers"]
 modal-2d = "modal_2d_client.provider:create_provider"
+
+[tool.uv.sources]
+modal-2d = { path = "../modal-2D", editable = true }

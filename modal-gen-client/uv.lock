@@ -507,12 +507,30 @@ api-proxy-support = [
 ]
 
 [[package]]
+name = "modal-2d"
+version = "0.1.0"
+source = { editable = "../modal-2D" }
+dependencies = [
+    { name = "modal", extra = ["api-proxy-support"] },
+]
+
+[package.metadata]
+requires-dist = [{ name = "modal", extras = ["api-proxy-support"], specifier = ">=1.5,<2" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8,<10" },
+    { name = "ruff", specifier = ">=0.12,<1" },
+]
+
+[[package]]
 name = "modal-2d-client-agent"
 version = "0.1.0"
 source = { editable = "../modal-2D-client" }
 dependencies = [
     { name = "fastapi" },
     { name = "modal", extra = ["api-proxy-support"] },
+    { name = "modal-2d" },
     { name = "pydantic" },
     { name = "uvicorn" },
 ]
@@ -521,6 +539,7 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.116,<1" },
     { name = "modal", extras = ["api-proxy-support"], specifier = ">=1.5,<2" },
+    { name = "modal-2d", editable = "../modal-2D" },
     { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "uvicorn", specifier = ">=0.35,<1" },
 ]
@@ -533,12 +552,31 @@ dev = [
 ]
 
 [[package]]
+name = "modal-3d"
+version = "0.1.0"
+source = { editable = "../modal-3D" }
+dependencies = [
+    { name = "modal", extra = ["api-proxy-support"] },
+]
+
+[package.metadata]
+requires-dist = [{ name = "modal", extras = ["api-proxy-support"], specifier = ">=1.5,<2" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "numpy", specifier = "==2.3.5" },
+    { name = "pillow", specifier = "==12.1.0" },
+    { name = "scipy", specifier = "==1.16.3" },
+]
+
+[[package]]
 name = "modal-3d-client"
 version = "0.1.0"
 source = { editable = "../modal-3D-client" }
 dependencies = [
     { name = "fastapi" },
     { name = "modal", extra = ["api-proxy-support"] },
+    { name = "modal-3d" },
     { name = "numpy" },
     { name = "pillow" },
     { name = "pydantic" },
@@ -551,6 +589,7 @@ dependencies = [
 requires-dist = [
     { name = "fastapi" },
     { name = "modal", extras = ["api-proxy-support"] },
+    { name = "modal-3d", editable = "../modal-3D" },
     { name = "numpy", specifier = ">=2,<3" },
     { name = "pillow", specifier = ">=11,<13" },
     { name = "pydantic" },
@@ -573,7 +612,9 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "modal-2d" },
     { name = "modal-2d-client-agent" },
+    { name = "modal-3d" },
     { name = "modal-3d-client" },
     { name = "uvicorn" },
 ]
@@ -588,7 +629,9 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.116,<1" },
     { name = "httpx", specifier = ">=0.28,<1" },
+    { name = "modal-2d", editable = "../modal-2D" },
     { name = "modal-2d-client-agent", editable = "../modal-2D-client" },
+    { name = "modal-3d", editable = "../modal-3D" },
     { name = "modal-3d-client", editable = "../modal-3D-client" },
     { name = "uvicorn", specifier = ">=0.35,<1" },
 ]

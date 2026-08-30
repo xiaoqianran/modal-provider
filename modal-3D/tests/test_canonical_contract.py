@@ -24,11 +24,7 @@ def rgba_png(
     background_alpha: int = 0,
     foreground_rgb: tuple[int, int, int] = (120, 140, 160),
 ) -> bytes:
-    ihdr = (
-        width.to_bytes(4, "big")
-        + height.to_bytes(4, "big")
-        + bytes([8, 6, 0, 0, 0])
-    )
+    ihdr = width.to_bytes(4, "big") + height.to_bytes(4, "big") + bytes([8, 6, 0, 0, 0])
     foreground = bytes([*foreground_rgb, foreground_alpha])
     background = bytes([0, 0, 0, background_alpha])
     rows = []
@@ -45,11 +41,11 @@ def rgba_png(
 
 class CanonicalContractTests(unittest.TestCase):
     def _write(self, data: bytes) -> Path:
-        temp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        temp.write(data)
-        temp.close()
-        self.addCleanup(Path(temp.name).unlink, missing_ok=True)
-        return Path(temp.name)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
+            temp.write(data)
+            path = Path(temp.name)
+        self.addCleanup(path.unlink, missing_ok=True)
+        return path
 
     def test_accepts_visible_foreground_with_transparent_background(self) -> None:
         result = validate_canonical_png(self._write(rgba_png()))
@@ -80,9 +76,7 @@ class CanonicalContractTests(unittest.TestCase):
 
     def test_rejects_empty_foreground(self) -> None:
         with self.assertRaisesRegex(ValueError, "no visible foreground"):
-            validate_canonical_png(
-                self._write(rgba_png(background_alpha=0, foreground_alpha=0))
-            )
+            validate_canonical_png(self._write(rgba_png(background_alpha=0, foreground_alpha=0)))
 
     def test_rejects_invalid_crc(self) -> None:
         data = bytearray(rgba_png())
@@ -125,9 +119,11 @@ class CanonicalContractTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
 class CanonicalInputIdentityTests(unittest.TestCase):
     def test_content_addressed_filename_must_match_bytes(self) -> None:
         import hashlib
+
         from modal_3d.common import validate_canonical_input
 
         payload = rgba_png()

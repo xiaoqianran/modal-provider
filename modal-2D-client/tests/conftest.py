@@ -11,9 +11,8 @@ def capability_doc():
         "kind": "image.generate",
         "operation": "modal-2d.image.text_to_image.v1",
         "generation": {
-            "control_app": "modal-2d",
+            "entrypoint": "direct_class_method",
             "batch_max_size": 8,
-            "artifact_function": "read_artifact",
             "artifact_volume": "modal-2d-artifacts",
             "artifact_path_field": "remote_path",
             "job_transport": "modal.FunctionCall",

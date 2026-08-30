@@ -2,32 +2,17 @@ from __future__ import annotations
 
 import threading
 
-import modal
-from modal.exception import AuthError, InternalError, PermissionDeniedError, ServiceError
-from modal.exception import ConnectionError as ModalConnectionError
-from modal.exception import TimeoutError as ModalTimeoutError
+from modal_2d.capabilities import capabilities_document
 
-from .constants import APP_NAME, CAPABILITIES_FUNCTION
 from .contracts import ContractError, validate_capabilities
-from .modal_session import NotConnectedError, client
 
 _lock = threading.RLock()
 _cache: dict[str, object] | None = None
-_RECOVERABLE = (
-    NotConnectedError,
-    AuthError,
-    PermissionDeniedError,
-    ModalConnectionError,
-    InternalError,
-    ServiceError,
-    ModalTimeoutError,
-    TimeoutError,
-)
 
 
 def refresh() -> dict[str, object]:
-    fn = modal.Function.from_name(APP_NAME, CAPABILITIES_FUNCTION, client=client())
-    document = validate_capabilities(fn.remote())
+    """Load the capability contract locally; this never starts a Modal container."""
+    document = validate_capabilities(capabilities_document())
     global _cache
     with _lock:
         _cache = document
@@ -35,21 +20,15 @@ def refresh() -> dict[str, object]:
 
 
 def document(*, refresh_remote: bool = True) -> dict[str, object]:
-    if refresh_remote:
-        try:
-            return refresh()
-        except ContractError:
-            raise
-        except _RECOVERABLE:
-            pass
+    del refresh_remote  # compatibility: capability discovery is intentionally local now.
     with _lock:
         if _cache is not None:
             return _cache
-    raise NotConnectedError("Modal 尚未连接，且没有 capability 缓存")
+    return refresh()
 
 
 def public_models() -> list[dict[str, object]]:
-    doc = document()
+    doc = document(refresh_remote=False)
     return [
         {
             "id": model["id"],
@@ -64,23 +43,15 @@ def public_models() -> list[dict[str, object]]:
     ]
 
 
-def _cached() -> dict[str, object]:
-    with _lock:
-        cached = _cache
-    if cached is None:
-        raise NotConnectedError("Modal capability 尚未加载")
-    return cached
-
-
 def ensure_model(model_id: str) -> None:
-    doc = _cached()
+    doc = document(refresh_remote=False)
     if any(model["id"] == model_id for model in doc["models"]):
         return
     raise ContractError(f"unsupported model: {model_id}")
 
 
 def worker_route(model_id: str) -> tuple[str, str, str, str]:
-    doc = _cached()
+    doc = document(refresh_remote=False)
     for model in doc["models"]:
         if model["id"] != model_id:
             continue

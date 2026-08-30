@@ -1,9 +1,6 @@
-APP_NAME = "modal-2d"
 CONTRACT = "modal-2d.generation.v2"
 OPERATION = "modal-2d.image.text_to_image.v1"
 MAX_BATCH_SIZE = 8
-CAPABILITIES_FUNCTION = "capabilities"
-ARTIFACT_FUNCTION = "read_artifact"
 ARTIFACT_VOLUME = "modal-2d-artifacts"
 JOB_TRANSPORT = "modal.FunctionCall"
 ARTIFACT_ROLE = "primary-image"

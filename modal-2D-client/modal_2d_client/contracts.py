@@ -5,8 +5,6 @@ import re
 from typing import Any
 
 from .constants import (
-    APP_NAME,
-    ARTIFACT_FUNCTION,
     ARTIFACT_MIME,
     ARTIFACT_ROLE,
     ARTIFACT_VOLUME,
@@ -40,8 +38,7 @@ def validate_capabilities(value: Any) -> dict[str, object]:
 
     generation = _mapping(doc.get("generation"), "generation")
     required_generation = {
-        "control_app": APP_NAME,
-        "artifact_function": ARTIFACT_FUNCTION,
+        "entrypoint": "direct_class_method",
         "job_transport": JOB_TRANSPORT,
     }
     if any(generation.get(key) != item for key, item in required_generation.items()):

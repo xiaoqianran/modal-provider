@@ -15,9 +15,10 @@ def iso(value: datetime) -> str:
 
 
 class CapabilityRegistry:
-    def __init__(self, store: Store, adapters: list[ProviderAdapter]) -> None:
+    def __init__(self, store: Store, adapters: list[ProviderAdapter], deployments=None) -> None:
         self.store = store
         self.adapters = {adapter.id: adapter for adapter in adapters}
+        self.deployments = deployments
         if len(self.adapters) != len(adapters):
             raise ValueError("duplicate provider adapter")
         self.connector = {
@@ -31,7 +32,8 @@ class CapabilityRegistry:
         providers: list[dict[str, object]] = []
         for adapter in self.adapters.values():
             try:
-                providers.append(adapter.descriptor())
+                descriptor = adapter.descriptor()
+                providers.append(self._with_runtime_readiness(adapter.id, descriptor))
             except ProviderError:
                 providers.append(adapter.unavailable_descriptor())
         canonical = {
@@ -54,6 +56,74 @@ class CapabilityRegistry:
         }
         self.store.save_snapshot(snapshot)
         return snapshot
+
+    def _with_runtime_readiness(
+        self, provider_id: str, descriptor: dict[str, object]
+    ) -> dict[str, object]:
+        if self.deployments is None or not self.deployments.connected:
+            return descriptor
+        try:
+            readiness = self.deployments.status(provider_id)
+        except Exception:
+            return descriptor
+        providers = readiness.get("providers")
+        if not isinstance(providers, list) or not providers:
+            return descriptor
+        runtime = providers[0]
+        apps = runtime.get("apps") if isinstance(runtime, dict) else None
+        if not isinstance(apps, list):
+            return descriptor
+        descriptor = dict(descriptor)
+        descriptor["runtimeReadiness"] = runtime
+        required_bad = any(
+            item.get("required") is True and item.get("status") != "current"
+            for item in apps
+            if isinstance(item, dict)
+        )
+        ready_models = {
+            model
+            for item in apps
+            if isinstance(item, dict) and item.get("status") == "current"
+            for model in item.get("models", [])
+            if isinstance(model, str)
+        }
+        capabilities = descriptor.get("capabilities")
+        if not isinstance(capabilities, list):
+            return descriptor
+        updated = []
+        any_available = False
+        for capability in capabilities:
+            if not isinstance(capability, dict):
+                updated.append(capability)
+                continue
+            item = dict(capability)
+            input_desc = item.get("input")
+            if isinstance(input_desc, dict):
+                input_desc = dict(input_desc)
+                schema = input_desc.get("schema")
+                if isinstance(schema, dict):
+                    schema = dict(schema)
+                    props = schema.get("properties")
+                    if isinstance(props, dict) and isinstance(props.get("model"), dict):
+                        props = dict(props)
+                        model_schema = dict(props["model"])
+                        enum = model_schema.get("enum")
+                        if isinstance(enum, list):
+                            model_schema["enum"] = [m for m in enum if m in ready_models]
+                            if not model_schema["enum"] or required_bad:
+                                item["status"] = "disabled"
+                            else:
+                                any_available = True
+                        props["model"] = model_schema
+                        schema["properties"] = props
+                    input_desc["schema"] = schema
+                item["input"] = input_desc
+            updated.append(item)
+        descriptor["capabilities"] = updated
+        if required_bad or not any_available:
+            descriptor["status"] = "disabled"
+            descriptor["health"] = "unavailable"
+        return descriptor
 
     def get(self, hash_value: str) -> dict[str, object] | None:
         return self.store.get_snapshot(hash_value)

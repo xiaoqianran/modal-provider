@@ -85,7 +85,7 @@ def test_capability_routes_every_model_to_its_worker():
     assert doc["operation"] == OPERATION
     assert doc["outputs"] == [{"role": "primary-image", "mediaType": ARTIFACT_MIME}]
     generation = doc["generation"]
-    assert generation["control_app"] == "modal-2d"
+    assert generation["entrypoint"] == "direct_class_method"
     assert generation["job_transport"] == "modal.FunctionCall"
     assert generation["batch_max_size"] == 8
     routes = {item["id"]: item["generation_entrypoint"] for item in doc["models"]}

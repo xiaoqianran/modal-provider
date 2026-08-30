@@ -1,11 +1,10 @@
-APP_NAME = "modal-2d"
+PREFETCH_APP_NAME = "modal-2d-prefetch"
+APP_NAME = PREFETCH_APP_NAME
 PROVIDER = "modal-2d"
 CONTRACT = "modal-2d.generation.v2"
 CAPABILITY_KIND = "image.generate"
 OPERATION = "modal-2d.image.text_to_image.v1"
-CAPABILITIES_FUNCTION = "capabilities"
 PREFETCH_FUNCTION = "prefetch"
-ARTIFACT_FUNCTION = "read_artifact"
 ARTIFACT_ROLE = "primary-image"
 ARTIFACT_MIME = "image/png"
 ARTIFACT_FORMAT = "png"

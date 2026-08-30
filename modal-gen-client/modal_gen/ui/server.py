@@ -94,12 +94,14 @@ class DemoGateway:
     def deployments(self) -> dict:
         return {
             "providers": [
-                {"id": "modal-2d", "status": "deployed", "apps": []},
-                {"id": "modal-3d", "status": "deployed", "apps": []},
+                {"id": "modal-2d", "status": "current", "apps": []},
+                {"id": "modal-3d", "status": "current", "apps": []},
             ]
         }
 
-    def deploy(self, provider: str = "all", app_name: str | None = None) -> dict:
+    def deploy(
+        self, provider: str = "all", app_name: str | None = None, *, missing_only: bool = False
+    ) -> dict:
         rows = self.deployments()
         selected = (
             rows["providers"]
@@ -109,7 +111,23 @@ class DemoGateway:
         if app_name:
             for row in selected:
                 row["apps"] = [item for item in row.get("apps", []) if item.get("app") == app_name]
-        return {"providers": selected}
+        job = {
+            "id": "dep_demo",
+            "status": "succeeded",
+            "provider": provider,
+            "app": app_name,
+            "missingOnly": missing_only,
+            "result": {"providers": selected},
+        }
+        return {"job": job}
+
+    def deployment_jobs(self, limit: int = 20) -> dict:
+        return {"jobs": []}
+
+    def deployment_job(self, job_id: str) -> dict:
+        if job_id != "dep_demo":
+            raise RuntimeError("deployment job not found")
+        return self.deploy()["job"]
 
     def jobs(self, status=None, q="", page=1, page_size=25) -> dict:
         return self.engine.list_jobs(status=status, q=q, page=page, page_size=page_size)
@@ -246,8 +264,10 @@ class LiveGateway:
             timeout=30.0,
         )
 
-    def deploy(self, provider: str = "all", app_name: str | None = None) -> dict:
-        body = {"provider": provider}
+    def deploy(
+        self, provider: str = "all", app_name: str | None = None, *, missing_only: bool = False
+    ) -> dict:
+        body = {"provider": provider, "missingOnly": missing_only}
         if app_name:
             body["app"] = app_name
         return self._req(
@@ -255,8 +275,24 @@ class LiveGateway:
             "/v1/deployments/deploy",
             json_body=body,
             headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
-            timeout=60 * 30,
+            timeout=10.0,
         )
+
+    def deployment_jobs(self, limit: int = 20) -> dict:
+        return self._req(
+            "GET",
+            f"/v1/deployments/jobs?limit={limit}",
+            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+            timeout=10.0,
+        )
+
+    def deployment_job(self, job_id: str) -> dict:
+        return self._req(
+            "GET",
+            f"/v1/deployments/jobs/{job_id}",
+            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+            timeout=10.0,
+        )["job"]
 
     def pairings(self) -> dict:
         snap = self._req("GET", "/v1/pairings", headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN})
@@ -518,6 +554,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(g.deployments())
             except RuntimeError as exc:
                 return self._send_json({"error": str(exc)}, 409)
+        if name == "deployments/jobs":
+            try:
+                return self._send_json(g.deployment_jobs())
+            except RuntimeError as exc:
+                return self._send_json({"error": str(exc)}, 502)
+        if name.startswith("deployments/jobs/"):
+            try:
+                job_id = name[len("deployments/jobs/") :]
+                return self._send_json({"job": g.deployment_job(job_id)})
+            except RuntimeError as exc:
+                return self._send_json({"error": str(exc)}, 502)
         if name == "jobs":
             params = dict(p.split("=") for p in query.split("&") if "=" in p)
             return self._send_json(
@@ -572,7 +619,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({"error": str(exc)}, 502)
         if name == "deployments/deploy":
             try:
-                return self._send_json(g.deploy(body.get("provider", "all"), body.get("app")))
+                return self._send_json(
+                    g.deploy(
+                        body.get("provider", "all"),
+                        body.get("app"),
+                        missing_only=bool(body.get("missingOnly", False)),
+                    )
+                )
             except RuntimeError as exc:
                 return self._send_json({"error": str(exc)}, 502)
         if name == "jobs":

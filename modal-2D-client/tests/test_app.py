@@ -77,7 +77,7 @@ def test_local_api_is_small_and_credentials_are_not_echoed(monkeypatch):
 
 
 def test_capabilities_and_models_routes(monkeypatch, capability_doc):
-    monkeypatch.setattr(capabilities, "document", lambda: capability_doc)
+    monkeypatch.setattr(capabilities, "document", lambda **_kwargs: capability_doc)
     monkeypatch.setattr(capabilities, "public_models", lambda: [{"id": "sana-sprint-1.6b"}])
 
     async def scenario():

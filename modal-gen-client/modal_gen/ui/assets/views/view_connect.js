@@ -201,7 +201,7 @@ function connectionPanel(connections) {
     status.textContent = "正在部署 2D / 3D Runtime；首次部署可能需要构建镜像。";
     try {
       const result = await apiPost("deployments/deploy", { provider: "all" });
-      const failed = (result.providers || []).some((item) => item.status === "failed");
+      const failed = (result.providers || []).some((item) => ["failed", "error"].includes(item.status));
       status.className = failed ? "connect-hint connect-hint--error" : "connect-hint connect-hint--ok";
       status.textContent = failed ? "部署未全部完成，请查看 Runtime 状态。" : "2D / 3D Runtime 已部署。";
       toast(failed ? "部分 Runtime 部署失败" : "2D / 3D Runtime 部署完成", failed ? "danger" : "ok");
@@ -343,7 +343,7 @@ function skeletonRows(n) {
 
 function deploymentPanel(rows) {
   const body = h("div", { class: "panel__body stack" });
-  const deployAll = deploymentAction("全部部署", "all", null, body);
+  const deployAll = deploymentAction("部署全部缺失", "all", null, body, false, true);
   body.append(h("div", { class: "row spread" },
     h("p", { class: "muted" }, "直接调用 Modal SDK 部署；凭证仅保存在当前 Agent 进程内存。"),
     deployAll
@@ -352,10 +352,12 @@ function deploymentPanel(rows) {
   for (const row of rows) {
     const providerLabel = row.id === "modal-2d" ? "2D Runtime" : row.id === "modal-3d" ? "3D Runtime" : row.id;
     const providerAction = deploymentAction(
-      row.status === "deployed" ? "重新部署" : "部署",
+      row.status === "current" ? "重新部署全部" : row.status === "stale" ? "更新全部" : "部署缺失",
       row.id,
       null,
-      body
+      body,
+      false,
+      !["current", "stale"].includes(row.status)
     );
     body.append(h("div", { class: "cap-row" },
       h("div", { class: "row spread" },
@@ -376,7 +378,7 @@ function deploymentPanel(rows) {
 }
 
 function runtimeAppRow(provider, app, refreshHost) {
-  const action = deploymentAction(app.status === "deployed" ? "重新部署" : "部署", provider, app.app, refreshHost, true);
+  const action = deploymentAction(app.status === "current" ? "重新部署" : app.status === "stale" ? "更新" : "部署", provider, app.app, refreshHost, true);
   return h("div", { class: "row spread" },
     h("div", { class: "stack" },
       h("span", { class: "mono" }, app.app || "—"),
@@ -387,22 +389,33 @@ function runtimeAppRow(provider, app, refreshHost) {
 }
 
 function deploymentStatusBadge(status) {
-  const mapped = status === "deployed" ? "available" : status === "partial" ? "degraded" : "unavailable";
-  const label = status === "deployed" ? "已部署" : status === "missing" ? "未部署" : status === "partial" ? "部分部署" : status === "error" ? "状态异常" : "失败";
+  const mapped = status === "current" ? "available" : ["partial", "stale"].includes(status) ? "degraded" : "unavailable";
+  const label = status === "current" ? "当前版本" : status === "stale" ? "需要更新" : status === "missing" ? "未部署" : status === "partial" ? "部分部署" : status === "error" ? "状态异常" : "失败";
   return h("span", { class: `badge badge--${mapped === "available" ? "ok" : mapped === "degraded" ? "warn" : "neutral"}` }, label);
 }
 
-function deploymentAction(label, provider, appName, refreshHost, compact = false) {
+function deploymentAction(label, provider, appName, refreshHost, compact = false, missingOnly = false) {
   const button = h("button", { class: `btn ${compact ? "btn--sm" : ""}`, type: "button" }, label);
   button.addEventListener("click", async () => {
     button.disabled = true;
     button.textContent = "部署中…";
     try {
-      const payload = { provider };
+      const payload = { provider, missingOnly };
       if (appName) payload.app = appName;
-      const result = await apiPost("deployments/deploy", payload);
-      const failed = (result.providers || []).some((item) => item.status === "failed");
-      toast(failed ? "Runtime 部署失败" : "Runtime 部署完成", failed ? "danger" : "ok");
+      const response = await apiPost("deployments/deploy", payload);
+      const job = response.job;
+      if (!job?.id) throw new Error("Deployment Job identity 无效");
+      toast("Deployment Job 已提交", "ok");
+      const finished = await waitForDeploymentJob(job.id, (current) => {
+        const targets = current.targets || [];
+        const done = targets.filter((item) => ["current", "failed"].includes(item.status)).length;
+        button.textContent = targets.length ? `部署 ${done}/${targets.length}` : "部署中…";
+      });
+      const failed = ["failed", "partial"].includes(finished.status);
+      toast(
+        failed ? "Runtime 部署未全部成功" : "Runtime 部署完成",
+        failed ? "danger" : "ok"
+      );
       await refreshDeploymentPanel(refreshHost);
     } catch (error) {
       toast(String(error.message || error), "danger");
@@ -412,6 +425,19 @@ function deploymentAction(label, provider, appName, refreshHost, compact = false
     }
   });
   return button;
+}
+
+async function waitForDeploymentJob(jobId, onProgress = null) {
+  const terminal = new Set(["succeeded", "partial", "failed"]);
+  for (let attempt = 0; attempt < 3600; attempt += 1) {
+    const response = await apiGet(`deployments/jobs/${encodeURIComponent(jobId)}`);
+    const job = response.job;
+    if (!job?.id) throw new Error("Deployment Job identity 无效");
+    if (onProgress) onProgress(job);
+    if (terminal.has(job.status)) return job;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error("Deployment Job 查询超时；后台部署可能仍在继续");
 }
 
 async function refreshDeploymentPanel(host) {

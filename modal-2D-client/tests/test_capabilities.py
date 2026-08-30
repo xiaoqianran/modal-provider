@@ -2,17 +2,12 @@ import pytest
 
 from modal_2d_client import capabilities
 from modal_2d_client.contracts import ContractError
-from modal_2d_client.modal_session import NotConnectedError
 
 
-def test_hot_path_uses_only_cached_capability(capability_doc, monkeypatch):
-    monkeypatch.setattr(capabilities, "_cache", capability_doc)
-    monkeypatch.setattr(
-        capabilities,
-        "refresh",
-        lambda: pytest.fail("generation hot path must not refresh capabilities"),
-    )
-
+def test_capability_is_loaded_locally_without_modal_call(monkeypatch, capability_doc):
+    monkeypatch.setattr(capabilities, "_cache", None)
+    monkeypatch.setattr(capabilities, "capabilities_document", lambda: capability_doc)
+    assert capabilities.document()["contract"] == "modal-2d.generation.v2"
     capabilities.ensure_model("sana-sprint-1.6b")
     assert capabilities.worker_route("sana-sprint-1.6b") == (
         "modal-2d-sana-sprint",
@@ -24,7 +19,11 @@ def test_hot_path_uses_only_cached_capability(capability_doc, monkeypatch):
         capabilities.ensure_model("unknown-model")
 
 
-def test_hot_path_fails_closed_without_capability_cache(monkeypatch):
-    monkeypatch.setattr(capabilities, "_cache", None)
-    with pytest.raises(NotConnectedError, match="capability"):
-        capabilities.ensure_model("sana-sprint-1.6b")
+def test_cached_local_capability_is_reused(monkeypatch, capability_doc):
+    monkeypatch.setattr(capabilities, "_cache", capability_doc)
+    monkeypatch.setattr(
+        capabilities,
+        "capabilities_document",
+        lambda: pytest.fail("cached local capability should be reused"),
+    )
+    assert capabilities.document(refresh_remote=False) is capability_doc

@@ -145,37 +145,34 @@ uv run pytest -q
 
 ## Runtime topology
 
-`modal-2D` / `modal-3D` 是部署到 Modal 的远程 GPU Runtime；`modal-2D-client` / `modal-3D-client` 是本地控制库；`modal-gen-client` 只聚合本地 client。
+`modal-2D` / `modal-3D` 定义远程 GPU Runtime；`modal-2D-client` / `modal-3D-client` 是本地 Provider 控制库；`modal-gen-client` 负责统一调用、Runtime readiness 与部署生命周期。
 
 ```text
-AgentScape
-    ↓
+AgentScape / Browser
+        ↓
 modal-gen-client
-    ├── modal-2D-client → deployed modal-2D App
-    └── modal-3D-client → deployed modal-3D workers
+    ├── modal-2D-client ──direct──> Modal 2D GPU workers
+    ├── modal-3D-client ──direct──> Modal 3D GPU workers
+    └── DeploymentService ────────> app.deploy()
 ```
 
-Provider client 通过 Modal SDK 直接调用远程 App，不经过 gen-client HTTP 转发。Modal credentials 只保存在当前 client 进程内存，不写入 Connector DB。
+2D / 3D 生成都由本地 client 直接 `Cls.from_name(...).spawn()` 到 GPU Worker，不经过远程 CPU gateway。2D capability 在本地读取 Runtime contract，PNG 通过 `Volume.read_file()` 直接读取；`modal-2d-prefetch` 仅是可选模型预取 utility，不参与正常生成链。
+
+Provider 自己提供 deployment manifest，gen-client 不硬编码具体模型 Runtime。部署状态区分 `current / stale / missing / error / failed`，默认可以只部署缺失 Runtime；部署通过后台 Deployment Job 执行，全局最多并发 2 个 Runtime。Modal credentials 只保存在当前进程内存，不写入 Connector DB。
 
 ## Local UI
 
 > 默认监听 `0.0.0.0`，方便 Docker / CNB / Codespaces 端口转发；默认允许任意浏览器 Origin。控制 token 未配置时仍为 `wangran`。生产环境建议显式设置 `MODAL_GEN_AGENT_TOKEN`，并可用 `MODAL_GEN_ALLOW_ANY_ORIGIN=0` 收紧 Origin。
 
-启动 Connector 与可视化控制台时，两者使用同一个本地控制 token：
+推荐单命令启动 Connector 与可视化控制台，两者自动使用同一个本地控制 token：
 
 ```bash
 # 本机默认 token 为 wangran；也可以显式覆盖：
 # export MODAL_GEN_AGENT_TOKEN='<local-control-token>'
-modal-gen-agent
+uv run modal-gen
 ```
 
-另一个终端：
-
-```bash
-# 未设置时 UI 同样自动使用 wangran
-# export MODAL_GEN_AGENT_TOKEN='<same-local-control-token>'
-modal-gen-ui
-```
+仍保留独立调试入口：`uv run modal-gen-agent` 与 `uv run modal-gen-ui`。
 
 打开：
 
@@ -189,6 +186,8 @@ http://127.0.0.1:48124/
 - Provider Hub 拓扑与 2D / 3D 连接状态
 - 内存态 Modal credentials 连接 / 断开
 - 实时 Capability / Model 展示
+- Runtime `current / stale / missing` 检测、缺失部署与单 Runtime 更新
+- 后台 Deployment Job 与最多 2 个 Runtime 并发部署
 - 2D 文本生成图片
 - 从 Connector PNG Artifact 继续提交 3D
 - Job 状态轮询、取消与详情

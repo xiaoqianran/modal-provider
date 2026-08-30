@@ -8,10 +8,13 @@ dependencies = [
     "httpx>=0.28,<1",
     "modal-2d-client-agent",
     "modal-3d-client",
+    "modal-2d",
+    "modal-3d",
     "uvicorn>=0.35,<1",
 ]
 
 [project.scripts]
+modal-gen = "modal_gen.launcher:main"
 modal-gen-agent = "modal_gen.server:main"
 modal-gen-ui = "modal_gen.ui.server:main"
 
@@ -35,6 +38,8 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.uv.sources]
 modal-2d-client-agent = { path = "../modal-2D-client", editable = true }
 modal-3d-client = { path = "../modal-3D-client", editable = true }
+modal-2d = { path = "../modal-2D", editable = true }
+modal-3d = { path = "../modal-3D", editable = true }
 
 [tool.setuptools.packages.find]
 include = ["modal_gen*"]

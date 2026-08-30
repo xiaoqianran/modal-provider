@@ -507,12 +507,30 @@ api-proxy-support = [
 ]
 
 [[package]]
+name = "modal-2d"
+version = "0.1.0"
+source = { editable = "../modal-2D" }
+dependencies = [
+    { name = "modal", extra = ["api-proxy-support"] },
+]
+
+[package.metadata]
+requires-dist = [{ name = "modal", extras = ["api-proxy-support"], specifier = ">=1.5,<2" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8,<10" },
+    { name = "ruff", specifier = ">=0.12,<1" },
+]
+
+[[package]]
 name = "modal-2d-client-agent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "modal", extra = ["api-proxy-support"] },
+    { name = "modal-2d" },
     { name = "pydantic" },
     { name = "uvicorn" },
 ]
@@ -528,6 +546,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.116,<1" },
     { name = "modal", extras = ["api-proxy-support"], specifier = ">=1.5,<2" },
+    { name = "modal-2d", editable = "../modal-2D" },
     { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "uvicorn", specifier = ">=0.35,<1" },
 ]

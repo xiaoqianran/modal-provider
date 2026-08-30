@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "modal[api-proxy-support]",
+    "modal-3d",
     "numpy>=2,<3",
     "pillow>=11,<13",
     "pydantic",
@@ -25,3 +26,16 @@ line-length = 100
 
 [project.entry-points."modal_gen.providers"]
 modal-3d = "modal_3d_client.provider:create_provider"
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["modal_3d_client*"]
+
+[tool.setuptools.package-data]
+modal_3d_client = ["capabilities.json", "static/*"]
+
+[tool.uv.sources]
+modal-3d = { path = "../modal-3D", editable = true }

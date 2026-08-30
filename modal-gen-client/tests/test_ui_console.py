@@ -4,11 +4,14 @@ import json
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 
 from modal_gen.ui.demo import DemoEngine, build_capability_snapshot, make_glb, make_png
 from modal_gen.ui.server import DemoGateway, Handler
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 # --------------------------------------------------------------------- demo
@@ -124,6 +127,7 @@ def test_server_api_endpoints(ui_server: str) -> None:
     assert _get(ui_server, "bootstrap")["mode"] == "demo"
     assert _get(ui_server, "capabilities")["snapshot"]["providers"]
     assert _get(ui_server, "artifacts")["artifacts"]
+    assert _get(ui_server, "deployments")["providers"][0]["status"] == "current"
     assert _get(ui_server, "jobs?status=all&page=1&page_size=25")["total"] >= 3
 
 
@@ -232,7 +236,7 @@ if (parseModalTokenCommand("modal token set --token-id only")) process.exit(2);
     subprocess.run(
         ["node", "--input-type=module", "--eval", script],
         check=True,
-        cwd=".",
+        cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
     )
@@ -270,9 +274,8 @@ def test_ui_shell_matches_provider_client_studio(ui_server: str) -> None:
 def test_toast_resolves_its_host_before_append() -> None:
     import re
     import subprocess
-    from pathlib import Path
 
-    source = Path("modal_gen/ui/assets/app.js").read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "modal_gen/ui/assets/app.js").read_text(encoding="utf-8")
     match = re.search(
         r'export function toast\(message, kind = ""\) \{.*?\n\}',
         source,
@@ -299,9 +302,7 @@ if (appended.length !== 1 || appended[0].message !== "connected") process.exit(1
 
 
 def test_jobs_ui_keeps_latest_query_and_valid_first_page() -> None:
-    from pathlib import Path
-
-    source = Path("modal_gen/ui/assets/views/view_jobs.js").read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_jobs.js").read_text(encoding="utf-8")
 
     assert "let refreshSeq = 0;" in source
     assert "const requestSeq = ++refreshSeq;" in source
@@ -311,9 +312,7 @@ def test_jobs_ui_keeps_latest_query_and_valid_first_page() -> None:
 
 
 def test_dialog_ui_restores_focus_and_handles_escape() -> None:
-    from pathlib import Path
-
-    source = Path("modal_gen/ui/assets/app.js").read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "modal_gen/ui/assets/app.js").read_text(encoding="utf-8")
 
     assert "const previousFocus = document.activeElement;" in source
     assert 'if (event.key === "Escape")' in source

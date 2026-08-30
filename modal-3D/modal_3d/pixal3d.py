@@ -4,8 +4,8 @@ import io
 import os
 import shutil
 import subprocess
-import threading
 import tempfile
+import threading
 import time
 import urllib.request
 import uuid
@@ -268,9 +268,7 @@ class Model:
         self.pipe.image_cond_model_shape_1024 = build_image_cond_model(
             image_cond_configs["shape_1024"]
         )
-        self.pipe.image_cond_model_tex_1024 = build_image_cond_model(
-            image_cond_configs["tex_1024"]
-        )
+        self.pipe.image_cond_model_tex_1024 = build_image_cond_model(image_cond_configs["tex_1024"])
         self.pipe.low_vram = False
         self.pipe.cuda()
         for name in (

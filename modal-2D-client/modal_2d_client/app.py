@@ -106,14 +106,7 @@ def create_app(service: JobService | None = None) -> FastAPI:
             )
         except Exception as exc:
             raise HTTPException(status_code=401, detail="Modal authentication failed") from exc
-        try:
-            capabilities.refresh()
-        except ContractError as exc:
-            modal_session.disconnect()
-            raise HTTPException(status_code=502, detail="Incompatible modal-2D capability") from exc
-        except Exception as exc:
-            modal_session.disconnect()
-            raise HTTPException(status_code=502, detail="Modal capability unavailable") from exc
+        capabilities.refresh()
         return {"connected": True}
 
     @app.delete("/modal/connect")
@@ -123,19 +116,11 @@ def create_app(service: JobService | None = None) -> FastAPI:
 
     @app.get("/v1/capabilities")
     def get_capabilities():
-        try:
-            return capabilities.document()
-        except modal_session.NotConnectedError as exc:
-            raise HTTPException(status_code=409, detail="Modal connection required") from exc
-        except ContractError as exc:
-            raise HTTPException(status_code=502, detail="Incompatible modal-2D capability") from exc
+        return capabilities.document(refresh_remote=False)
 
     @app.get("/v1/models")
     def get_models():
-        try:
-            return {"models": capabilities.public_models()}
-        except modal_session.NotConnectedError as exc:
-            raise HTTPException(status_code=409, detail="Modal connection required") from exc
+        return {"models": capabilities.public_models()}
 
     @app.get("/v1/jobs")
     def list_jobs(limit: int = 50):

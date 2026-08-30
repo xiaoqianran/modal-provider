@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from .constants import (
-    APP_NAME,
     ARTIFACT_FORMAT,
-    ARTIFACT_FUNCTION,
     ARTIFACT_MIME,
     ARTIFACT_ROLE,
     ARTIFACT_VOLUME,
@@ -15,7 +13,6 @@ from .constants import (
     MAX_PROMPT_CHARS,
     MAX_SEED,
     OPERATION,
-    PREFETCH_FUNCTION,
     PROVIDER,
 )
 from .models import MODELS
@@ -41,9 +38,7 @@ def capabilities_document() -> dict[str, object]:
         "outputs": [{"role": ARTIFACT_ROLE, "mediaType": ARTIFACT_MIME}],
         "execution": {"mode": "async", "cancellable": True},
         "generation": {
-            "control_app": APP_NAME,
-            "prefetch_function": PREFETCH_FUNCTION,
-            "artifact_function": ARTIFACT_FUNCTION,
+            "entrypoint": "direct_class_method",
             "artifact_volume": ARTIFACT_VOLUME,
             "artifact_path_field": "remote_path",
             "job_transport": JOB_TRANSPORT,

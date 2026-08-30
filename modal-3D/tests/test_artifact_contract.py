@@ -10,7 +10,12 @@ from modal_3d.common import ARTIFACT_ROOT, generation_result, validate_glb
 
 def glb_bytes(*, version: int = 2, declared_delta: int = 0, payload: bytes = b"payload") -> bytes:
     size = 12 + len(payload)
-    return b"glTF" + version.to_bytes(4, "little") + (size + declared_delta).to_bytes(4, "little") + payload
+    return (
+        b"glTF"
+        + version.to_bytes(4, "little")
+        + (size + declared_delta).to_bytes(4, "little")
+        + payload
+    )
 
 
 class ArtifactContractTests(unittest.TestCase):
@@ -19,11 +24,11 @@ class ArtifactContractTests(unittest.TestCase):
         self.assertEqual(ARTIFACT_ROOT, "/artifacts")
 
     def _write(self, data: bytes) -> Path:
-        temp = tempfile.NamedTemporaryFile(suffix=".glb", delete=False)
-        temp.write(data)
-        temp.close()
-        self.addCleanup(Path(temp.name).unlink, missing_ok=True)
-        return Path(temp.name)
+        with tempfile.NamedTemporaryFile(suffix=".glb", delete=False) as temp:
+            temp.write(data)
+            path = Path(temp.name)
+        self.addCleanup(path.unlink, missing_ok=True)
+        return path
 
     def test_valid_glb_returns_integrity_metadata(self) -> None:
         data = glb_bytes()

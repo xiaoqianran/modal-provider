@@ -34,10 +34,9 @@ class Runtime:
 
 def build_runtime(store: Store | None = None, *, adapters=None) -> Runtime:
     state = store or Store()
-    registry = CapabilityRegistry(
-        state,
-        adapters if adapters is not None else load_providers(),
-    )
+    provider_adapters = adapters if adapters is not None else load_providers()
+    deployments = DeploymentService(provider_adapters)
+    registry = CapabilityRegistry(state, provider_adapters, deployments)
     artifacts = ArtifactService(state, registry)
     return Runtime(
         store=state,
@@ -45,7 +44,7 @@ def build_runtime(store: Store | None = None, *, adapters=None) -> Runtime:
         sessions=SessionService(state, registry),
         jobs=JobService(state, registry, artifacts),
         artifacts=artifacts,
-        deployments=DeploymentService(),
+        deployments=deployments,
     )
 
 
@@ -117,6 +116,14 @@ def create_app(state: Runtime | None = None) -> FastAPI:
     def deployments(provider: str | None = None):
         return current().deployments.status(provider)
 
+    @app.get("/v1/deployments/jobs")
+    def deployment_jobs(limit: int = 20):
+        return current().deployments.deployment_jobs(limit)
+
+    @app.get("/v1/deployments/jobs/{job_id}")
+    def deployment_job(job_id: str):
+        return {"job": current().deployments.deployment_job(job_id)}
+
     @app.post("/v1/deployments/deploy")
     async def deploy_runtimes(request: Request):
         payload = await _json_body(request)
@@ -141,13 +148,17 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         environment_name = payload.get("environment")
         if environment_name is not None and not isinstance(environment_name, str):
             raise ConnectorError("DEPLOYMENT_ENV_INVALID", "environment 必须是字符串", 422)
-        return await run_in_threadpool(
-            current().deployments.deploy,
+        missing_only = payload.get("missingOnly", False)
+        if not isinstance(missing_only, bool):
+            raise ConnectorError("DEPLOYMENT_MISSING_ONLY_INVALID", "missingOnly 必须是布尔值", 422)
+        job = current().deployments.start_deploy(
             provider,
             app_name=app_name,
             strategy=strategy,
             environment_name=environment_name or None,
+            missing_only=missing_only,
         )
+        return {"job": job}
 
     @app.get("/v1/capabilities")
     def local_capabilities():

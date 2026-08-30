@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 
-from .constants import APP_NAME, CAPABILITIES_FUNCTION, MAX_BATCH_SIZE
+from .capabilities import MAX_BATCH_SIZE, capabilities_document
 
 DEFAULT_BATCHES = (1, 2, 4, 8)
 DEFAULT_PROMPT = "a red fox sitting in a snowy forest, cinematic photo, no text"
@@ -210,9 +210,7 @@ def main(argv: list[str] | None = None) -> int:
 
     client = modal.Client.from_env()
     client.hello()
-    capability = modal.Function.from_name(APP_NAME, CAPABILITIES_FUNCTION, client=client).remote()
-    if not isinstance(capability, dict):
-        raise RuntimeError("modal-2D capabilities returned an invalid document")
+    capability = capabilities_document()
     available = _model_map(capability)
     selected = args.model or list(available)
     unknown = [model for model in selected if model not in available]

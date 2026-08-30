@@ -75,6 +75,17 @@ class LibraryProviderAdapter:
             ) from exc
         return {"id": self.id, **value}
 
+    def deployment_manifest(self) -> dict[str, object]:
+        factory = getattr(self.provider, "deployment_manifest", None)
+        if not callable(factory):
+            return {"provider": self.id, "targets": []}
+        value = dict(factory())
+        if value.get("provider") != self.id or not isinstance(value.get("targets"), list):
+            raise ProviderError(
+                "PROVIDER_DEPLOYMENT_INVALID", "Provider deployment manifest 无效", 502
+            )
+        return value
+
     def submit(
         self,
         *,

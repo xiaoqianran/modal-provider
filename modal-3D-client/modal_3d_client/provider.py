@@ -4,6 +4,8 @@ import hashlib
 from collections.abc import Iterator
 from pathlib import Path
 
+from modal_3d.deployment import deployment_manifest as runtime_deployment_manifest
+
 from . import capabilities, modal_session, models
 from .constants import OPERATION, OUTPUT_ROLE, SOURCE_MAX_BYTES
 from .contracts import ContractError
@@ -70,6 +72,9 @@ class Modal3DProvider:
     def disconnect(self) -> dict[str, object]:
         modal_session.disconnect()
         return self.connection_status()
+
+    def deployment_manifest(self) -> dict[str, object]:
+        return runtime_deployment_manifest()
 
     def submit(
         self,

@@ -18,8 +18,8 @@ from modal_3d import (
     hermit_trellis2_plus_plus,
     hunyuan2_1_plus_plus,
     pixal3d,
+    router,
 )
-from modal_3d import router
 from modal_3d.capabilities import assert_routable
 from modal_3d.common import run_generation_job
 from tests.test_canonical_contract import rgba_png
@@ -49,9 +49,7 @@ class DirectEntrypointContractTests(unittest.TestCase):
         for model_id, module in WORKERS:
             with self.subTest(model=model_id):
                 self.assertEqual(module.CAPABILITY["id"], model_id)
-                self.assertEqual(
-                    module.CAPABILITY["generation_entrypoint"], EXPECTED_ENTRYPOINT
-                )
+                self.assertEqual(module.CAPABILITY["generation_entrypoint"], EXPECTED_ENTRYPOINT)
 
     def test_every_worker_exposes_generate_job_as_a_modal_method(self) -> None:
         # `Model` is a modal.Cls, not a plain class, so assert against source.
@@ -75,9 +73,7 @@ class DirectEntrypointContractTests(unittest.TestCase):
 
     def test_routing_table_covers_every_worker(self) -> None:
         capabilities = [module.CAPABILITY for _, module in WORKERS]
-        self.assertEqual(
-            sorted(router.WORKERS), sorted(item["id"] for item in capabilities)
-        )
+        self.assertEqual(sorted(router.WORKERS), sorted(item["id"] for item in capabilities))
         # assert_routable raises on any disagreement between the two.
         assert_routable(capabilities)
 
@@ -143,9 +139,11 @@ class SpawnRoutingTests(unittest.TestCase):
         self.assertEqual(call, "fc-direct")
 
     def test_spawn_rejects_source_inputs_before_any_modal_call(self) -> None:
-        with patch.object(router.modal.Cls, "from_name") as lookup:
-            with self.assertRaises(ValueError):
-                router.spawn_generation("pixal3d", "source-inputs/source.png", {})
+        with (
+            patch.object(router.modal.Cls, "from_name") as lookup,
+            self.assertRaises(ValueError),
+        ):
+            router.spawn_generation("pixal3d", "source-inputs/source.png", {})
         lookup.assert_not_called()
 
 
