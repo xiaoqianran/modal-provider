@@ -66,3 +66,16 @@ def test_stage1_uses_persistent_hf_cache_and_preloads_hidden_models():
     assert '"zim_vit_l_2092/**"' in app
     assert 'zim / "encoder.onnx"' in app
     assert 'zim / "decoder.onnx"' in app
+
+
+def test_stage1_rejects_hidden_navmesh_failures():
+    worker = Path("modal_world/stage2_app.py").read_text()
+    assert 'target / "navmesh/metadata.json"' in worker
+    for marker in (
+        "Navmesh Error:",
+        "Path planning failed:",
+        "Artifact saving failed:",
+        "NavMesh build failed.",
+    ):
+        assert marker in worker
+    assert "failed despite a zero subprocess exit" in worker

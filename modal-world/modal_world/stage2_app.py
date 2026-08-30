@@ -176,6 +176,7 @@ class WorldNavRenderer:
             target / "objects.json",
             target / "camera_trajectory/target_camera.json",
             target / "render_results/global_pcd.ply",
+            target / "navmesh/metadata.json",
         ]
         if not force and all(path.exists() for path in required):
             manifest_ok = manifest_matches(target, "stage1", manifest)
@@ -239,10 +240,25 @@ class WorldNavRenderer:
                 timeout=90 * 60,
             )
         stage1_s = time.perf_counter() - started
+        log_text = log_path.read_text(errors="replace")
         if completed.returncode != 0:
             worldgen_outputs.commit()
-            tail = log_path.read_text(errors="replace")[-20000:]
-            raise RuntimeError(f"WorldGen Stage 1 failed with exit {completed.returncode}:\n{tail}")
+            raise RuntimeError(
+                f"WorldGen Stage 1 failed with exit {completed.returncode}:\n{log_text[-20000:]}"
+            )
+        fatal_navmesh_markers = (
+            "Navmesh Error:",
+            "Path planning failed:",
+            "Artifact saving failed:",
+            "NavMesh build failed.",
+        )
+        found_navmesh_errors = [marker for marker in fatal_navmesh_markers if marker in log_text]
+        if found_navmesh_errors:
+            worldgen_outputs.commit()
+            raise RuntimeError(
+                "WorldGen Stage 1 navmesh failed despite a zero subprocess exit: "
+                f"{found_navmesh_errors}\n{log_text[-20000:]}"
+            )
         missing = [str(path) for path in required if not path.exists()]
         if missing:
             worldgen_outputs.commit()
@@ -257,7 +273,7 @@ class WorldNavRenderer:
             "worker_call_index": call_index,
             "peak_allocated_gb": round(torch.cuda.max_memory_allocated() / 1024**3, 3),
             "target": str(target),
-            "stage1_log_tail": log_path.read_text(errors="replace")[-8000:],
+            "stage1_log_tail": log_text[-8000:],
         }
 
     @staticmethod
