@@ -5,7 +5,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 MODULE_PATH = Path(__file__).resolve().parents[1] / "standalone_sync.py"
 SPEC = importlib.util.spec_from_file_location("standalone_sync", MODULE_PATH)
 standalone_sync = importlib.util.module_from_spec(SPEC)
@@ -17,7 +16,9 @@ SPEC.loader.exec_module(standalone_sync)
 def init_repo(path: Path) -> None:
     standalone_sync._run("git", "init", "-q", str(path))
     standalone_sync._run("git", "config", "user.name", "Standalone Sync Test", cwd=path)
-    standalone_sync._run("git", "config", "user.email", "sync-test@example.invalid", cwd=path)
+    standalone_sync._run(
+        "git", "config", "user.email", "sync-test@example.invalid", cwd=path
+    )
 
 
 def commit_all(path: Path, message: str = "test") -> None:
@@ -80,7 +81,9 @@ class StandaloneSyncTests(unittest.TestCase):
             standalone_sync._run("git", "add", "-A", cwd=target)
             standalone_sync._apply_index_modes(source, target, entries, ("deploy.sh",))
 
-            entry = standalone_sync._run("git", "ls-files", "-s", "deploy.sh", cwd=target).stdout
+            entry = standalone_sync._run(
+                "git", "ls-files", "-s", "deploy.sh", cwd=target
+            ).stdout
             self.assertTrue(entry.startswith("100755 "), entry)
 
     def test_source_stability_is_scoped_to_package_tree(self):
@@ -115,6 +118,49 @@ class StandaloneSyncTests(unittest.TestCase):
 
             with self.assertRaises(RuntimeError):
                 standalone_sync._assert_source_stable(repo, "pkg", pinned)
+
+    def test_canonical_package_gate_accepts_matching_origin_main_tree(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            remote = base / "remote.git"
+            repo = base / "repo"
+            standalone_sync._run("git", "init", "--bare", "-q", str(remote))
+            init_repo(repo)
+            standalone_sync._run("git", "branch", "-M", "main", cwd=repo)
+            standalone_sync._run(
+                "git", "remote", "add", "origin", str(remote), cwd=repo
+            )
+            (repo / "pkg").mkdir()
+            (repo / "pkg" / "value.txt").write_text("v1")
+            commit_all(repo, "initial")
+            standalone_sync._run("git", "push", "-q", "-u", "origin", "main", cwd=repo)
+            pinned = standalone_sync._package_tree(repo, "pkg", "HEAD")
+
+            (repo / "other.txt").write_text("unrelated")
+            commit_all(repo, "unrelated-local")
+            standalone_sync._assert_canonical_package_current(repo, "pkg", pinned)
+
+    def test_canonical_package_gate_rejects_unpublished_package_tree(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            remote = base / "remote.git"
+            repo = base / "repo"
+            standalone_sync._run("git", "init", "--bare", "-q", str(remote))
+            init_repo(repo)
+            standalone_sync._run("git", "branch", "-M", "main", cwd=repo)
+            standalone_sync._run(
+                "git", "remote", "add", "origin", str(remote), cwd=repo
+            )
+            (repo / "pkg").mkdir()
+            (repo / "pkg" / "value.txt").write_text("v1")
+            commit_all(repo, "initial")
+            standalone_sync._run("git", "push", "-q", "-u", "origin", "main", cwd=repo)
+
+            (repo / "pkg" / "value.txt").write_text("v2")
+            commit_all(repo, "local-package-change")
+            pinned = standalone_sync._package_tree(repo, "pkg", "HEAD")
+            with self.assertRaises(RuntimeError):
+                standalone_sync._assert_canonical_package_current(repo, "pkg", pinned)
 
 
 if __name__ == "__main__":

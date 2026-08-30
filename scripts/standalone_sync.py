@@ -42,15 +42,29 @@ class SyncPlan:
 
 PACKAGES: dict[str, PackageSpec] = {
     "modal-2D": PackageSpec("https://github.com/xiaoqianran/modal-2D.git", "main"),
-    "modal-2D-client": PackageSpec("https://github.com/xiaoqianran/modal-2D-client.git", "main"),
+    "modal-2D-client": PackageSpec(
+        "https://github.com/xiaoqianran/modal-2D-client.git", "main"
+    ),
     "modal-3D": PackageSpec("https://github.com/xiaoqianran/modal-3D.git", "master"),
-    "modal-3D-client": PackageSpec("https://github.com/xiaoqianran/modal-3D-client.git", "main"),
-    "modal-gen-client": PackageSpec("https://github.com/xiaoqianran/modal-gen-client.git", "main"),
-    "modal-EmbodiedGen": PackageSpec("https://github.com/xiaoqianran/modal-EmbodiedGen.git", "master"),
-    "modal-build": PackageSpec("https://github.com/xiaoqianran/modal-build.git", "master"),
-    "modal-world": PackageSpec("https://github.com/xiaoqianran/modal-world.git", "master"),
+    "modal-3D-client": PackageSpec(
+        "https://github.com/xiaoqianran/modal-3D-client.git", "main"
+    ),
+    "modal-gen-client": PackageSpec(
+        "https://github.com/xiaoqianran/modal-gen-client.git", "main"
+    ),
+    "modal-EmbodiedGen": PackageSpec(
+        "https://github.com/xiaoqianran/modal-EmbodiedGen.git", "master"
+    ),
+    "modal-build": PackageSpec(
+        "https://github.com/xiaoqianran/modal-build.git", "master"
+    ),
+    "modal-world": PackageSpec(
+        "https://github.com/xiaoqianran/modal-world.git", "master"
+    ),
 }
 
+CANONICAL_REMOTE = "origin"
+CANONICAL_BRANCH = "main"
 PROTECTED_TOP_LEVEL = frozenset({".git", ".github"})
 SUPPORTED_BLOB_MODES = frozenset({"100644", "100755", "120000"})
 
@@ -74,8 +88,7 @@ def _run_bytes(*args: str, cwd: Path) -> bytes:
         args,
         cwd=cwd,
         check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
     )
     return result.stdout
 
@@ -122,7 +135,30 @@ def _assert_source_stable(root: Path, package: str, pinned_tree: str) -> None:
         )
 
 
-def _git_entries(repo: Path, revision: str = "HEAD", prefix: str | None = None) -> dict[str, GitEntry]:
+def _assert_canonical_package_current(
+    root: Path, package: str, pinned_tree: str
+) -> None:
+    remote_ref = f"refs/remotes/{CANONICAL_REMOTE}/{CANONICAL_BRANCH}"
+    branch_ref = f"refs/heads/{CANONICAL_BRANCH}"
+    _run(
+        "git",
+        "fetch",
+        "--quiet",
+        CANONICAL_REMOTE,
+        f"{branch_ref}:{remote_ref}",
+        cwd=root,
+    )
+    canonical_tree = _package_tree(root, package, remote_ref)
+    if canonical_tree != pinned_tree:
+        raise RuntimeError(
+            f"{package} no longer matches {CANONICAL_REMOTE}/{CANONICAL_BRANCH}; "
+            "refusing to publish a non-canonical or stale package tree"
+        )
+
+
+def _git_entries(
+    repo: Path, revision: str = "HEAD", prefix: str | None = None
+) -> dict[str, GitEntry]:
     args = ["git", "ls-tree", "-r", revision]
     if prefix:
         args.extend(["--", prefix])
@@ -146,13 +182,19 @@ def _git_entries(repo: Path, revision: str = "HEAD", prefix: str | None = None) 
     return entries
 
 
-def _compare_entries(source: dict[str, GitEntry], target: dict[str, GitEntry]) -> SyncPlan:
+def _compare_entries(
+    source: dict[str, GitEntry], target: dict[str, GitEntry]
+) -> SyncPlan:
     source_names = set(source)
     target_names = set(target)
     return SyncPlan(
         added=tuple(sorted(source_names - target_names)),
         modified=tuple(
-            sorted(name for name in source_names & target_names if source[name] != target[name])
+            sorted(
+                name
+                for name in source_names & target_names
+                if source[name] != target[name]
+            )
         ),
         deleted=tuple(sorted(target_names - source_names)),
     )
@@ -212,7 +254,9 @@ def _read_blob(source_repo: Path, entry: GitEntry) -> bytes:
     return _run_bytes("git", "cat-file", "blob", entry.oid, cwd=source_repo)
 
 
-def _write_entry(source_repo: Path, target: Path, relative: str, entry: GitEntry) -> None:
+def _write_entry(
+    source_repo: Path, target: Path, relative: str, entry: GitEntry
+) -> None:
     path = target / relative
     _remove_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -272,14 +316,17 @@ def _apply_index_modes(
             _run("git", "update-index", "--chmod=-x", "--", relative, cwd=target)
         elif entry.mode == "120000":
             blob = _read_blob(source_repo, entry)
-            hashed = subprocess.run(
-                ["git", "hash-object", "-w", "--stdin"],
-                cwd=target,
-                check=True,
-                input=blob,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            ).stdout.decode().strip()
+            hashed = (
+                subprocess.run(
+                    ["git", "hash-object", "-w", "--stdin"],
+                    cwd=target,
+                    check=True,
+                    input=blob,
+                    capture_output=True,
+                )
+                .stdout.decode()
+                .strip()
+            )
             if hashed != entry.oid:
                 raise RuntimeError(f"blob verification failed for symlink: {relative}")
             _run(
@@ -291,7 +338,9 @@ def _apply_index_modes(
                 cwd=target,
             )
         else:
-            raise RuntimeError(f"unsupported git mode for standalone sync: {entry.mode} {relative}")
+            raise RuntimeError(
+                f"unsupported git mode for standalone sync: {entry.mode} {relative}"
+            )
 
 
 def _assert_protected_unchanged(target: Path) -> None:
@@ -303,7 +352,9 @@ def _assert_protected_unchanged(target: Path) -> None:
 def _assert_staged_paths(target: Path, plan: SyncPlan) -> None:
     staged = {
         line.strip()
-        for line in _run("git", "diff", "--cached", "--name-only", cwd=target).stdout.splitlines()
+        for line in _run(
+            "git", "diff", "--cached", "--name-only", cwd=target
+        ).stdout.splitlines()
         if line.strip()
     }
     expected = set(plan.paths)
@@ -323,7 +374,9 @@ def _check(package: str, root: Path) -> bool:
     source_entries = _git_entries(root, source_revision, package)
     dirty = _source_status(root, package)
     if dirty:
-        print(f"DIRTY   {package:<20} local source has uncommitted changes; comparing committed HEAD only")
+        print(
+            f"DIRTY   {package:<20} local source has uncommitted changes; comparing committed HEAD only"
+        )
 
     with tempfile.TemporaryDirectory(prefix=f"{package}-check-") as temp:
         target = Path(temp) / package
@@ -350,6 +403,8 @@ def _sync(
     source_revision = _revision(root)
     pinned_tree = _package_tree(root, package, source_revision)
     source_entries = _git_entries(root, source_revision, package)
+    if push:
+        _assert_canonical_package_current(root, package, pinned_tree)
 
     with tempfile.TemporaryDirectory(prefix=f"{package}-sync-") as temp:
         target = Path(temp) / package
@@ -363,7 +418,9 @@ def _sync(
         _validate_plan(plan, allow_delete)
 
         if not push:
-            print("DRY-RUN no files changed; add --push to commit and fast-forward push")
+            print(
+                "DRY-RUN no files changed; add --push to commit and fast-forward push"
+            )
             return
 
         _apply_plan(root, source_entries, target, plan)
@@ -379,6 +436,7 @@ def _sync(
         _run("git", "commit", "-m", commit_message, cwd=target, capture=False)
         local_head = _run("git", "rev-parse", "HEAD", cwd=target).stdout.strip()
         _assert_source_stable(root, package, pinned_tree)
+        _assert_canonical_package_current(root, package, pinned_tree)
         _run(
             "git",
             "push",
@@ -415,12 +473,18 @@ def _parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    check = subparsers.add_parser("check", help="compare committed canonical package source with standalone")
+    check = subparsers.add_parser(
+        "check", help="compare committed canonical package source with standalone"
+    )
     check.add_argument("packages", nargs="*", choices=sorted(PACKAGES))
 
-    sync = subparsers.add_parser("sync", help="dry-run or safely sync one standalone repository")
+    sync = subparsers.add_parser(
+        "sync", help="dry-run or safely sync one standalone repository"
+    )
     sync.add_argument("package", choices=sorted(PACKAGES))
-    sync.add_argument("--push", action="store_true", help="commit and normal fast-forward push")
+    sync.add_argument(
+        "--push", action="store_true", help="commit and normal fast-forward push"
+    )
     sync.add_argument(
         "--allow-delete",
         action="store_true",
