@@ -33,9 +33,7 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
     source = source.replace(model_old, model_new, 1)
 
     sor_query_old = "    dists, _ = tree.query(points, k=nb_neighbors + 1)\n"
-    sor_query_new = (
-        "    dists, _ = tree.query(points, k=nb_neighbors + 1, workers=-1)\n"
-    )
+    sor_query_new = "    dists, _ = tree.query(points, k=nb_neighbors + 1, workers=-1)\n"
     if source.count(sor_query_old) != 1:
         raise RuntimeError("expected pinned single-threaded SOR query not found")
     source = source.replace(sor_query_old, sor_query_new, 1)
@@ -95,6 +93,77 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
             "        _alignment_phase_started = time.perf_counter()\n"
         )
         source = source.replace(marker, timing + marker, 1)
+
+    phase2_marker = (
+        "        # Phase 2: Preprocessing -- precompute MoGe depth and SAM3 sky masks by video.\n"
+    )
+    if source.count(phase2_marker) != 1:
+        raise RuntimeError("expected pinned Phase 2 marker not found")
+    source = source.replace(
+        phase2_marker,
+        phase2_marker
+        + '        self.alignment_phase2_profile = {"tensor_prep": 0.0, "moge_infer": 0.0, "sam3_sky": 0.0, "frame_align_total": 0.0}\n',
+        1,
+    )
+
+    tensor_start = "            gen_tensor = []\n"
+    tensor_end = "            updated_tar_w2cs = self.ref_w2cs[global_indices]\n"
+    if source.count(tensor_start) != 1 or source.count(tensor_end) != 1:
+        raise RuntimeError("expected pinned Phase 2 tensor markers not found")
+    source = source.replace(
+        tensor_start,
+        "            _phase2_sub_started = time.perf_counter()\n" + tensor_start,
+        1,
+    )
+    source = source.replace(
+        tensor_end,
+        '            self.alignment_phase2_profile["tensor_prep"] += time.perf_counter() - _phase2_sub_started\n'
+        + tensor_end,
+        1,
+    )
+
+    moge_start = "            mono_depths = []\n"
+    sam3_comment = "            # Use SAM3 to remove the sky mask.\n"
+    if source.count(moge_start) != 1 or source.count(sam3_comment) != 1:
+        raise RuntimeError("expected pinned MoGe/SAM3 markers not found")
+    source = source.replace(
+        moge_start,
+        "            _phase2_sub_started = time.perf_counter()\n" + moge_start,
+        1,
+    )
+    source = source.replace(
+        sam3_comment,
+        '            self.alignment_phase2_profile["moge_infer"] += time.perf_counter() - _phase2_sub_started\n'
+        + "            _phase2_sub_started = time.perf_counter()\n"
+        + sam3_comment,
+        1,
+    )
+
+    cache_comment = "            # Initialize the cache for the current video.\n"
+    if source.count(cache_comment) != 1:
+        raise RuntimeError("expected pinned Phase 2 cache marker not found")
+    source = source.replace(
+        cache_comment,
+        '            self.alignment_phase2_profile["sam3_sky"] += time.perf_counter() - _phase2_sub_started\n'
+        + cache_comment,
+        1,
+    )
+
+    frame_loop = "            for local_i in range(N_align):\n"
+    frame_done = "            n_success = sum(1 for f in video_align_cache[video_name]['frames'].values() if f['k'] is not None)\n"
+    if source.count(frame_loop) != 1 or source.count(frame_done) != 1:
+        raise RuntimeError("expected pinned Phase 2 frame-loop markers not found")
+    source = source.replace(
+        frame_loop,
+        "            _phase2_frames_started = time.perf_counter()\n" + frame_loop,
+        1,
+    )
+    source = source.replace(
+        frame_done,
+        '            self.alignment_phase2_profile["frame_align_total"] += time.perf_counter() - _phase2_frames_started\n'
+        + frame_done,
+        1,
+    )
 
     alignment_pos = source.index(alignment_start)
     next_method = source.find("\n    def ", alignment_pos + len(alignment_start))

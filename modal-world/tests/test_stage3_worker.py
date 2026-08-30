@@ -101,3 +101,11 @@ def test_stage3_alignment_has_phase_profiling_without_algorithm_changes():
         assert name in patch
     assert 'getattr(memory_bank, "alignment_profile", {})' in worker
     assert '"alignment_profile": alignment_profile' in worker
+
+
+def test_stage3_phase2_has_subprofiling():
+    patch = Path("modal_world/stage3_patch.py").read_text()
+    worker = Path("modal_world/stage3_app.py").read_text()
+    for name in ("tensor_prep", "moge_infer", "sam3_sky", "frame_align_total"):
+        assert name in patch
+    assert '"alignment_phase2_profile": alignment_phase2_profile' in worker
