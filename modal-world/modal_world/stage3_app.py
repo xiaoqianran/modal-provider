@@ -27,6 +27,9 @@ from .worldgen_job import (
 
 app = modal.App("modal-world-stage3")
 model_cache = modal.Volume.from_name("hyworld2-models", create_if_missing=True)
+runtime_cache = modal.Volume.from_name(
+    "hyworld2-runtime-cache-v2", create_if_missing=True, version=2
+)
 worldgen_outputs = modal.Volume.from_name("hyworld2-worldgen-output", create_if_missing=True)
 hf_secret = modal.Secret.from_name("hyworld2-hf")
 
@@ -65,12 +68,17 @@ def verify_stage3_module_paths() -> dict[str, Any]:
     gpu=GPU,
     cpu=16.0,
     memory=131072,
-    volumes={"/models": model_cache, "/worldgen": worldgen_outputs},
+    volumes={
+        "/models": model_cache.with_mount_options(read_only=True),
+        "/runtime-cache": runtime_cache,
+        "/worldgen": worldgen_outputs,
+    },
     secrets=[hf_secret],
     timeout=4 * 60 * 60,
     startup_timeout=30 * 60,
+    min_containers=0,
     max_containers=1,
-    scaledown_window=15 * 60,
+    scaledown_window=5 * 60,
 )
 class WorldStereoWorker:
     @modal.enter()
@@ -81,8 +89,8 @@ class WorldStereoWorker:
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
         os.environ["DIFFUSERS_OFFLINE"] = "1"
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-        os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/models/torchinductor"
-        os.environ["TRITON_CACHE_DIR"] = "/models/triton"
+        os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/runtime-cache/torchinductor"
+        os.environ["TRITON_CACHE_DIR"] = "/runtime-cache/triton"
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
         hyworld2_root = f"{HYWORLD2_SOURCE}/hyworld2"
         worldgen_root = f"{hyworld2_root}/worldgen"
@@ -162,10 +170,10 @@ class WorldStereoWorker:
         self.call_count = 0
 
     def _stage3_manifest(self, *, job_id: str, target: Path) -> dict[str, Any]:
-        camera_files = sorted(target.glob("render_results/view*/traj*/camera.json"))
-        renders = sorted(target.glob("render_results/view*/traj*/render.mp4"))
-        masks = sorted(target.glob("render_results/view*/traj*/render_mask.mp4"))
-        captions = sorted(target.glob("render_results/view*/traj*/traj_caption.json"))
+        camera_files = sorted(target.glob("render_results/*/traj*/camera.json"))
+        renders = sorted(target.glob("render_results/*/traj*/render.mp4"))
+        masks = sorted(target.glob("render_results/*/traj*/render_mask.mp4"))
+        captions = sorted(target.glob("render_results/*/traj*/traj_caption.json"))
         inputs = [*camera_files, *renders, *masks, *captions]
         if not camera_files or not (
             len(camera_files) == len(renders) == len(masks) == len(captions)
@@ -208,8 +216,9 @@ class WorldStereoWorker:
         target = resolve_worldgen_job_root(job_id)
         manifest = self._stage3_manifest(job_id=job_id, target=target)
         aligned_pcd = target / f"render_results/generation_bank_{_MODEL_TYPE}/aligned_pcd.ply"
+        render_list = sort_trajs(str(target / "render_results"))
         results = sorted(target.glob(f"render_results/*/traj*/{_MODEL_TYPE}_result.mp4"))
-        expected_count = len(sorted(target.glob("render_results/view*/traj*/camera.json")))
+        expected_count = len(render_list)
         if not force and aligned_pcd.is_file() and len(results) == expected_count:
             manifest_ok = manifest_matches(target, "stage3", manifest)
             legacy_adopted = (
@@ -236,7 +245,6 @@ class WorldStereoWorker:
         set_seed(1024)
         generator = torch.Generator(device=self.device).manual_seed(1024)
 
-        render_list = sort_trajs(str(target / "render_results"))
         if not render_list:
             raise RuntimeError(f"no Stage 2 renderings found under {target}")
         width, height = imagesize.get(f"{'/'.join(render_list[0].split('/')[:-2])}/start_frame.png")
@@ -419,6 +427,6 @@ class WorldStereoWorker:
         if not aligned_pcd.is_file():
             raise RuntimeError("Stage 3 completed without aligned_pcd.ply")
         write_stage_manifest(target, "stage3", manifest)
-        model_cache.commit()
+        runtime_cache.commit()
         worldgen_outputs.commit()
         return timing

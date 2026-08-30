@@ -107,6 +107,9 @@ def hyworld2_artifact_smoke() -> dict:
 
 
 model_cache = modal.Volume.from_name("hyworld2-models", create_if_missing=True)
+runtime_cache = modal.Volume.from_name(
+    "hyworld2-runtime-cache-v2", create_if_missing=True, version=2
+)
 inference_outputs = modal.Volume.from_name("hyworld2-inference-output", create_if_missing=True)
 
 
@@ -210,7 +213,11 @@ hf_secret = modal.Secret.from_name("hyworld2-hf")
 @app.function(
     image=hyworld2_worldgen_stage1_image,
     gpu=GPU,
-    volumes={"/models": model_cache, "/worldgen": worldgen_outputs},
+    volumes={
+        "/models": model_cache.with_mount_options(read_only=True),
+        "/runtime-cache": runtime_cache,
+        "/worldgen": worldgen_outputs,
+    },
     secrets=[hf_secret],
     timeout=2 * 60 * 60,
 )
@@ -228,6 +235,11 @@ def worldgen_case000_stage1() -> dict:
     os.environ["HUGGINGFACE_HUB_CACHE"] = "/models/huggingface/hub"
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["CUDA_CACHE_PATH"] = "/runtime-cache/cuda-cache"
+    os.environ["CUDA_CACHE_MAXSIZE"] = str(4 * 1024**3)
+    os.environ["TORCH_EXTENSIONS_DIR"] = "/runtime-cache/torch-extensions"
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/runtime-cache/torchinductor"
+    os.environ["TRITON_CACHE_DIR"] = "/runtime-cache/triton"
 
     import torch
 
@@ -249,7 +261,6 @@ def worldgen_case000_stage1() -> dict:
     engine = Qwen3VLEngine("Qwen/Qwen3-VL-8B-Instruct")
     server, _thread = start_openai_server(engine, port=8000)
     vlm_load_s = time.perf_counter() - vlm_started
-    model_cache.commit()
     try:
         with urllib.request.urlopen("http://127.0.0.1:8000/v1/models", timeout=5) as response:
             if response.status != 200:
@@ -467,7 +478,6 @@ def worldgen_case000_stage1() -> dict:
             __import__("json").dumps(timing, indent=2) + "\n"
         )
         if completed.returncode != 0:
-            model_cache.commit()
             worldgen_outputs.commit()
             tail = log_path.read_text(errors="replace")[-20000:]
             raise RuntimeError(f"WorldGen Stage 1 failed with exit {completed.returncode}:\n{tail}")
@@ -495,7 +505,6 @@ def worldgen_case000_stage1() -> dict:
             files.append({"path": str(path.relative_to(target)), "bytes": size})
 
     peak_gb = torch.cuda.max_memory_allocated() / 1024**3
-    model_cache.commit()
     worldgen_outputs.commit()
     return {
         "gpu": torch.cuda.get_device_name(),
@@ -512,174 +521,11 @@ def worldgen_case000_stage1() -> dict:
     }
 
 
-@app.function(
-    image=hyworld2_worldgen_stage1_image,
-    gpu=GPU,
-    volumes={"/models": model_cache, "/worldgen": worldgen_outputs},
-    secrets=[hf_secret],
-    timeout=2 * 60 * 60,
-)
+@app.function(image=base_image, timeout=2 * 60 * 60)
 def worldgen_case000_stage2(job_id: str = "case000") -> dict:
-    """Render Stage 1 trajectories and caption them with local Qwen3-VL."""
-    import json
-    import os
-    import subprocess
-    import sys
-    import time
-    import urllib.request
-    from pathlib import Path
-
-    os.environ["HF_HOME"] = "/models/huggingface"
-    os.environ["HUGGINGFACE_HUB_CACHE"] = "/models/huggingface/hub"
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    os.environ["CUDA_CACHE_PATH"] = "/models/cuda-cache"
-    os.environ["CUDA_CACHE_MAXSIZE"] = str(4 * 1024**3)
-    os.environ["TORCH_EXTENSIONS_DIR"] = "/models/torch-extensions"
-    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/models/torchinductor"
-    os.environ["TRITON_CACHE_DIR"] = "/models/triton"
-
-    import torch
-
-    sys.path.insert(0, HYWORLD2_SOURCE)
-    from modal_world.qwen_vlm_server import Qwen3VLEngine, start_openai_server
-
-    target = resolve_worldgen_job_root(job_id)
-    if not (target / "camera_trajectory/target_camera.json").is_file():
-        raise RuntimeError("Stage 1 camera trajectory is missing")
-    if not (target / "render_results/global_pcd.ply").is_file():
-        raise RuntimeError("Stage 1 global point cloud is missing")
-
-    camera_files = sorted(target.glob("render_results/view*/traj*/camera.json"))
-    stage2_inputs = [
-        target / "camera_trajectory/target_camera.json",
-        target / "render_results/global_pcd.ply",
-        *camera_files,
-    ]
-    stage2_manifest = build_stage_manifest(
-        job_id=job_id,
-        stage="stage2",
-        hyworld_revision=HYWORLD2_REVISION,
-        input_fingerprint=fingerprint_files(stage2_inputs, root=target),
-        config={
-            "profile": "single-gpu-v2",
-            "llm": "Qwen/Qwen3-VL-8B-Instruct",
-            "render_radius": 0.008,
-            "points_per_pixel": 20,
-            "slice_size": 4,
-        },
-    )
-    renders = sorted(target.glob("render_results/view*/traj*/render.mp4"))
-    masks = sorted(target.glob("render_results/view*/traj*/render_mask.mp4"))
-    captions = sorted(target.glob("render_results/view*/traj*/traj_caption.json"))
-    if camera_files and len(camera_files) == len(renders) == len(masks) == len(captions):
-        for caption in captions:
-            payload = json.loads(caption.read_text())
-            if not str(payload.get("prompt", "")).strip():
-                raise RuntimeError(f"empty Stage 2 caption: {caption}")
-        manifest_ok = manifest_matches(target, "stage2", stage2_manifest)
-        legacy_adopted = job_id == "case000" and not stage_manifest_path(target, "stage2").exists()
-        if manifest_ok or legacy_adopted:
-            if legacy_adopted:
-                write_stage_manifest(target, "stage2", stage2_manifest)
-                worldgen_outputs.commit()
-            return {
-                "resumed": True,
-                "manifest_adopted": legacy_adopted,
-                "stage2_s": 0.0,
-                "render_count": len(renders),
-                "mask_count": len(masks),
-                "caption_count": len(captions),
-                "render_bytes": sum(path.stat().st_size for path in renders),
-            }
-
-    torch.cuda.reset_peak_memory_stats()
-    vlm_started = time.perf_counter()
-    engine = Qwen3VLEngine("Qwen/Qwen3-VL-8B-Instruct")
-    server, _thread = start_openai_server(engine, port=8000)
-    vlm_load_s = time.perf_counter() - vlm_started
-    model_cache.commit()
-
-    log_path = target / "stage2.log"
-    timing_path = target / "stage2_timing.json"
-    try:
-        with urllib.request.urlopen("http://127.0.0.1:8000/v1/models", timeout=5) as response:
-            if response.status != 200:
-                raise RuntimeError(f"local Qwen3-VL server unhealthy: {response.status}")
-
-        worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
-        command = [
-            sys.executable,
-            "-X",
-            "faulthandler",
-            "-u",
-            "traj_render.py",
-            "--target_path",
-            str(target),
-            "--llm_addr",
-            "127.0.0.1",
-            "--llm_port",
-            "8000",
-            "--llm_name",
-            "Qwen/Qwen3-VL-8B-Instruct",
-        ]
-        env = os.environ.copy()
-        env["PYTHONPATH"] = f"{worldgen_root}:{HYWORLD2_SOURCE}"
-        env["PYTHONFAULTHANDLER"] = "1"
-        started = time.perf_counter()
-        with log_path.open("w") as log:
-            completed = subprocess.run(
-                command,
-                cwd=worldgen_root,
-                env=env,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=False,
-                timeout=90 * 60,
-            )
-        stage2_s = time.perf_counter() - started
-        timing = {
-            "vlm_load_s": round(vlm_load_s, 3),
-            "stage2_s": round(stage2_s, 3),
-            "peak_allocated_gb": round(torch.cuda.max_memory_allocated() / 1024**3, 3),
-            "returncode": completed.returncode,
-        }
-        timing_path.write_text(json.dumps(timing, indent=2) + "\n")
-        model_cache.commit()
-        worldgen_outputs.commit()
-        if completed.returncode != 0:
-            tail = log_path.read_text(errors="replace")[-24000:]
-            raise RuntimeError(f"WorldGen Stage 2 failed with exit {completed.returncode}:\n{tail}")
-    finally:
-        server.shutdown()
-        server.server_close()
-
-    renders = sorted(target.glob("render_results/*/traj*/render.mp4"))
-    masks = sorted(target.glob("render_results/*/traj*/render_mask.mp4"))
-    captions = sorted(target.glob("render_results/*/traj*/traj_caption.json"))
-    if not renders:
-        raise RuntimeError("Stage 2 completed without rendered trajectory videos")
-    if len(masks) != len(renders):
-        raise RuntimeError(f"Stage 2 render/mask count mismatch: {len(renders)} vs {len(masks)}")
-    if not captions:
-        raise RuntimeError("Stage 2 completed without trajectory captions")
-
-    write_stage_manifest(target, "stage2", stage2_manifest)
-    worldgen_outputs.commit()
-    return {
-        "gpu": torch.cuda.get_device_name(),
-        "capability": list(torch.cuda.get_device_capability()),
-        "torch": str(torch.__version__),
-        "vlm_load_s": round(vlm_load_s, 3),
-        "stage2_s": round(stage2_s, 3),
-        "peak_allocated_gb": round(torch.cuda.max_memory_allocated() / 1024**3, 3),
-        "render_count": len(renders),
-        "mask_count": len(masks),
-        "caption_count": len(captions),
-        "render_bytes": sum(path.stat().st_size for path in renders),
-        "stage2_log_tail": log_path.read_text(errors="replace")[-8000:],
-    }
+    """Dispatch Stage 2 to the deployed persistent WorldNav renderer worker."""
+    worker_cls = modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")
+    return worker_cls().render.remote(job_id=job_id, force=False)
 
 
 @app.function(
@@ -929,139 +775,11 @@ def verify_worldstereo_stage3_cache() -> dict:
     return report
 
 
-@app.function(
-    image=hyworld2_worldgen_stage3_image,
-    gpu=GPU,
-    cpu=16.0,
-    memory=131072,
-    volumes={"/models": model_cache, "/worldgen": worldgen_outputs},
-    secrets=[hf_secret],
-    timeout=4 * 60 * 60,
-)
-def worldgen_case000_stage3() -> dict:
-    """Run single-GPU WorldStereo-2 DMD expansion with fully preloaded weights."""
-    import json
-    import os
-    import subprocess
-    import sys
-    import threading
-    import time
-    from pathlib import Path
-
-    os.environ["HF_HOME"] = "/models/huggingface"
-    os.environ["HUGGINGFACE_HUB_CACHE"] = "/models/huggingface/hub"
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    os.environ["TRANSFORMERS_OFFLINE"] = "1"
-    os.environ["DIFFUSERS_OFFLINE"] = "1"
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/models/torchinductor"
-    os.environ["TRITON_CACHE_DIR"] = "/models/triton"
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-    target = Path("/worldgen/case000")
-    camera_files = sorted(target.glob("render_results/view*/traj*/camera.json"))
-    renders = sorted(target.glob("render_results/view*/traj*/render.mp4"))
-    masks = sorted(target.glob("render_results/view*/traj*/render_mask.mp4"))
-    captions = sorted(target.glob("render_results/view*/traj*/traj_caption.json"))
-    if not camera_files or not (len(camera_files) == len(renders) == len(masks) == len(captions)):
-        raise RuntimeError(
-            f"Stage 2 incomplete: cameras={len(camera_files)} renders={len(renders)} "
-            f"masks={len(masks)} captions={len(captions)}"
-        )
-    for caption in captions:
-        payload = json.loads(caption.read_text())
-        if not str(payload.get("prompt", "")).strip():
-            raise RuntimeError(f"empty Stage 2 caption: {caption}")
-
-    worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
-    log_path = target / "stage3.log"
-    timing_path = target / "stage3_timing.json"
-    command = [
-        sys.executable,
-        "-X",
-        "faulthandler",
-        "-u",
-        "-m",
-        "torch.distributed.run",
-        "--standalone",
-        "--nproc_per_node=1",
-        "video_gen.py",
-        "--target_path",
-        str(target),
-        "--model_type",
-        "worldstereo-memory-dmd",
-        "--local_files_only",
-        "--skip_exist",
-    ]
-    env = os.environ.copy()
-    env["PYTHONPATH"] = f"{worldgen_root}:{HYWORLD2_SOURCE}"
-    env["PYTHONFAULTHANDLER"] = "1"
-
-    stop_monitor = threading.Event()
-    gpu_peak_mib = 0
-
-    def monitor_gpu() -> None:
-        nonlocal gpu_peak_mib
-        while not stop_monitor.wait(1.0):
-            try:
-                raw = subprocess.check_output(
-                    [
-                        "nvidia-smi",
-                        "--query-gpu=memory.used",
-                        "--format=csv,noheader,nounits",
-                    ],
-                    text=True,
-                    timeout=5,
-                ).splitlines()[0]
-                gpu_peak_mib = max(gpu_peak_mib, int(raw.strip()))
-            except (subprocess.SubprocessError, ValueError, IndexError):
-                pass
-
-    monitor = threading.Thread(target=monitor_gpu, daemon=True)
-    monitor.start()
-    started = time.perf_counter()
-    try:
-        with log_path.open("w") as log:
-            completed = subprocess.run(
-                command,
-                cwd=worldgen_root,
-                env=env,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=False,
-                timeout=3 * 60 * 60,
-            )
-    finally:
-        stop_monitor.set()
-        monitor.join(timeout=5)
-
-    stage3_s = time.perf_counter() - started
-    results = sorted(target.glob("render_results/*/traj*/worldstereo-memory-dmd_result.mp4"))
-    aligned_pcd = target / "render_results/generation_bank_worldstereo-memory-dmd/aligned_pcd.ply"
-    timing = {
-        "stage3_s": round(stage3_s, 3),
-        "gpu_peak_used_mib": gpu_peak_mib,
-        "returncode": completed.returncode,
-        "result_count": len(results),
-        "aligned_pcd_exists": aligned_pcd.is_file(),
-    }
-    timing_path.write_text(json.dumps(timing, indent=2) + "\n")
-    model_cache.commit()
-    worldgen_outputs.commit()
-    if completed.returncode != 0:
-        tail = log_path.read_text(errors="replace")[-30000:]
-        raise RuntimeError(f"WorldGen Stage 3 failed with exit {completed.returncode}:\n{tail}")
-    if len(results) != len(camera_files):
-        raise RuntimeError(f"Stage 3 result count mismatch: {len(results)} vs {len(camera_files)}")
-    if not aligned_pcd.is_file():
-        raise RuntimeError("Stage 3 completed without aligned memory-bank point cloud")
-    return {
-        **timing,
-        "result_bytes": sum(path.stat().st_size for path in results),
-        "aligned_pcd_bytes": aligned_pcd.stat().st_size,
-        "stage3_log_tail": log_path.read_text(errors="replace")[-8000:],
-    }
+@app.function(image=base_image, timeout=4 * 60 * 60)
+def worldgen_case000_stage3(job_id: str = "case000") -> dict:
+    """Dispatch Stage 3 to the deployed persistent WorldStereo worker."""
+    worker_cls = modal.Cls.from_name("modal-world-stage3", "WorldStereoWorker")
+    return worker_cls().generate.remote(job_id=job_id, force=False)
 
 
 @app.function(
@@ -1069,7 +787,11 @@ def worldgen_case000_stage3() -> dict:
     gpu=GPU,
     cpu=8.0,
     memory=32768,
-    volumes={"/models": model_cache, "/worldgen": worldgen_outputs},
+    volumes={
+        "/models": model_cache.with_mount_options(read_only=True),
+        "/runtime-cache": runtime_cache,
+        "/worldgen": worldgen_outputs,
+    },
     secrets=[hf_secret],
     timeout=60 * 60,
 )
@@ -1089,6 +811,11 @@ def worldgen_case000_stage4(job_id: str = "case000") -> dict:
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["CUDA_CACHE_PATH"] = "/runtime-cache/cuda-cache"
+    os.environ["CUDA_CACHE_MAXSIZE"] = str(4 * 1024**3)
+    os.environ["TORCH_EXTENSIONS_DIR"] = "/runtime-cache/torch-extensions"
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/runtime-cache/torchinductor"
+    os.environ["TRITON_CACHE_DIR"] = "/runtime-cache/triton"
 
     target = resolve_worldgen_job_root(job_id)
     generation_bank = target / "render_results/generation_bank_worldstereo-memory-dmd"
@@ -1145,16 +872,6 @@ def worldgen_case000_stage4(job_id: str = "case000") -> dict:
                 }
 
     worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
-    script_path = worldgen_root / "gen_gs_data.py"
-    script_source = script_path.read_text()
-    moge_old = 'MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(device)'
-    moge_new = (
-        'MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal", local_files_only=True).to(device)'
-    )
-    if script_source.count(moge_old) != 1:
-        raise RuntimeError("expected pinned Stage 4 MoGe loader not found")
-    script_path.write_text(script_source.replace(moge_old, moge_new, 1))
-
     log_path = target / "stage4.log"
     timing_path = target / "stage4_timing.json"
     command = [
@@ -1162,10 +879,6 @@ def worldgen_case000_stage4(job_id: str = "case000") -> dict:
         "-X",
         "faulthandler",
         "-u",
-        "-m",
-        "torch.distributed.run",
-        "--standalone",
-        "--nproc_per_node=1",
         "gen_gs_data.py",
         "--root_path",
         str(target),
@@ -1175,9 +888,12 @@ def worldgen_case000_stage4(job_id: str = "case000") -> dict:
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{worldgen_root}:{HYWORLD2_SOURCE}"
     env["PYTHONFAULTHANDLER"] = "1"
+    env["RANK"] = "0"
+    env["LOCAL_RANK"] = "0"
+    env["WORLD_SIZE"] = "1"
 
     stop_monitor = threading.Event()
-    gpu_peak_mib = 0
+    gpu_peak_mib = None
 
     def monitor_gpu() -> None:
         nonlocal gpu_peak_mib
@@ -1192,12 +908,15 @@ def worldgen_case000_stage4(job_id: str = "case000") -> dict:
                     text=True,
                     timeout=5,
                 ).splitlines()[0]
-                gpu_peak_mib = max(gpu_peak_mib, int(raw.strip()))
+                sample_mib = int(raw.strip())
+                gpu_peak_mib = max(gpu_peak_mib or 0, sample_mib)
             except (subprocess.SubprocessError, ValueError, IndexError):
                 pass
 
-    monitor = threading.Thread(target=monitor_gpu, daemon=True)
-    monitor.start()
+    monitor = None
+    if os.environ.get("MODAL_WORLD_DEBUG_GPU_SAMPLER") == "1":
+        monitor = threading.Thread(target=monitor_gpu, daemon=True)
+        monitor.start()
     started = time.perf_counter()
     try:
         with log_path.open("w") as log:
@@ -1212,8 +931,9 @@ def worldgen_case000_stage4(job_id: str = "case000") -> dict:
                 timeout=50 * 60,
             )
     finally:
-        stop_monitor.set()
-        monitor.join(timeout=5)
+        if monitor is not None:
+            stop_monitor.set()
+            monitor.join(timeout=5)
 
     stage4_s = time.perf_counter() - started
     camera_count = 0
@@ -1226,6 +946,7 @@ def worldgen_case000_stage4(job_id: str = "case000") -> dict:
     timing = {
         "stage4_s": round(stage4_s, 3),
         "gpu_peak_used_mib": gpu_peak_mib,
+        "gpu_sampler_enabled": monitor is not None,
         "returncode": completed.returncode,
         "camera_count": camera_count,
         "image_count": len(images),
@@ -1253,7 +974,7 @@ def worldgen_case000_stage4(job_id: str = "case000") -> dict:
     return {
         **timing,
         "points_bytes": points_path.stat().st_size,
-        "sky_points_bytes": sky_points_path.stat().st_size,
+        "sky_points_bytes": (sky_points_path.stat().st_size if sky_points_path.is_file() else 0),
         "stage4_log_tail": log_path.read_text(errors="replace")[-8000:],
     }
 

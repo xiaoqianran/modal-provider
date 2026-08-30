@@ -45,9 +45,11 @@ def test_stage_manifest_invalidates_changed_inputs(tmp_path: Path):
 
 
 def test_stage2_and_stage4_accept_job_id_and_use_manifest():
-    source = Path("modal_world/app.py").read_text()
-    assert 'def worldgen_case000_stage2(job_id: str = "case000")' in source
-    assert 'def worldgen_case000_stage4(job_id: str = "case000")' in source
-    for stage in ("stage2", "stage4"):
-        assert f'manifest_matches(target, "{stage}"' in source
-        assert f'write_stage_manifest(target, "{stage}"' in source
+    app = Path("modal_world/app.py").read_text()
+    stage2 = Path("modal_world/stage2_app.py").read_text()
+    assert 'def worldgen_case000_stage2(job_id: str = "case000")' in app
+    assert 'def worldgen_case000_stage4(job_id: str = "case000")' in app
+    assert 'manifest_matches(target, "stage2"' in stage2
+    assert 'write_stage_manifest(target, "stage2"' in stage2
+    assert 'manifest_matches(target, "stage4"' in app
+    assert 'write_stage_manifest(target, "stage4"' in app

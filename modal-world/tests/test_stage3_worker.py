@@ -30,8 +30,11 @@ def test_stage3_runtime_patch_matches_pinned_upstream(tmp_path: Path):
 def test_stage3_worker_is_persistent_and_model_load_is_enter_only():
     source = Path("modal_world/stage3_app.py").read_text()
     assert 'app = modal.App("modal-world-stage3")' in source
-    assert "scaledown_window=15 * 60" in source
+    assert "min_containers=0" in source
+    assert "scaledown_window=5 * 60" in source
     assert "max_containers=1" in source
+    assert 'model_cache.with_mount_options(read_only=True)' in source
+    assert '"hyworld2-runtime-cache-v2", create_if_missing=True, version=2' in source
     assert "@modal.enter()" in source
     assert "def load_models" in source
     assert "WorldStereo.from_pretrained" in source
@@ -47,11 +50,12 @@ def test_stage3_patch_is_image_build_time_and_legacy_hot_patch_removed():
     runtime = Path("modal_world/hyworld2_runtime.py").read_text()
     app = Path("modal_world/app.py").read_text()
     assert ".run_function(patch_stage3_runtime" in runtime
-    start = app.index("def worldgen_case000_stage3()")
+    start = app.index('def worldgen_case000_stage3(job_id: str = "case000")')
     end = app.index("\n\n@app.function(", start)
     section = app[start:end]
     assert "patch_worldstereo_wrapper" not in section
     assert "retrieval_source.replace" not in section
+    assert 'modal.Cls.from_name("modal-world-stage3", "WorldStereoWorker")' in section
 
 
 def test_stage3_worker_preserves_upstream_worldgen_cwd():
