@@ -496,6 +496,156 @@ def test_remote_prepare_survives_service_restart_and_advances_to_generation(tmp_
     assert persisted.conditioning == prepared["conditioning"]
 
 
+def test_reconciler_advances_prepare_without_external_poll(tmp_path, monkeypatch):
+    source_sha = "c" * 64
+    prepared = {
+        "source_sha256": source_sha,
+        "path": "client-inputs/reconciled.png",
+        "conditioning": {"strategy": "birefnet", "canonical_sha256": "f" * 64},
+    }
+    prepare_call = Call(prepared, object_id="fc_prepare_auto")
+    generation_calls: list[tuple] = []
+
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+    monkeypatch.setattr(generation, "prefetch", lambda *args: Call(object_id="fc_warmup"))
+    monkeypatch.setattr(jobs.background, "spawn_prepare_source", lambda _path: prepare_call)
+    monkeypatch.setattr(jobs, "client", lambda: object())
+    generation_call = SequenceCall([TimeoutError()], object_id="fc_generation_auto")
+    monkeypatch.setattr(
+        jobs.modal.FunctionCall,
+        "from_id",
+        lambda call_id, client=None: (
+            prepare_call if call_id == "fc_prepare_auto" else generation_call
+        ),
+    )
+    monkeypatch.setattr(
+        generation,
+        "submit",
+        lambda *args: generation_calls.append(args) or Call(object_id="fc_generation_auto"),
+    )
+
+    svc = jobs.JobService(
+        jobs.JobStore(tmp_path / "jobs.sqlite3"),
+        auto_reconcile=True,
+        reconcile_interval_s=0.01,
+    )
+    try:
+        svc.submit_remote_source(
+            f"sources/sha256/{source_sha[:2]}/{source_sha}",
+            source_sha256=source_sha,
+            model="fastsam3d-plus-plus",
+            job_id="req_auto_reconcile",
+        )
+        deadline = time.monotonic() + 1.0
+        while svc.store.get("req_auto_reconcile").remote_call_id is None:
+            if time.monotonic() >= deadline:
+                pytest.fail("reconciler did not bind generation without external poll")
+            time.sleep(0.01)
+
+        persisted = svc.store.get("req_auto_reconcile")
+        assert persisted.prepare_call_id is None
+        assert persisted.remote_call_id == "fc_generation_auto"
+        assert persisted.input_path == "client-inputs/reconciled.png"
+        assert len(generation_calls) == 1
+    finally:
+        svc.close()
+
+
+def test_reconciler_recovers_persisted_prepare_after_restart_without_poll(tmp_path, monkeypatch):
+    source_sha = "9" * 64
+    db_path = tmp_path / "jobs.sqlite3"
+    first = jobs.JobService(jobs.JobStore(db_path))
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+    monkeypatch.setattr(generation, "prefetch", lambda *args: Call(object_id="fc_warmup"))
+    monkeypatch.setattr(
+        jobs.background, "spawn_prepare_source", lambda _path: Call(object_id="fc_prepare_restart")
+    )
+    first.submit_remote_source(
+        f"sources/sha256/{source_sha[:2]}/{source_sha}",
+        source_sha256=source_sha,
+        model="fastsam3d-plus-plus",
+        job_id="req_auto_restart",
+    )
+
+    prepared = {
+        "source_sha256": source_sha,
+        "path": "client-inputs/restarted.png",
+        "conditioning": {"strategy": "alpha", "canonical_sha256": "8" * 64},
+    }
+    prepare_call = Call(prepared, object_id="fc_prepare_restart")
+    monkeypatch.setattr(jobs, "client", lambda: object())
+    monkeypatch.setattr(
+        jobs.modal.FunctionCall,
+        "from_id",
+        lambda call_id, client=None: prepare_call,
+    )
+    monkeypatch.setattr(generation, "submit", lambda *args: Call(object_id="fc_generation_restart"))
+
+    restarted = jobs.JobService(
+        jobs.JobStore(db_path),
+        auto_reconcile=True,
+        reconcile_interval_s=0.01,
+    )
+    try:
+        deadline = time.monotonic() + 1.0
+        while restarted.store.get("req_auto_restart").remote_call_id is None:
+            if time.monotonic() >= deadline:
+                pytest.fail("restarted reconciler did not resume persisted preparation")
+            time.sleep(0.01)
+        persisted = restarted.store.get("req_auto_restart")
+        assert persisted.prepare_call_id is None
+        assert persisted.remote_call_id == "fc_generation_restart"
+        assert persisted.input_path == "client-inputs/restarted.png"
+    finally:
+        restarted.close()
+
+
+def test_concurrent_reconcile_and_poll_bind_generation_once(tmp_path, monkeypatch):
+    svc = service(tmp_path)
+    source_sha = "7" * 64
+    prepared = {
+        "source_sha256": source_sha,
+        "path": "client-inputs/once.png",
+        "conditioning": {"strategy": "birefnet", "canonical_sha256": "6" * 64},
+    }
+    prepare_call = Call(prepared, object_id="fc_prepare_once")
+    remote_call = SequenceCall([TimeoutError(), TimeoutError()], object_id="fc_generation_once")
+    generation_count = 0
+    generation_guard = threading.Lock()
+
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+    monkeypatch.setattr(generation, "prefetch", lambda *args: Call(object_id="fc_warmup"))
+    monkeypatch.setattr(jobs.background, "spawn_prepare_source", lambda _path: prepare_call)
+    monkeypatch.setattr(jobs, "client", lambda: object())
+    monkeypatch.setattr(
+        jobs.modal.FunctionCall,
+        "from_id",
+        lambda call_id, client=None: prepare_call if call_id == "fc_prepare_once" else remote_call,
+    )
+
+    def submit_generation(*args):
+        nonlocal generation_count
+        with generation_guard:
+            generation_count += 1
+        time.sleep(0.03)
+        return Call(object_id="fc_generation_once")
+
+    monkeypatch.setattr(generation, "submit", submit_generation)
+    svc.submit_remote_source(
+        f"sources/sha256/{source_sha[:2]}/{source_sha}",
+        source_sha256=source_sha,
+        model="fastsam3d-plus-plus",
+        job_id="req_bind_once",
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        states = list(pool.map(lambda _i: svc.poll("req_bind_once"), range(2)))
+
+    assert generation_count == 1
+    assert svc.store.get("req_bind_once").remote_call_id == "fc_generation_once"
+    assert {state["status"] for state in states} == {"running"}
+
+
 def test_cancel_stops_inflight_remote_preparation(tmp_path, monkeypatch):
     svc = service(tmp_path)
     source_sha = "d" * 64

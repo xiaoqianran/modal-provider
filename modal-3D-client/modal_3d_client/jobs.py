@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sqlite3
 import threading
@@ -29,6 +30,8 @@ from .constants import CLIENT_INPUT_PREFIX
 from .contracts import ContractError
 from .modal_session import NotConnectedError, client
 from .storage import data_dir
+
+_LOG = logging.getLogger(__name__)
 
 _TERMINAL = frozenset({"succeeded", "failed", "cancelled", "expired"})
 _JOB_ID = re.compile(r"^[A-Za-z0-9_-]{1,160}$")
@@ -283,12 +286,100 @@ class JobStore:
             rows = sorted(self._jobs.values(), key=lambda item: item.created_at, reverse=True)
         return [job.public() for job in rows[:limit]]
 
+    def pending_continuations(self) -> list[Job]:
+        """Return jobs whose next remote stage still depends on local orchestration."""
+        with self._lock:
+            return [
+                job
+                for job in self._jobs.values()
+                if job.status not in _TERMINAL
+                and job.remote_call_id is None
+                and (job.status != "cancel_requested" or job.prepare_call_id is not None)
+            ]
+
 
 class JobService:
-    def __init__(self, store: JobStore | None = None) -> None:
+    def __init__(
+        self,
+        store: JobStore | None = None,
+        *,
+        auto_reconcile: bool = False,
+        reconcile_interval_s: float = 0.5,
+    ) -> None:
         self.store = store or JobStore()
         self._submit_locks_guard = threading.Lock()
         self._submit_locks: dict[str, tuple[threading.Lock, int]] = {}
+        self._reconcile_interval_s = max(0.05, float(reconcile_interval_s))
+        self._reconcile_stop = threading.Event()
+        self._reconcile_wakeup = threading.Event()
+        self._reconcile_guard = threading.Lock()
+        self._reconcile_thread: threading.Thread | None = None
+        if auto_reconcile:
+            self.start_reconciler()
+
+    def start_reconciler(self) -> None:
+        """Advance durable prepare -> generation transitions independently of HTTP polling."""
+        with self._reconcile_guard:
+            if self._reconcile_thread is not None and self._reconcile_thread.is_alive():
+                self._reconcile_wakeup.set()
+                return
+            self._reconcile_stop.clear()
+            self._reconcile_wakeup.set()
+            thread = threading.Thread(
+                target=self._reconcile_loop,
+                name="modal-3d-job-reconciler",
+                daemon=True,
+            )
+            self._reconcile_thread = thread
+            thread.start()
+
+    def stop_reconciler(self, timeout: float = 2.0) -> None:
+        with self._reconcile_guard:
+            thread = self._reconcile_thread
+            if thread is None:
+                return
+            self._reconcile_stop.set()
+            self._reconcile_wakeup.set()
+        if thread is not threading.current_thread():
+            thread.join(timeout=max(0.0, timeout))
+        with self._reconcile_guard:
+            if self._reconcile_thread is thread and not thread.is_alive():
+                self._reconcile_thread = None
+
+    def close(self) -> None:
+        self.stop_reconciler()
+
+    def reconcile_once(self) -> int:
+        """Advance every job that still needs a locally-triggered remote stage."""
+        advanced = 0
+        for job in self.store.pending_continuations():
+            before = (job.prepare_call_id, job.remote_call_id, job.status, job.updated_at)
+            try:
+                state = self.poll(job.id)
+            except (KeyError, ContractError):
+                continue
+            except Exception:  # noqa: BLE001 - keep one bad job from killing the daemon
+                _LOG.exception("3D job reconciler failed for %s", job.id)
+                continue
+            latest = self.store.get(job.id)
+            after = (
+                latest.prepare_call_id,
+                latest.remote_call_id,
+                latest.status,
+                latest.updated_at,
+            )
+            if after != before or state.get("status") in _TERMINAL:
+                advanced += 1
+        return advanced
+
+    def _reconcile_loop(self) -> None:
+        while not self._reconcile_stop.is_set():
+            self._reconcile_wakeup.clear()
+            self.reconcile_once()
+            self._reconcile_wakeup.wait(self._reconcile_interval_s)
+
+    def _wake_reconciler(self) -> None:
+        self._reconcile_wakeup.set()
 
     @contextmanager
     def _submission_lock(self, job_id: str) -> Iterator[None]:
@@ -300,7 +391,7 @@ class JobService:
         with self._submit_locks_guard:
             entry = self._submit_locks.get(job_id)
             if entry is None:
-                lock = threading.Lock()
+                lock = threading.RLock()
                 refs = 0
             else:
                 lock, refs = entry
@@ -381,7 +472,9 @@ class JobService:
                 retryable=True,
             )
             self.store.save(intent)
-            return self._start_preparation(intent).public()
+            started = self._start_preparation(intent)
+            self._wake_reconciler()
+            return started.public()
 
     def _start_preparation(self, job: Job) -> Job:
         if job.status == "cancel_requested":
@@ -646,6 +739,10 @@ class JobService:
         )
 
     def poll(self, job_id: str) -> dict[str, object]:
+        with self._submission_lock(job_id):
+            return self._poll_locked(job_id)
+
+    def _poll_locked(self, job_id: str) -> dict[str, object]:
         job = self.store.get(job_id)
         if job.status in _TERMINAL:
             return job.public()
@@ -708,6 +805,10 @@ class JobService:
         ).public()
 
     def cancel(self, job_id: str) -> dict[str, object]:
+        with self._submission_lock(job_id):
+            return self._cancel_locked(job_id)
+
+    def _cancel_locked(self, job_id: str) -> dict[str, object]:
         job = self.store.get(job_id)
         if job.status in _TERMINAL:
             return job.public()
@@ -766,6 +867,8 @@ class JobService:
 
     def _save(self, job: Job, **changes: object) -> Job:
         if job.status in _TERMINAL:
+            return job
+        if all(getattr(job, key) == value for key, value in changes.items()):
             return job
         updated = replace(job, updated_at=_now(), **changes)
         self.store.save(updated)

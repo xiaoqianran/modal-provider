@@ -117,6 +117,16 @@ class Deterministic3DJobs:
         return self.descriptor, self.path
 
 
+class Deterministic2DProvider(Modal2DProvider):
+    def deployment_manifest(self) -> dict[str, object]:
+        return {"provider": self.id, "targets": []}
+
+
+class Deterministic3DProvider(Modal3DProvider):
+    def deployment_manifest(self) -> dict[str, object]:
+        return {"provider": self.id, "targets": []}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, required=True)
@@ -127,8 +137,8 @@ def main() -> None:
 
     adapters = adapt_providers(
         [
-            Modal2DProvider(Deterministic2DJobs(args.data_dir)),
-            Modal3DProvider(Deterministic3DJobs(args.data_dir, args.glb)),
+            Deterministic2DProvider(Deterministic2DJobs(args.data_dir)),
+            Deterministic3DProvider(Deterministic3DJobs(args.data_dir, args.glb)),
         ]
     )
     runtime = build_runtime(Store(args.data_dir / "connector.sqlite3"), adapters=adapters)

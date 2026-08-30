@@ -29,7 +29,7 @@ def _demo_enabled() -> bool:
 def _jobs() -> JobService:
     global _default_service
     if _default_service is None:
-        _default_service = JobService()
+        _default_service = JobService(auto_reconcile=True)
     return _default_service
 
 

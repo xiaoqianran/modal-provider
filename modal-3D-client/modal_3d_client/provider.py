@@ -26,11 +26,12 @@ class Modal3DProvider:
 
     def __init__(self, jobs: JobService | None = None) -> None:
         self._jobs = jobs
+        self._jobs_injected = jobs is not None
 
     @property
     def jobs(self) -> JobService:
         if self._jobs is None:
-            self._jobs = JobService()
+            self._jobs = JobService(auto_reconcile=True)
         return self._jobs
 
     def descriptor(self) -> dict[str, object]:
@@ -62,18 +63,24 @@ class Modal3DProvider:
         )
 
     def connection_status(self) -> dict[str, object]:
-        connected = self._jobs is not None or modal_session.connected()
-        return {"connected": connected, "managed": self._jobs is None}
+        connected = self._jobs_injected or modal_session.connected()
+        return {"connected": connected, "managed": not self._jobs_injected}
 
     def connect(self, token_id: str, token_secret: str) -> dict[str, object]:
         modal_session.connect(token_id, token_secret)
+        if not self._jobs_injected:
+            self.jobs.start_reconciler()
         return self.connection_status()
 
     async def connect_async(self, token_id: str, token_secret: str) -> dict[str, object]:
         await modal_session.connect_async(token_id, token_secret)
+        if not self._jobs_injected:
+            self.jobs.start_reconciler()
         return self.connection_status()
 
     def disconnect(self) -> dict[str, object]:
+        if not self._jobs_injected and self._jobs is not None:
+            self._jobs.stop_reconciler()
         modal_session.disconnect()
         return self.connection_status()
 
