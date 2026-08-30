@@ -92,6 +92,7 @@ def test_job_store_migrates_legacy_database_without_losing_jobs(tmp_path):
     assert restored.seed == 42
     assert restored.input_path == ""
     assert restored.input_sha256 == ""
+    assert restored.prepare_call_id is None
     assert restored.conditioning is None
     with sqlite3.connect(path) as db:
         schema = {row[1]: row for row in db.execute("PRAGMA table_info(jobs)")}
@@ -412,3 +413,138 @@ def test_poll_cancel_requested_without_remote_call_waits_without_resubmitting(
     assert state["status"] == "cancel_requested"
     assert state["error_code"] is None
     assert state["retryable"] is True
+
+
+def test_remote_submit_returns_with_persisted_prepare_call(tmp_path, monkeypatch):
+    svc = service(tmp_path)
+    source_sha = "a" * 64
+    events: list[tuple[str, str]] = []
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+    monkeypatch.setattr(
+        generation,
+        "prefetch",
+        lambda model: events.append(("warmup", model)) or Call(object_id="fc_warmup"),
+    )
+    monkeypatch.setattr(
+        jobs.background,
+        "spawn_prepare_source",
+        lambda path: events.append(("prepare", path)) or Call(object_id="fc_prepare"),
+    )
+    monkeypatch.setattr(
+        generation,
+        "submit",
+        lambda *args: (_ for _ in ()).throw(AssertionError("generation must not start in submit")),
+    )
+
+    state = svc.submit_remote_source(
+        f"sources/sha256/{source_sha[:2]}/{source_sha}",
+        source_sha256=source_sha,
+        model="fastsam3d-plus-plus",
+        job_id="req_remote_async",
+    )
+
+    persisted = svc.store.get("req_remote_async")
+    assert state["status"] == "running"
+    assert persisted.prepare_call_id == "fc_prepare"
+    assert persisted.remote_call_id is None
+    assert events == [
+        ("warmup", "fastsam3d-plus-plus"),
+        ("prepare", f"sources/sha256/{source_sha[:2]}/{source_sha}"),
+    ]
+
+
+def test_remote_prepare_survives_service_restart_and_advances_to_generation(tmp_path, monkeypatch):
+    source_sha = "b" * 64
+    db_path = tmp_path / "jobs.sqlite3"
+    first = jobs.JobService(jobs.JobStore(db_path))
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+    monkeypatch.setattr(generation, "prefetch", lambda *args: Call(object_id="fc_warmup"))
+    monkeypatch.setattr(
+        jobs.background, "spawn_prepare_source", lambda _path: Call(object_id="fc_prepare")
+    )
+    first.submit_remote_source(
+        f"sources/sha256/{source_sha[:2]}/{source_sha}",
+        source_sha256=source_sha,
+        model="fastsam3d-plus-plus",
+        job_id="req_restart_prepare",
+    )
+
+    prepared = {
+        "source_sha256": source_sha,
+        "path": "client-inputs/canonical.png",
+        "conditioning": {"strategy": "birefnet", "canonical_sha256": "c" * 64},
+    }
+    prepare_call = Call(prepared, object_id="fc_prepare")
+    generation_call = SequenceCall([TimeoutError()], object_id="fc_generate")
+    calls = {"fc_prepare": prepare_call, "fc_generate": generation_call}
+    monkeypatch.setattr(jobs, "client", lambda: object())
+    monkeypatch.setattr(
+        jobs.modal.FunctionCall,
+        "from_id",
+        lambda call_id, client=None: calls[call_id],
+    )
+    monkeypatch.setattr(generation, "submit", lambda *args: Call(object_id="fc_generate"))
+
+    restarted = jobs.JobService(jobs.JobStore(db_path))
+    state = restarted.poll("req_restart_prepare")
+    persisted = restarted.store.get("req_restart_prepare")
+
+    assert state["status"] == "running"
+    assert persisted.prepare_call_id is None
+    assert persisted.remote_call_id == "fc_generate"
+    assert persisted.input_path == "client-inputs/canonical.png"
+    assert persisted.conditioning == prepared["conditioning"]
+
+
+def test_cancel_stops_inflight_remote_preparation(tmp_path, monkeypatch):
+    svc = service(tmp_path)
+    source_sha = "d" * 64
+    prepare_call = Call(object_id="fc_prepare")
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+    monkeypatch.setattr(generation, "prefetch", lambda *args: Call(object_id="fc_warmup"))
+    monkeypatch.setattr(jobs.background, "spawn_prepare_source", lambda _path: prepare_call)
+    monkeypatch.setattr(jobs, "client", lambda: object())
+    monkeypatch.setattr(
+        jobs.modal.FunctionCall,
+        "from_id",
+        lambda call_id, client=None: prepare_call,
+    )
+
+    svc.submit_remote_source(
+        f"sources/sha256/{source_sha[:2]}/{source_sha}",
+        source_sha256=source_sha,
+        model="fastsam3d-plus-plus",
+        job_id="req_cancel_prepare",
+    )
+    state = svc.cancel("req_cancel_prepare")
+
+    assert state["status"] == "cancel_requested"
+    assert prepare_call.cancelled is True
+    assert svc.store.get("req_cancel_prepare").remote_call_id is None
+
+
+def test_cancel_requested_prepare_timeout_does_not_resume_job(tmp_path, monkeypatch):
+    svc = service(tmp_path)
+    source_sha = "e" * 64
+    prepare_call = SequenceCall([TimeoutError()], object_id="fc_prepare")
+    monkeypatch.setattr(models, "options_for", lambda *args: {"seed": 42})
+    monkeypatch.setattr(generation, "prefetch", lambda *args: Call(object_id="fc_warmup"))
+    monkeypatch.setattr(jobs.background, "spawn_prepare_source", lambda _path: prepare_call)
+    monkeypatch.setattr(jobs, "client", lambda: object())
+    monkeypatch.setattr(
+        jobs.modal.FunctionCall,
+        "from_id",
+        lambda call_id, client=None: prepare_call,
+    )
+
+    svc.submit_remote_source(
+        f"sources/sha256/{source_sha[:2]}/{source_sha}",
+        source_sha256=source_sha,
+        model="fastsam3d-plus-plus",
+        job_id="req_cancel_prepare_timeout",
+    )
+    svc.cancel("req_cancel_prepare_timeout")
+    state = svc.poll("req_cancel_prepare_timeout")
+
+    assert state["status"] == "cancel_requested"
+    assert svc.store.get("req_cancel_prepare_timeout").prepare_call_id == "fc_prepare"
