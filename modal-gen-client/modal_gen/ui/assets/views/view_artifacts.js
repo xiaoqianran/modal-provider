@@ -1,5 +1,5 @@
 // Screen: 产物 — visual asset library with paged image / GLB previews.
-import { h, icon, fmtBytes, fmtTime, apiGet, toast, stateEmpty, store } from "../app.js";
+import { h, icon, fmtBytes, fmtTime, apiGet, stateEmpty, store } from "../app.js";
 
 const PAGE_SIZE = 12;
 let modelViewerReady = null;
@@ -130,8 +130,8 @@ export async function mountArtifacts(root) {
     return h("div", { class: "asset-pager" },
       h("span", { class: "muted" }, `第 ${page} / ${pages} 页`),
       h("div", { class: "row" },
-        h("button", { class: "btn btn--sm", type: "button", disabled: page <= 1, onclick: () => { page -= 1; load(); scrollTo({ top: 0, behavior: "smooth" }); } }, "上一页"),
-        h("button", { class: "btn btn--sm", type: "button", disabled: page >= pages, onclick: () => { page += 1; load(); scrollTo({ top: 0, behavior: "smooth" }); } }, "下一页")
+        h("button", { class: "btn btn--sm", type: "button", disabled: page <= 1, onclick: () => { page -= 1; load(); window.scrollTo({ top: 0, behavior: "smooth" }); } }, "上一页"),
+        h("button", { class: "btn btn--sm", type: "button", disabled: page >= pages, onclick: () => { page += 1; load(); window.scrollTo({ top: 0, behavior: "smooth" }); } }, "下一页")
       )
     );
   }
