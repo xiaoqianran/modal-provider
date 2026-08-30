@@ -14,6 +14,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  architecture-gate:
+    name: Runtime architecture gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python scripts/check-runtime-architecture.py
+
   modal-gen-client:
     name: modal-gen-client / ${{ matrix.os }}
     strategy:

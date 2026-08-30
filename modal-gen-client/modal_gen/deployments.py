@@ -4,15 +4,26 @@ import copy
 import importlib
 import re
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import modal
-from modal.exception import NotFoundError
+from modal.exception import ConnectionError as ModalConnectionError
+from modal.exception import InternalError, NotFoundError, ServiceError
+from modal.exception import TimeoutError as ModalTimeoutError
 
 from .errors import ConnectorError
+
+_DEPLOY_RETRYABLE = (
+    ModalConnectionError,
+    ModalTimeoutError,
+    InternalError,
+    ServiceError,
+    TimeoutError,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,9 +59,15 @@ class DeploymentService:
         *,
         targets: tuple[DeploymentTarget, ...] | None = None,
         max_workers: int = 2,
+        max_attempts: int = 2,
+        retry_backoff_s: float = 0.5,
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be positive")
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be positive")
+        if retry_backoff_s < 0:
+            raise ValueError("retry_backoff_s must be non-negative")
         self._client: modal.Client | None = None
         self._lock = threading.RLock()
         self._targets_all = (
@@ -62,6 +79,10 @@ class DeploymentService:
             (target.provider, target.app_name): threading.Lock() for target in self._targets_all
         }
         self._jobs: dict[str, dict[str, object]] = {}
+        self._active_requests: dict[tuple[object, ...], str] = {}
+        self._job_request_keys: dict[str, tuple[object, ...]] = {}
+        self._max_attempts = max_attempts
+        self._retry_backoff_s = retry_backoff_s
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers,
             thread_name_prefix="modal-gen-deploy",
@@ -190,7 +211,7 @@ class DeploymentService:
             )
             with lock:
                 rows.append(
-                    self._deploy_target(
+                    self._deploy_target_with_retry(
                         target,
                         client,
                         strategy=strategy,
@@ -241,7 +262,35 @@ class DeploymentService:
                 "models": list(target.models),
                 "required": target.required,
                 "error": str(exc),
+                "retryable": isinstance(exc, _DEPLOY_RETRYABLE),
             }
+
+    def _deploy_target_with_retry(
+        self,
+        target: DeploymentTarget,
+        client: modal.Client,
+        *,
+        strategy: str,
+        environment_name: str | None,
+        on_attempt=None,
+    ) -> dict[str, object]:
+        last: dict[str, object] | None = None
+        for attempt in range(1, self._max_attempts + 1):
+            if on_attempt is not None:
+                on_attempt(attempt)
+            last = self._deploy_target(
+                target,
+                client,
+                strategy=strategy,
+                environment_name=environment_name,
+            )
+            last["attempts"] = attempt
+            if last.get("status") != "failed" or last.get("retryable") is not True:
+                return last
+            if attempt < self._max_attempts and self._retry_backoff_s:
+                time.sleep(self._retry_backoff_s * attempt)
+        assert last is not None
+        return last
 
     def start_deploy(
         self,
@@ -255,6 +304,14 @@ class DeploymentService:
         self._require_client()
         self._validate_strategy(strategy)
         self._select_targets(provider, app_name)
+        request_key = (provider, app_name, strategy, environment_name, missing_only)
+        with self._lock:
+            existing_id = self._active_requests.get(request_key)
+            if existing_id is not None:
+                existing = self._jobs.get(existing_id)
+                if existing is not None and existing.get("status") in {"queued", "running"}:
+                    return copy.deepcopy(existing)
+                self._active_requests.pop(request_key, None)
         job_id = f"dep_{uuid.uuid4().hex}"
         timestamp = _now()
         job: dict[str, object] = {
@@ -272,6 +329,8 @@ class DeploymentService:
         }
         with self._lock:
             self._jobs[job_id] = job
+            self._active_requests[request_key] = job_id
+            self._job_request_keys[job_id] = request_key
         client = self._require_client()
         thread = threading.Thread(
             target=self._run_deployment_job,
@@ -349,16 +408,27 @@ class DeploymentService:
         strategy: str,
         environment_name: str | None,
     ) -> dict[str, object]:
-        self._update_target_job_status(job_id, index, "deploying")
         lock = self._target_locks.setdefault((target.provider, target.app_name), threading.Lock())
+
+        def on_attempt(attempt: int) -> None:
+            status = "deploying" if attempt == 1 else "retrying"
+            self._update_target_job_status(job_id, index, status, attempts=attempt)
+
         with lock:
-            row = self._deploy_target(
+            row = self._deploy_target_with_retry(
                 target,
                 client,
                 strategy=strategy,
                 environment_name=environment_name,
+                on_attempt=on_attempt,
             )
-        self._update_target_job_status(job_id, index, str(row["status"]), row.get("error"))
+        self._update_target_job_status(
+            job_id,
+            index,
+            str(row["status"]),
+            row.get("error"),
+            attempts=int(row.get("attempts") or 1),
+        )
         return row
 
     def _update_target_job_status(
@@ -367,6 +437,7 @@ class DeploymentService:
         index: int,
         status: str,
         error: object | None = None,
+        attempts: int | None = None,
     ) -> None:
         with self._lock:
             current = self._jobs[job_id]
@@ -375,6 +446,10 @@ class DeploymentService:
                 targets[index]["status"] = status
                 if error:
                     targets[index]["error"] = str(error)
+                elif "error" in targets[index]:
+                    targets[index].pop("error", None)
+                if attempts is not None:
+                    targets[index]["attempts"] = attempts
             self._jobs[job_id] = {**current, "targets": targets, "updatedAt": _now()}
 
     @staticmethod
@@ -399,7 +474,12 @@ class DeploymentService:
     def _update_job(self, job_id: str, **values: object) -> None:
         with self._lock:
             current = self._jobs[job_id]
-            self._jobs[job_id] = {**current, **values, "updatedAt": _now()}
+            updated = {**current, **values, "updatedAt": _now()}
+            self._jobs[job_id] = updated
+            if updated.get("status") in {"succeeded", "partial", "failed"}:
+                request_key = self._job_request_keys.pop(job_id, None)
+                if request_key is not None and self._active_requests.get(request_key) == job_id:
+                    self._active_requests.pop(request_key, None)
 
     def deployment_job(self, job_id: str) -> dict[str, object]:
         with self._lock:

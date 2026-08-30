@@ -93,3 +93,101 @@ def test_deployment_executor_caps_concurrency_at_two(monkeypatch):
     for job in jobs:
         assert _wait(service, str(job["id"]))["status"] == "succeeded"
     assert peak == 2
+
+
+def test_duplicate_active_request_returns_same_job(monkeypatch):
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker")
+    service = DeploymentService(targets=(target,), retry_backoff_s=0)
+    service._client = SimpleNamespace()
+    release = threading.Event()
+    calls = 0
+
+    class App:
+        def deploy(self, **_kwargs):
+            nonlocal calls
+            calls += 1
+            release.wait(2)
+            return self
+
+        def get_tags(self, **_kwargs):
+            return {}
+
+        def set_tags(self, *_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr(
+        "modal_gen.deployments.importlib.import_module",
+        lambda _name: SimpleNamespace(app=App()),
+    )
+    first = service.start_deploy("modal-2d", app_name="worker")
+    second = service.start_deploy("modal-2d", app_name="worker")
+    assert first["id"] == second["id"]
+    release.set()
+    assert _wait(service, str(first["id"]))["status"] == "succeeded"
+    assert calls == 1
+
+    third = service.start_deploy("modal-2d", app_name="worker")
+    assert third["id"] != first["id"]
+    release.set()
+    assert _wait(service, str(third["id"]))["status"] == "succeeded"
+    assert calls == 2
+
+
+def test_failed_runtime_retries_and_records_attempts(monkeypatch):
+    target = DeploymentTarget("modal-3d", "worker", "runtime.worker")
+    service = DeploymentService(targets=(target,), max_attempts=2, retry_backoff_s=0)
+    service._client = SimpleNamespace()
+    calls = 0
+
+    def deploy_target(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return {
+                "provider": "modal-3d",
+                "app": "worker",
+                "module": "runtime.worker",
+                "status": "failed",
+                "error": "transient",
+                "retryable": True,
+            }
+        return {
+            "provider": "modal-3d",
+            "app": "worker",
+            "module": "runtime.worker",
+            "status": "current",
+        }
+
+    monkeypatch.setattr(service, "_deploy_target", deploy_target)
+    job = service.start_deploy("modal-3d", app_name="worker")
+    finished = _wait(service, str(job["id"]))
+    assert finished["status"] == "succeeded"
+    assert calls == 2
+    assert finished["targets"][0]["attempts"] == 2
+    assert finished["result"]["providers"][0]["apps"][0]["attempts"] == 2
+
+
+def test_non_retryable_deployment_failure_is_not_retried(monkeypatch):
+    target = DeploymentTarget("modal-3d", "worker", "runtime.worker")
+    service = DeploymentService(targets=(target,), max_attempts=3, retry_backoff_s=0)
+    service._client = SimpleNamespace()
+    calls = 0
+
+    def deploy_target(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return {
+            "provider": "modal-3d",
+            "app": "worker",
+            "module": "runtime.worker",
+            "status": "failed",
+            "error": "missing secret",
+            "retryable": False,
+        }
+
+    monkeypatch.setattr(service, "_deploy_target", deploy_target)
+    job = service.start_deploy("modal-3d", app_name="worker")
+    finished = _wait(service, str(job["id"]))
+    assert finished["status"] == "failed"
+    assert calls == 1
+    assert finished["targets"][0]["attempts"] == 1
