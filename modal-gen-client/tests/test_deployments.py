@@ -434,3 +434,58 @@ def test_save_huggingface_token_updates_and_creates_compat_secrets(monkeypatch):
         ("hyworld2-hf", "hf_test_secret", False),
     ]
     assert status["configured"] is True
+
+
+def test_deployed_app_with_missing_weights_stays_deployed(monkeypatch):
+    class RemoteApp:
+        def get_tags(self, *, client=None):
+            return {"modal-gen-revision": "sha256-old"}
+
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        revision="sha256-new",
+        models=("model-x",),
+        weights=(WeightSpec("weights", ("model.bin",), (PrepareCall("m", "sync"),)),),
+    )
+    service = DeploymentService(targets=(target,))
+    monkeypatch.setattr(
+        "modal_gen.deployments.modal.App.lookup", lambda *_args, **_kwargs: RemoteApp()
+    )
+    monkeypatch.setattr(
+        service._weights,
+        "status",
+        lambda *_args, **_kwargs: {"status": "missing", "volumes": []},
+    )
+
+    row = service._target_status(target, SimpleNamespace())
+    assert row["status"] == "stale"
+    assert row["deployedRevision"] == "sha256-old"
+    assert row["weights"]["status"] == "missing"
+    assert row["weightError"] == "required model weights are missing"
+    assert row["runnable"] is False
+
+
+def test_missing_app_skips_weight_status_lookup(monkeypatch):
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        weights=(WeightSpec("weights", ("model.bin",), (PrepareCall("m", "sync"),)),),
+    )
+    service = DeploymentService(targets=(target,))
+    monkeypatch.setattr(
+        "modal_gen.deployments.modal.App.lookup",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(NotFoundError("missing")),
+    )
+    monkeypatch.setattr(
+        service._weights,
+        "status",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected weight lookup")),
+    )
+
+    row = service._target_status(target, SimpleNamespace())
+    assert row["status"] == "missing"
+    assert row["runnable"] is False
+    assert "weights" not in row

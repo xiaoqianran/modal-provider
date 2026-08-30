@@ -74,6 +74,27 @@ def test_readiness_filters_non_current_models(tmp_path):
     assert capability["status"] == "available"
     assert provider["status"] == "available"
     assert provider["runtimeReadiness"]["apps"][2]["status"] == "stale"
+    assert capability["declaredModels"] == ["ready", "stale"]
+    assert capability["modelReadiness"] == [
+        {
+            "model": "ready",
+            "app": "ready-app",
+            "state": "ready",
+            "runnable": True,
+            "deploymentStatus": "current",
+            "weightsStatus": "not_required",
+            "error": None,
+        },
+        {
+            "model": "stale",
+            "app": "stale-app",
+            "state": "outdated",
+            "runnable": False,
+            "deploymentStatus": "stale",
+            "weightsStatus": "not_required",
+            "error": None,
+        },
+    ]
 
 
 def test_required_runtime_degrades_provider_when_worker_is_ready(tmp_path):

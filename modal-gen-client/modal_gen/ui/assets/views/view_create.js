@@ -39,7 +39,14 @@ export async function mountCreate(root) {
 
   const available = providers.filter((o) => o.cap && isSubmitReady(o.cap));
   if (!available.length) {
-    root.append(stateEmpty("暂无可用的 Provider", "当前没有可用 Provider（fail closed）。请先在「Provider Hub」连接 Modal，并确认远程 App 已部署。", { iconName: "alert" }));
+    root.append(
+      stateEmpty(
+        "当前没有可提交的 Provider",
+        "Modal 中已有的 App 仍会显示在下面；版本过旧、权重未就绪或未部署的模型不会被误当成可运行。",
+        { iconName: "alert" }
+      ),
+      unavailableProviderPanel(providers)
+    );
     return;
   }
 
@@ -49,29 +56,9 @@ export async function mountCreate(root) {
   root.append(formHost);
   renderForm(formHost, selected);
 
-  // surface unavailable providers (fail closed) below the form
+  // Surface installed-but-not-runnable models instead of making them disappear.
   const unavailable = providers.filter((o) => !o.cap || !isSubmitReady(o.cap));
-  if (unavailable.length) {
-    const panel = h("div", { class: "panel" },
-      h("div", { class: "panel__head" }, h("h2", { class: "panel__title" }, `不可用 Provider (${unavailable.length})`)),
-      h("div", { class: "panel__body stack" })
-    );
-    const body = panel.querySelector(".panel__body");
-    for (const o of unavailable) {
-      body.append(
-        h("div", { class: "banner banner--warn" },
-          icon("alert", 16),
-          h("div", { class: "stack" },
-            h("strong", {}, `${o.p.displayName || o.p.id} · ${o.cap.displayName || o.cap.operation}`),
-            h("span", {}, (o.cap.runtimeBlockers || []).length
-              ? `当前被 ${o.cap.runtimeBlockers.map((item) => item.app || "required runtime").join("、")} 阻塞；Provider Hub 会保留“部分就绪”信息，但创建页不会提交必然失败的请求。`
-              : "当前不可用（fail closed）。解决 Provider 连接或 Runtime readiness 后可在此提交。")
-          )
-        )
-      );
-    }
-    root.append(panel);
-  }
+  if (unavailable.length) root.append(unavailableProviderPanel(unavailable));
 
   function renderForm(host, sel) {
     host.replaceChildren();
@@ -233,6 +220,59 @@ export async function mountCreate(root) {
   }
 
   // (errors are painted inline by onSubmit via fieldRefs; nothing to clean up here)
+}
+
+function unavailableProviderPanel(rows) {
+  const panel = h(
+    "div",
+    { class: "panel" },
+    h(
+      "div",
+      { class: "panel__head" },
+      h("h2", { class: "panel__title" }, `暂不可提交 (${rows.length})`)
+    ),
+    h("div", { class: "panel__body stack" })
+  );
+  const body = panel.querySelector(".panel__body");
+  for (const row of rows) {
+    const cap = row.cap || {};
+    const models = Array.isArray(cap.modelReadiness) ? cap.modelReadiness : [];
+    const blockerText = (cap.runtimeBlockers || []).length
+      ? `阻塞：${cap.runtimeBlockers.map((item) => item.app || "required runtime").join("、")}`
+      : "当前 runtime 尚未满足提交条件。";
+    body.append(
+      h(
+        "div",
+        { class: "banner banner--warn" },
+        icon("alert", 16),
+        h(
+          "div",
+          { class: "stack" },
+          h("strong", {}, `${row.p.displayName || row.p.id} · ${cap.displayName || cap.operation || "能力"}`),
+          h("span", {}, blockerText),
+          ...(models.length
+            ? models.map((model) => h(
+              "span",
+              { class: "muted" },
+              `${model.model} · ${createModelStateLabel(model)}`
+            ))
+            : [h("span", { class: "muted" }, "没有可用模型状态。")])
+        )
+      )
+    );
+  }
+  return panel;
+}
+
+function createModelStateLabel(row) {
+  if (row.runnable || row.state === "ready") return "可用";
+  if (row.state === "outdated") {
+    return row.weightsStatus === "missing" ? "已部署 / 版本过旧 / 权重未就绪" : "已部署 / 版本过旧";
+  }
+  if (row.state === "weights_missing") return "已部署 / 权重未就绪";
+  if (row.state === "not_deployed") return "未部署";
+  if (row.state === "error") return `状态异常${row.error ? ` / ${row.error}` : ""}`;
+  return "暂不可用";
 }
 
 function renderSourcePicker(host, values, sourceSpec) {

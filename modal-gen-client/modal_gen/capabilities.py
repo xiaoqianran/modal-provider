@@ -121,25 +121,71 @@ class CapabilityRegistry:
             return descriptor
         descriptor = dict(descriptor)
         descriptor["runtimeReadiness"] = runtime
+
+        def app_runnable(item: dict[str, object]) -> bool:
+            explicit = item.get("runnable")
+            if isinstance(explicit, bool):
+                return explicit
+            weights = item.get("weights")
+            weights_ready = not isinstance(weights, dict) or weights.get("status") == "ready"
+            return item.get("status") == "current" and weights_ready
+
         required_blockers = [
             {
                 "app": str(item.get("app") or "unknown"),
                 "status": str(item.get("status") or "unknown"),
-                "error": item.get("error"),
+                "error": item.get("error") or item.get("weightError"),
             }
             for item in apps
-            if isinstance(item, dict)
-            and item.get("required") is True
-            and item.get("status") != "current"
+            if isinstance(item, dict) and item.get("required") is True and not app_runnable(item)
         ]
         required_bad = bool(required_blockers)
         ready_models = {
             model
             for item in apps
-            if isinstance(item, dict) and item.get("status") == "current"
+            if isinstance(item, dict) and app_runnable(item)
             for model in item.get("models", [])
             if isinstance(model, str)
         }
+        model_readiness = []
+        for app in apps:
+            if not isinstance(app, dict):
+                continue
+            deployment_status = str(app.get("status") or "unknown")
+            weights = app.get("weights")
+            weights_status = (
+                str(weights.get("status") or "unknown")
+                if isinstance(weights, dict)
+                else "not_required"
+            )
+            for model in app.get("models", []):
+                if not isinstance(model, str):
+                    continue
+                runnable = app_runnable(app)
+                if runnable:
+                    state = "ready"
+                elif deployment_status == "stale":
+                    state = "outdated"
+                elif deployment_status == "missing":
+                    state = "not_deployed"
+                elif deployment_status == "error":
+                    state = "error"
+                elif weights_status != "ready":
+                    state = "weights_missing"
+                else:
+                    state = "blocked"
+                model_readiness.append(
+                    {
+                        "model": model,
+                        "app": str(app.get("app") or "unknown"),
+                        "state": state,
+                        "runnable": runnable,
+                        "deploymentStatus": deployment_status,
+                        "weightsStatus": weights_status,
+                        "error": app.get("error") or app.get("weightError"),
+                    }
+                )
+
         capabilities = descriptor.get("capabilities")
         if not isinstance(capabilities, list):
             return descriptor
@@ -162,6 +208,10 @@ class CapabilityRegistry:
                         model_schema = dict(props["model"])
                         enum = model_schema.get("enum")
                         if isinstance(enum, list):
+                            item["declaredModels"] = list(enum)
+                            item["modelReadiness"] = [
+                                row for row in model_readiness if row["model"] in enum
+                            ]
                             model_schema["enum"] = [m for m in enum if m in ready_models]
                             item["readyModels"] = list(model_schema["enum"])
                             if not model_schema["enum"]:

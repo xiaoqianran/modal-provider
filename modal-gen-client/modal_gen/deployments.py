@@ -686,14 +686,17 @@ class DeploymentService:
         except Exception as exc:
             status, error = "error", str(exc)
         weights = None
-        if status != "error" and target.weights:
+        weight_error = None
+        if status in {"current", "stale"} and target.weights:
             try:
                 weights = await self._weights.status_async(target.weights, client, environment_name)
                 if weights["status"] != "ready":
-                    status = "missing"
-                    error = "required model weights are missing"
+                    weight_error = "required model weights are missing"
             except Exception as exc:
-                status, error = "error", str(exc)
+                weight_error = str(exc)
+        weights_ready = not target.weights or (
+            isinstance(weights, dict) and weights.get("status") == "ready"
+        )
         row: dict[str, object] = {
             "provider": target.provider,
             "app": target.app_name,
@@ -703,9 +706,12 @@ class DeploymentService:
             "deployedRevision": actual_revision,
             "models": list(target.models),
             "required": target.required,
+            "runnable": status == "current" and weights_ready,
         }
         if weights is not None:
             row["weights"] = weights
+        if weight_error:
+            row["weightError"] = weight_error
         if error:
             row["error"] = error
         return row
@@ -736,14 +742,17 @@ class DeploymentService:
         except Exception as exc:
             status, error = "error", str(exc)
         weights = None
-        if status != "error" and target.weights:
+        weight_error = None
+        if status in {"current", "stale"} and target.weights:
             try:
                 weights = self._weights.status(target.weights, client, environment_name)
                 if weights["status"] != "ready":
-                    status = "missing"
-                    error = "required model weights are missing"
+                    weight_error = "required model weights are missing"
             except Exception as exc:
-                status, error = "error", str(exc)
+                weight_error = str(exc)
+        weights_ready = not target.weights or (
+            isinstance(weights, dict) and weights.get("status") == "ready"
+        )
         row: dict[str, object] = {
             "provider": target.provider,
             "app": target.app_name,
@@ -753,9 +762,12 @@ class DeploymentService:
             "deployedRevision": actual_revision,
             "models": list(target.models),
             "required": target.required,
+            "runnable": status == "current" and weights_ready,
         }
         if weights is not None:
             row["weights"] = weights
+        if weight_error:
+            row["weightError"] = weight_error
         if error:
             row["error"] = error
         return row

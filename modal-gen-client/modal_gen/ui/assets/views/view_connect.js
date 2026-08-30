@@ -162,12 +162,15 @@ function connectionPanel(connections, hfSecret) {
     autocomplete: "off",
     placeholder: "as-...",
   });
-  const status = h("div", { class: "connect-hint" },
-    "粘贴完整 Modal CLI 命令会自动提取凭证。验证成功后会保存在本机 .secrets/modal.json，并在下次启动时自动恢复。"
+  let connectedNow = connections.some((item) => item.connected === true);
+  const status = h(
+    "div",
+    { class: `connect-hint ${connectedNow ? "connect-hint--ok" : ""}` },
+    connectedNow
+      ? "Modal 已连接。重新连接会在验证成功后替换本机保存的凭据。"
+      : "粘贴完整 Modal CLI 命令会自动提取凭证。验证成功后会保存在本机 .secrets/modal.json，并在下次启动时自动恢复。"
   );
-  const connect = h("button", { class: "btn btn--primary connect-action", type: "button" },
-    icon("plug", 15), "连接 Modal"
-  );
+  const connect = h("button", { class: "btn btn--primary connect-action", type: "button" });
   const disconnect = h("button", { class: "btn", type: "button" }, "断开全部");
   const deployAll = h("button", { class: "btn", type: "button" }, "部署 2D + 3D");
   const hfToken = h("input", {
@@ -183,8 +186,23 @@ function connectionPanel(connections, hfSecret) {
       : "连接 Modal 后可以保存 Hugging Face Token。"
   );
   const saveHf = h("button", {
-    class: "btn", type: "button", disabled: !hfSecret.connected,
+    class: "btn", type: "button", disabled: !connectedNow,
   }, "保存 HF Token");
+  const connectionIndicators = [];
+
+  function renderConnectionState() {
+    connect.disabled = false;
+    disconnect.disabled = !connectedNow;
+    saveHf.disabled = !connectedNow;
+    connect.replaceChildren(
+      icon("plug", 15),
+      connectedNow ? "重新连接 Modal" : "连接 Modal"
+    );
+    for (const indicator of connectionIndicators) {
+      indicator.dot.className = `connect-provider__dot ${connectedNow ? "is-on" : ""}`;
+      indicator.label.textContent = connectedNow ? "Connected" : "Disconnected";
+    }
+  }
 
   saveHf.addEventListener("click", async () => {
     const token = hfToken.value.trim();
@@ -240,10 +258,12 @@ function connectionPanel(connections, hfSecret) {
     status.className = "connect-hint";
     status.textContent = "正在验证 Modal 凭证…";
     try {
-      await apiPost("providers/connect", {
+      const result = await apiPost("providers/connect", {
         tokenId: tokenId.value.trim(),
         tokenSecret: tokenSecret.value,
       });
+      const rows = Array.isArray(result.providers) ? result.providers : [];
+      connectedNow = rows.length ? rows.some((item) => item.connected === true) : true;
       tokenSecret.value = "";
       command.value = "";
       status.className = "connect-hint connect-hint--ok";
@@ -258,9 +278,8 @@ function connectionPanel(connections, hfSecret) {
       tokenSecret.value = "";
       status.className = "connect-hint connect-hint--error";
       status.textContent = String(e.message || e);
-      connect.disabled = false;
-      disconnect.disabled = false;
-      connect.replaceChildren(icon("plug", 15), "连接 Modal");
+    } finally {
+      renderConnectionState();
     }
   });
 
@@ -286,6 +305,9 @@ function connectionPanel(connections, hfSecret) {
     disconnect.disabled = true;
     try {
       await apiPost("providers/disconnect", {});
+      connectedNow = false;
+      status.className = "connect-hint";
+      status.textContent = "Modal 已断开。已保存的本机凭据仍会在下次启动时自动恢复。";
       toast("2D / 3D 已断开 Modal", "ok");
       invalidateCapabilities();
       refreshCurrentRoute();
@@ -293,22 +315,32 @@ function connectionPanel(connections, hfSecret) {
     } catch (e) {
       status.className = "connect-hint connect-hint--error";
       status.textContent = String(e.message || e);
-      disconnect.disabled = false;
+    } finally {
+      renderConnectionState();
     }
   });
 
   const managed = connections.filter((item) => item.managed !== false);
-  return h("div", { class: "modal-settings" },
-    h("p", { class: "drawer-copy" }, "一组凭证同时用于本机 2D / 3D Provider。连接成功后持久化到本机 .secrets/modal.json；新凭据会覆盖旧凭据。"),
-    h("div", { class: "connect-status-grid" },
-      ...managed.map((item) => h("div", { class: "connect-provider" },
-        h("span", { class: `connect-provider__dot ${item.connected ? "is-on" : ""}` }),
+  const statusGrid = h("div", { class: "connect-status-grid" });
+  for (const item of managed) {
+    const dot = h("span", { class: `connect-provider__dot ${connectedNow ? "is-on" : ""}` });
+    const label = h("span", {}, connectedNow ? "Connected" : "Disconnected");
+    connectionIndicators.push({ dot, label });
+    statusGrid.append(
+      h("div", { class: "connect-provider" },
+        dot,
         h("div", {},
           h("strong", {}, item.id === "modal-2d" ? "Modal 2D" : item.id === "modal-3d" ? "Modal 3D" : item.id),
-          h("span", {}, item.connected ? "Connected" : "Disconnected")
+          label
         )
-      ))
-    ),
+      )
+    );
+  }
+  renderConnectionState();
+
+  return h("div", { class: "modal-settings" },
+    h("p", { class: "drawer-copy" }, "一组凭证同时用于本机 2D / 3D Provider。连接成功后持久化到本机 .secrets/modal.json；新凭据会覆盖旧凭据。"),
+    statusGrid,
     h("label", { class: "drawer-field" },
       h("span", {}, "粘贴 modal token set 命令"),
       command
@@ -373,6 +405,9 @@ function providerCard(provider, connection) {
 function capabilityCard(capability) {
   const schema = capability.input?.schema || {};
   const modelIds = schema.properties?.model?.enum || [];
+  const modelReadiness = Array.isArray(capability.modelReadiness)
+    ? capability.modelReadiness
+    : modelIds.map((model) => ({ model, state: "ready", runnable: true }));
   const roles = capability.output?.roles || [];
   const blockers = Array.isArray(capability.runtimeBlockers) ? capability.runtimeBlockers : [];
   const blockerRows = blockers.map((item) => {
@@ -394,9 +429,14 @@ function capabilityCard(capability) {
       providerBadge(capability.status)
     ),
     h("div", { class: "model-chip-list" },
-      ...(modelIds.length
-        ? modelIds.map((model) => h("span", { class: "model-chip" }, model))
-        : [h("span", { class: "muted" }, "当前没有就绪模型")])
+      ...(modelReadiness.length
+        ? modelReadiness.map((row) => h(
+          "span",
+          { class: `model-chip ${row.runnable ? "" : "model-chip--blocked"}` },
+          row.model,
+          h("small", { class: "muted" }, ` · ${modelStateLabel(row)}`)
+        ))
+        : [h("span", { class: "muted" }, "没有声明模型")])
     ),
     ...blockerRows,
     h("details", { class: "capability-technical" },
@@ -407,6 +447,17 @@ function capabilityCard(capability) {
       ])
     )
   );
+}
+
+function modelStateLabel(row) {
+  if (row.runnable || row.state === "ready") return "可用";
+  if (row.state === "outdated") {
+    return row.weightsStatus === "missing" ? "已部署 · 版本过旧 · 权重未就绪" : "已部署 · 版本过旧";
+  }
+  if (row.state === "weights_missing") return "已部署 · 权重未就绪";
+  if (row.state === "not_deployed") return "未部署";
+  if (row.state === "error") return `状态异常${row.error ? ` · ${row.error}` : ""}`;
+  return "暂不可用";
 }
 
 function pairingPanel(pending) {
@@ -500,10 +551,16 @@ function deploymentPanel(rows) {
 
 function runtimeAppRow(provider, app, refreshHost) {
   const action = deploymentAction(app.status === "current" ? "重新部署" : app.status === "stale" ? "更新" : "部署", provider, app.app, refreshHost, true);
+  const weightsStatus = app.weights?.status;
+  const detail = app.weightError
+    ? app.weightError
+    : weightsStatus && weightsStatus !== "ready"
+      ? `weights: ${weightsStatus}`
+      : app.error;
   return h("div", { class: "row spread" },
     h("div", { class: "stack" },
       h("span", { class: "mono" }, app.app || "—"),
-      app.error && app.status === "error" ? h("span", { class: "muted" }, app.error) : null
+      detail ? h("span", { class: "muted" }, detail) : null
     ),
     h("div", { class: "row" }, deploymentStatusBadge(app.status), action)
   );
@@ -511,7 +568,7 @@ function runtimeAppRow(provider, app, refreshHost) {
 
 function deploymentStatusBadge(status) {
   const mapped = status === "current" ? "available" : ["partial", "stale"].includes(status) ? "degraded" : "unavailable";
-  const label = status === "current" ? "当前版本" : status === "stale" ? "需要更新" : status === "missing" ? "未部署" : status === "partial" ? "部分部署" : status === "error" ? "状态异常" : "失败";
+  const label = status === "current" ? "当前版本" : status === "stale" ? "已部署 · 需更新" : status === "missing" ? "未部署" : status === "partial" ? "部分状态" : status === "error" ? "状态异常" : "失败";
   return h("span", { class: `badge badge--${mapped === "available" ? "ok" : mapped === "degraded" ? "warn" : "neutral"}` }, label);
 }
 

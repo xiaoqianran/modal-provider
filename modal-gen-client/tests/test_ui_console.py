@@ -242,6 +242,16 @@ if (parseModalTokenCommand("modal token set --token-id only")) process.exit(2);
     )
 
 
+def test_connection_drawer_restores_state_after_connect_request() -> None:
+    source = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_connect.js").read_text(
+        encoding="utf-8"
+    )
+    assert 'connectedNow ? "重新连接 Modal" : "连接 Modal"' in source
+    assert "saveHf.disabled = !connectedNow" in source
+    assert source.count("finally {\n      renderConnectionState();\n    }") >= 2
+    assert 'status.textContent = "Modal 已连接。"' in source
+
+
 def test_live_gateway_uses_longer_timeout_for_provider_connect(monkeypatch) -> None:
     from modal_gen.ui.server import LiveGateway
 
@@ -476,3 +486,14 @@ def test_generation_studio_ui_has_batch_prompt_and_lazy_glb_viewer() -> None:
         in artifact_source
     )
     assert "model-viewer/4.3.1/model-viewer.min.js" not in index
+
+
+def test_ui_surfaces_deployed_but_blocked_models() -> None:
+    connect = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_connect.js").read_text(
+        encoding="utf-8"
+    )
+    create = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_create.js").read_text(encoding="utf-8")
+    assert "modelReadiness" in connect
+    assert "已部署 · 版本过旧" in connect
+    assert "unavailableProviderPanel" in create
+    assert "已部署 / 版本过旧" in create
