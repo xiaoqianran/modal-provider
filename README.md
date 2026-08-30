@@ -21,6 +21,44 @@ modal-provider
 
 这些目录是 **monorepo 内部 package / integration / build boundary**。其中 `modal-2D-client`、`modal-3D-client`、`modal-gen-client` 同时维护独立 Git 仓库，用于单独查看、CI、发布和分发；代码真值仍以本 monorepo 为准。
 
+## 部署前置条件：必须创建 Hugging Face Secret
+
+部署任何 3D Worker 前，必须在 Modal 的 `main` environment 创建名为
+`huggingface` 的 Secret，并提供：
+
+```text
+HF_TOKEN=<具备目标模型访问权限的 Hugging Face Token>
+```
+
+该 Secret 名称、环境和字段名都必须完全一致。部署脚本及 `modal-gen-client` 会先检查
+权重；缺失时自动下载，下载和二次校验未通过则停止部署，不会启动不完整的 Worker。
+没有该 Secret 时，3D 部署会明确失败，不能通过部署命令绕过。
+
+2D 的公开 SANA-Sprint 模型本身不强制要求 Token，但为了统一部署所有模型，建议同样配置
+该 Secret。请勿把 Token 写入仓库、README 或命令行历史。
+
+## 验证记录（2026-08-31）
+
+本次验收同时执行了本地测试、静态检查和真实 Modal 调用：
+
+| 项目 | 结果 | 耗时 |
+| --- | --- | ---: |
+| `modal-2D` | 30 passed | 2.46 秒 |
+| `modal-2D-client` | 56 passed | 6.03 秒 |
+| `modal-3D` 正式 `tests/` | 77 passed、20 subtests | 90.82 秒 |
+| `modal-3D-client` | 57 passed | 14.68 秒 |
+| `modal-gen-client` | 116 passed | 43.91 秒 |
+| `modal-world` | 58 passed | 16.75 秒 |
+| Ruff / format | 本次变更全部通过 | — |
+| 2D 自动补权重并部署 | PASS | 约 2 分 45 秒 |
+| 2D prompt → PNG | PASS，1024×1024 PNG | 约 10 秒 |
+| 3D 自动补权重并部署 | PASS，L40S Worker | 约 4～5 分钟 |
+| 3D PNG → GLB | PASS，GLB v2，1,520,464 bytes | 约 42 秒 |
+| 2D prompt → PNG → 3D GLB | PASS | — |
+
+本地权重测试覆盖缓存命中、缺失下载、下载后复验、失败关闭、部署顺序和安全路径校验。
+此前真实链路还验证了：缺少 `huggingface` Secret 时不会部署；直接调用 3D model worker 时非 canonical RGBA 会被拒绝。当前 `modal-gen` shared-source 主链可接收 opaque source，并由 `RemBgWorker.prepare` 在 Modal 内完成 conditioning，避免 2D Artifact 不必要的本地下载再上传。完整执行命令和测试代码见各 package 的 README 与 `tests/`。
+
 ## Ownership
 
 `modal-provider` owns：

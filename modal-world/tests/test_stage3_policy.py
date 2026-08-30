@@ -7,6 +7,7 @@ def test_stage3_is_single_gpu_without_fsdp():
     start = app.index('def worldgen_case000_stage3(job_id: str = "case000")')
     proxy = app[start:]
     assert 'modal.Cls.from_name("modal-world-stage3", "WorldStereoWorker")' in proxy
+    assert "_spawn_worker_call(worker_cls().generate" in proxy
     assert '"torch.distributed.run"' not in proxy
     assert "fsdp=False" in worker
     assert "sp_world_size=1" in worker

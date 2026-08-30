@@ -11,12 +11,14 @@ def test_stage2_uses_persistent_worker_and_runtime_cache():
     assert 'modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")' in proxy
     assert '"torch.distributed.run"' not in proxy
     assert '"traj_render.py"' not in proxy
+    assert "_spawn_worker_call(worker_cls().render" in proxy
 
     worker = Path("modal_world/stage2_app.py").read_text()
     assert 'app = modal.App("modal-world-stage2")' in worker
     assert "min_containers=0" in worker
     assert "scaledown_window=5 * 60" in worker
     assert "@modal.enter()" in worker
+    assert "worldgen_outputs.reload()" in worker
     assert "@modal.method()" in worker
     assert "def render" in worker
     assert "point_rendering(" in worker

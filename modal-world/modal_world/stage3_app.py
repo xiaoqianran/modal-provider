@@ -31,7 +31,7 @@ runtime_cache = modal.Volume.from_name(
     "hyworld2-runtime-cache-v2", create_if_missing=True, version=2
 )
 worldgen_outputs = modal.Volume.from_name("hyworld2-worldgen-output", create_if_missing=True)
-hf_secret = modal.Secret.from_name("hyworld2-hf")
+hf_secret = modal.Secret.from_name(os.environ.get("MODAL_WORLD_HF_SECRET", "hyworld2-hf"))
 
 _MODEL_TYPE = "worldstereo-memory-dmd"
 
@@ -169,6 +169,22 @@ class WorldStereoWorker:
         self.load_s = time.perf_counter() - started
         self.call_count = 0
 
+    @modal.method()
+    def probe(self) -> dict[str, Any]:
+        """Validate full Stage 3 GPU model loading without running world generation."""
+        torch = self.torch
+        return {
+            "load_s": round(self.load_s, 3),
+            "device_name": torch.cuda.get_device_name(self.device),
+            "device_capability": list(torch.cuda.get_device_capability(self.device)),
+            "allocated_gib": round(torch.cuda.memory_allocated(self.device) / 1024**3, 3),
+            "reserved_gib": round(torch.cuda.memory_reserved(self.device) / 1024**3, 3),
+            "autocast_dtype": str(self.autocast_dtype),
+            "worldstereo_loaded": self.worldstereo is not None,
+            "moge_loaded": self.moge_model is not None,
+            "sam3_loaded": self.sam3_model is not None,
+        }
+
     def _stage3_manifest(self, *, job_id: str, target: Path) -> dict[str, Any]:
         camera_files = sorted(target.glob("render_results/*/traj*/camera.json"))
         renders = sorted(target.glob("render_results/*/traj*/render.mp4"))
@@ -205,6 +221,8 @@ class WorldStereoWorker:
 
     @modal.method()
     def generate(self, job_id: str = "case000", force: bool = False) -> dict[str, Any]:
+        worldgen_outputs.reload()
+
         import imagesize
         import numpy as np
         from diffusers.utils import export_to_video

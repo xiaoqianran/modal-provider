@@ -84,9 +84,10 @@ class Qwen3VLEngine:
         self._pending_chats: list[_PendingChat] = []
         self._batch_leader = False
         started = time.perf_counter()
-        self.processor = AutoProcessor.from_pretrained(model_id)
+        self.processor = AutoProcessor.from_pretrained(model_id, local_files_only=True)
         self.model = Qwen3VLForConditionalGeneration.from_pretrained(
             model_id,
+            local_files_only=True,
             dtype=torch.bfloat16,
             attn_implementation="flash_attention_2",
             device_map="cuda",

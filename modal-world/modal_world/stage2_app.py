@@ -33,7 +33,7 @@ runtime_cache = modal.Volume.from_name(
     "hyworld2-runtime-cache-v2", create_if_missing=True, version=2
 )
 worldgen_outputs = modal.Volume.from_name("hyworld2-worldgen-output", create_if_missing=True)
-hf_secret = modal.Secret.from_name("hyworld2-hf")
+hf_secret = modal.Secret.from_name(os.environ.get("MODAL_WORLD_HF_SECRET", "hyworld2-hf"))
 
 _MODEL_ID = "Qwen/Qwen3-VL-8B-Instruct"
 
@@ -139,6 +139,7 @@ class WorldNavRenderer:
     @modal.method()
     def generate_nav(self, job_id: str = "case000", force: bool = False) -> dict[str, Any]:
         """Run WorldNav Stage 1 while reusing the persistent Qwen server."""
+        worldgen_outputs.reload()
         import subprocess
         import urllib.request
 
@@ -301,6 +302,7 @@ class WorldNavRenderer:
 
     @modal.method()
     def render(self, job_id: str = "case000", force: bool = False) -> dict[str, Any]:
+        worldgen_outputs.reload()
         import numpy as np
         import torch
         import trimesh

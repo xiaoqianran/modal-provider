@@ -108,7 +108,9 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
         "    percentile_map[depth_mask] = ranks.to(torch.float32) * (100.0 / valid_depths.numel())\n"
         "    return percentile_map\n\n\n"
     )
-    source = source.replace(percentile_helper_marker, percentile_helper + percentile_helper_marker, 1)
+    source = source.replace(
+        percentile_helper_marker, percentile_helper + percentile_helper_marker, 1
+    )
 
     phase2_marker = (
         "        # Phase 2: Preprocessing -- precompute MoGe depth and SAM3 sky masks by video.\n"
@@ -297,7 +299,9 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
         raise RuntimeError("expected pinned CPU percentile compute block not found")
     source = source.replace(percentile_compute_old, percentile_compute_new, 1)
 
-    debug_marker = "                    if debug_mode:\n                        # Visualize debug outputs.\n"
+    debug_marker = (
+        "                    if debug_mode:\n                        # Visualize debug outputs.\n"
+    )
     debug_replacement = (
         "                    if debug_mode:\n"
         "                        guided_depth_np = guided_depth.cpu().numpy()\n"
@@ -310,12 +314,8 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
         raise RuntimeError("expected pinned percentile debug marker not found")
     source = source.replace(debug_marker, debug_replacement, 1)
 
-    percentile_log_old = (
-        '                                    f" depth percentile error ratio: {percentile_mask.float().sum() / (guided_mono_mask.sum() + 1e-7):.5f}", "info")\n'
-    )
-    percentile_log_new = (
-        '                                    f" depth percentile error ratio: {percentile_mask.float().sum() / (guided_mono_mask.float().sum() + 1e-7):.5f}", "info")\n'
-    )
+    percentile_log_old = '                                    f" depth percentile error ratio: {percentile_mask.float().sum() / (guided_mono_mask.sum() + 1e-7):.5f}", "info")\n'
+    percentile_log_new = '                                    f" depth percentile error ratio: {percentile_mask.float().sum() / (guided_mono_mask.float().sum() + 1e-7):.5f}", "info")\n'
     if source.count(percentile_log_old) != 1:
         raise RuntimeError("expected pinned percentile log line not found")
     source = source.replace(percentile_log_old, percentile_log_new, 1)

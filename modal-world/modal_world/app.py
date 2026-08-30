@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import modal
 
 from .hyworld2_runtime import (
@@ -207,14 +209,31 @@ def worldmirror_office_inference() -> dict:
 
 
 worldgen_outputs = modal.Volume.from_name("hyworld2-worldgen-output", create_if_missing=True)
-hf_secret = modal.Secret.from_name("hyworld2-hf")
+hf_secret = modal.Secret.from_name(os.environ.get("MODAL_WORLD_HF_SECRET", "hyworld2-hf"))
+
+
+def _spawn_worker_call(method, *, job_id: str, wait_timeout_s: float) -> dict:
+    """Spawn a deployed worker call with a hard timeout and cost-safe cancellation."""
+    call = method.spawn(job_id=job_id, force=False)
+    try:
+        result = call.get(timeout=wait_timeout_s)
+    except TimeoutError as exc:
+        try:
+            call.cancel(terminate_containers=True)
+        finally:
+            raise TimeoutError(
+                f"worker call timed out after {wait_timeout_s}s and was cancelled: {call.object_id}"
+            ) from exc
+    if isinstance(result, dict):
+        return {**result, "function_call_id": call.object_id}
+    return {"result": result, "function_call_id": call.object_id}
 
 
 @app.function(image=base_image, timeout=2 * 60 * 60)
 def worldgen_case000_stage1(job_id: str = "case000") -> dict:
     """Dispatch Stage 1 to the persistent WorldNav/Qwen worker."""
     worker_cls = modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")
-    return worker_cls().generate_nav.remote(job_id=job_id, force=False)
+    return _spawn_worker_call(worker_cls().generate_nav, job_id=job_id, wait_timeout_s=30 * 60)
 
 
 @app.function(
@@ -238,6 +257,7 @@ def preload_worldnav_stage1_weights() -> dict:
     from huggingface_hub import snapshot_download
 
     specs = [
+        ("Qwen/Qwen3-VL-8B-Instruct", None),
         (
             "naver-iv/zim-anything-vitl",
             ["zim_vit_l_2092/**"],
@@ -273,11 +293,81 @@ def preload_worldnav_stage1_weights() -> dict:
     }
 
 
+@app.function(
+    image=hyworld2_worldgen_stage1_image,
+    cpu=4.0,
+    memory=16384,
+    volumes={"/models": model_cache.with_mount_options(read_only=True)},
+    secrets=[hf_secret],
+    timeout=20 * 60,
+)
+def verify_worldnav_stage1_cache() -> dict:
+    """Verify Stage 1 assets resolve fully offline before allocating a GPU worker."""
+    import json
+    import os
+    import time
+    from pathlib import Path
+
+    os.environ["HF_HOME"] = "/models/huggingface"
+    os.environ["HUGGINGFACE_HUB_CACHE"] = "/models/huggingface/hub"
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
+    from huggingface_hub import snapshot_download
+    from transformers import AutoConfig, AutoProcessor
+
+    started = time.perf_counter()
+    qwen_id = "Qwen/Qwen3-VL-8B-Instruct"
+    qwen_snapshot = Path(snapshot_download(qwen_id, local_files_only=True))
+    AutoConfig.from_pretrained(qwen_id, local_files_only=True)
+    AutoProcessor.from_pretrained(qwen_id, local_files_only=True)
+
+    index_path = qwen_snapshot / "model.safetensors.index.json"
+    if index_path.is_file():
+        index = json.loads(index_path.read_text())
+        shards = sorted({str(name) for name in index.get("weight_map", {}).values()})
+    else:
+        shards = ["model.safetensors"]
+    missing_shards = [name for name in shards if not (qwen_snapshot / name).is_file()]
+    if not shards or missing_shards:
+        raise RuntimeError(f"Qwen Stage1 cache incomplete: missing={missing_shards}")
+
+    other_specs = [
+        ("naver-iv/zim-anything-vitl", ["zim_vit_l_2092/**"]),
+        ("IDEA-Research/grounding-dino-tiny", None),
+        ("Ruicheng/moge-2-vitl-normal", None),
+        ("facebook/sam3", None),
+    ]
+    snapshots = {}
+    for repo_id, allow_patterns in other_specs:
+        snapshots[repo_id] = snapshot_download(
+            repo_id,
+            allow_patterns=allow_patterns,
+            local_files_only=True,
+        )
+
+    zim = Path(snapshots["naver-iv/zim-anything-vitl"]) / "zim_vit_l_2092"
+    zim_required = [zim / "encoder.onnx", zim / "decoder.onnx"]
+    missing_zim = [str(path) for path in zim_required if not path.is_file()]
+    if missing_zim:
+        raise RuntimeError(f"Stage1 ZIM cache incomplete: {missing_zim}")
+
+    return {
+        "success": True,
+        "offline": True,
+        "qwen_snapshot": str(qwen_snapshot),
+        "qwen_weight_shards": len(shards),
+        "qwen_weight_bytes": sum((qwen_snapshot / name).stat().st_size for name in shards),
+        "other_snapshots": snapshots,
+        "elapsed_s": round(time.perf_counter() - started, 3),
+    }
+
+
 @app.function(image=base_image, timeout=2 * 60 * 60)
 def worldgen_case000_stage2(job_id: str = "case000") -> dict:
     """Dispatch Stage 2 to the deployed persistent WorldNav renderer worker."""
     worker_cls = modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")
-    return worker_cls().render.remote(job_id=job_id, force=False)
+    return _spawn_worker_call(worker_cls().render, job_id=job_id, wait_timeout_s=30 * 60)
 
 
 @app.function(
@@ -326,6 +416,7 @@ def preload_worldstereo_stage3_weights() -> dict:
         ("Ruicheng/moge-2-vitl-normal", None),
         ("facebook/sam3", None),
         ("facebook/dinov2-base", None),
+        ("tencent/HY-World-2.0", ["HY-WorldMirror-2.0/**"]),
     ]
     for repo_id, allow_patterns in specs:
         repo_started = time.perf_counter()
@@ -379,6 +470,8 @@ def verify_worldstereo_stage3_cache() -> dict:
     from transformers import AutoConfig, AutoImageProcessor, CLIPImageProcessor, T5TokenizerFast
 
     worldstereo_repo = "hanshanxue/WorldStereo"
+    worldmirror_repo = "tencent/HY-World-2.0"
+    worldmirror_subfolder = "HY-WorldMirror-2.0"
     wan_repo = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
     report_path = Path("/models/stage3_cache_verify.json")
     report = {"offline": True, "steps": {}, "required_paths": {}}
@@ -421,6 +514,35 @@ def verify_worldstereo_stage3_cache() -> dict:
             local_files_only=True,
         ),
     )
+    worldmirror_snapshot = Path(
+        checked(
+            "worldmirror_snapshot",
+            lambda: snapshot_download(
+                worldmirror_repo,
+                allow_patterns=[f"{worldmirror_subfolder}/**"],
+                local_files_only=True,
+            ),
+        )
+    )
+    worldmirror_dir = worldmirror_snapshot / worldmirror_subfolder
+    worldmirror_weights = worldmirror_dir / "model.safetensors"
+    worldmirror_configs = [
+        worldmirror_dir / "config.yaml",
+        worldmirror_dir / "config.json",
+    ]
+    if not worldmirror_weights.is_file() or not any(path.is_file() for path in worldmirror_configs):
+        raise RuntimeError(
+            "WorldMirror cache incomplete: "
+            f"weights={worldmirror_weights.is_file()} "
+            f"config={any(path.is_file() for path in worldmirror_configs)} "
+            f"dir={worldmirror_dir}"
+        )
+    report["required_paths"]["worldmirror_snapshot"] = str(worldmirror_snapshot)
+    report["required_paths"]["worldmirror_weights"] = str(worldmirror_weights)
+    report["required_paths"]["worldmirror_config"] = str(
+        next(path for path in worldmirror_configs if path.is_file())
+    )
+
     report["required_paths"]["wan_snapshot"] = checked(
         "wan_snapshot",
         lambda: snapshot_download(
@@ -501,6 +623,7 @@ def verify_worldstereo_stage3_cache() -> dict:
         "moge": cache / "models--Ruicheng--moge-2-vitl-normal" / "blobs",
         "sam3": cache / "models--facebook--sam3" / "blobs",
         "dinov2": cache / "models--facebook--dinov2-base" / "blobs",
+        "worldmirror": cache / "models--tencent--HY-World-2.0" / "blobs",
     }
     blob_bytes = {}
     blob_files = {}
@@ -531,7 +654,7 @@ def verify_worldstereo_stage3_cache() -> dict:
 def worldgen_case000_stage3(job_id: str = "case000") -> dict:
     """Dispatch Stage 3 to the deployed persistent WorldStereo worker."""
     worker_cls = modal.Cls.from_name("modal-world-stage3", "WorldStereoWorker")
-    return worker_cls().generate.remote(job_id=job_id, force=False)
+    return _spawn_worker_call(worker_cls().generate, job_id=job_id, wait_timeout_s=45 * 60)
 
 
 @app.function(

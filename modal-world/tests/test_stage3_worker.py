@@ -33,7 +33,7 @@ def test_stage3_worker_is_persistent_and_model_load_is_enter_only():
     assert "min_containers=0" in source
     assert "scaledown_window=5 * 60" in source
     assert "max_containers=1" in source
-    assert 'model_cache.with_mount_options(read_only=True)' in source
+    assert "model_cache.with_mount_options(read_only=True)" in source
     assert '"hyworld2-runtime-cache-v2", create_if_missing=True, version=2' in source
     assert "@modal.enter()" in source
     assert "def load_models" in source
@@ -132,3 +132,19 @@ def test_stage3_percentile_ranking_stays_on_gpu():
     assert "guided_depth_percentile_t" in patch
     assert "mono_depth_percentile_t" in patch
     assert "guided_mono_mask.float().sum()" in patch
+
+
+def test_stage3_has_load_only_gpu_probe():
+    source = Path("modal_world/stage3_app.py").read_text()
+    probe = source[source.index("def probe") : source.index("def _stage3_manifest")]
+    assert '"worldstereo_loaded"' in probe
+    assert '"moge_loaded"' in probe
+    assert '"sam3_loaded"' in probe
+    assert "memory_allocated" in probe
+    assert "def generate" not in probe
+
+
+def test_stage3_reload_worldgen_volume_before_generate():
+    source = Path("modal_world/stage3_app.py").read_text()
+    generate = source[source.index("def generate") :]
+    assert "worldgen_outputs.reload()" in generate[:300]

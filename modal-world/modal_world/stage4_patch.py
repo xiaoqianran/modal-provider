@@ -8,61 +8,63 @@ def patch_stage4_single_gpu(source_root: str | Path) -> None:
     script = Path(source_root) / "hyworld2/worldgen/gen_gs_data.py"
     source = script.read_text()
 
-    model_old = '    moge_model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(device)\n'
+    model_old = (
+        '    moge_model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(device)\n'
+    )
     model_new = (
-        '    moge_model = MoGeModel.from_pretrained(\n'
+        "    moge_model = MoGeModel.from_pretrained(\n"
         '        "Ruicheng/moge-2-vitl-normal", local_files_only=True\n'
-        '    ).to(device)\n'
+        "    ).to(device)\n"
     )
     if source.count(model_old) != 1:
         raise RuntimeError("expected pinned Stage 4 MoGe loader not found")
     source = source.replace(model_old, model_new, 1)
 
     init_old = (
-        '    dist.init_process_group(\n'
+        "    dist.init_process_group(\n"
         '        backend="cpu:gloo,cuda:nccl",\n'
-        '        rank=rank,\n'
-        '        world_size=world_size,\n'
-        '    )\n'
+        "        rank=rank,\n"
+        "        world_size=world_size,\n"
+        "    )\n"
     )
     init_new = (
-        '    if world_size > 1:\n'
-        '        dist.init_process_group(\n'
+        "    if world_size > 1:\n"
+        "        dist.init_process_group(\n"
         '            backend="cpu:gloo,cuda:nccl",\n'
-        '            rank=rank,\n'
-        '            world_size=world_size,\n'
-        '        )\n'
+        "            rank=rank,\n"
+        "            world_size=world_size,\n"
+        "        )\n"
     )
     if source.count(init_old) != 1:
         raise RuntimeError("expected pinned Stage 4 distributed init block not found")
     source = source.replace(init_old, init_new, 1)
 
     gather_old = (
-        '    gather_list = [None] * world_size\n'
-        '    dist.all_gather_object(gather_list, local_cameras)\n\n'
-        '    if rank == 0:\n'
+        "    gather_list = [None] * world_size\n"
+        "    dist.all_gather_object(gather_list, local_cameras)\n\n"
+        "    if rank == 0:\n"
     )
     gather_new = (
-        '    if world_size == 1:\n'
-        '        return dict(local_cameras) if rank == 0 else {}\n\n'
-        '    gather_list = [None] * world_size\n'
-        '    dist.all_gather_object(gather_list, local_cameras)\n\n'
-        '    if rank == 0:\n'
+        "    if world_size == 1:\n"
+        "        return dict(local_cameras) if rank == 0 else {}\n\n"
+        "    gather_list = [None] * world_size\n"
+        "    dist.all_gather_object(gather_list, local_cameras)\n\n"
+        "    if rank == 0:\n"
     )
     if source.count(gather_old) != 1:
         raise RuntimeError("expected pinned Stage 4 camera gather block not found")
     source = source.replace(gather_old, gather_new, 1)
 
     sizes_old = (
-        '            all_sizes = [None] * world_size\n'
-        '            dist.all_gather_object(all_sizes, (img_width, img_height))\n'
+        "            all_sizes = [None] * world_size\n"
+        "            dist.all_gather_object(all_sizes, (img_width, img_height))\n"
     )
     sizes_new = (
-        '            if world_size == 1:\n'
-        '                all_sizes = [(img_width, img_height)]\n'
-        '            else:\n'
-        '                all_sizes = [None] * world_size\n'
-        '                dist.all_gather_object(all_sizes, (img_width, img_height))\n'
+        "            if world_size == 1:\n"
+        "                all_sizes = [(img_width, img_height)]\n"
+        "            else:\n"
+        "                all_sizes = [None] * world_size\n"
+        "                dist.all_gather_object(all_sizes, (img_width, img_height))\n"
     )
     if source.count(sizes_old) != 1:
         raise RuntimeError("expected pinned Stage 4 size gather block not found")
