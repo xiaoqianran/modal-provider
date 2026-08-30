@@ -191,3 +191,51 @@ def test_non_retryable_deployment_failure_is_not_retried(monkeypatch):
     assert finished["status"] == "failed"
     assert calls == 1
     assert finished["targets"][0]["attempts"] == 1
+
+
+def test_force_redeploy_records_mode_and_dedupes_only_while_active(monkeypatch):
+    target = DeploymentTarget("modal-3d", "worker", "runtime.worker")
+    service = DeploymentService(targets=(target,), retry_backoff_s=0)
+    service._client = SimpleNamespace()
+    monkeypatch.setattr(
+        service,
+        "_target_status",
+        lambda *_args, **_kwargs: {"status": "stale", "runnable": False},
+    )
+    release = threading.Event()
+    calls = 0
+
+    class App:
+        def deploy(self, **kwargs):
+            nonlocal calls
+            calls += 1
+            assert kwargs["strategy"] == "rolling"
+            release.wait(2)
+            return self
+
+        def get_tags(self, **_kwargs):
+            return {}
+
+        def set_tags(self, *_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr(
+        "modal_gen.deployments.importlib.import_module",
+        lambda _name: SimpleNamespace(app=App()),
+    )
+
+    first = service.start_deploy("modal-3d", app_name="worker", force=True, strategy="rolling")
+    second = service.start_deploy("modal-3d", app_name="worker", force=True, strategy="rolling")
+    assert first["id"] == second["id"]
+    assert first["force"] is True
+    assert first["strategy"] == "rolling"
+
+    release.set()
+    finished = _wait(service, str(first["id"]))
+    assert finished["targets"][0]["force"] is True
+    assert calls == 1
+
+    third = service.start_deploy("modal-3d", app_name="worker", force=True, strategy="rolling")
+    assert third["id"] != first["id"]
+    assert _wait(service, str(third["id"]))["status"] == "succeeded"
+    assert calls == 2

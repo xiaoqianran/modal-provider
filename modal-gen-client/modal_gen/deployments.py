@@ -12,9 +12,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import modal
+from modal._utils.async_utils import synchronizer
 from modal.exception import ConnectionError as ModalConnectionError
 from modal.exception import InternalError, NotFoundError, ServiceError
 from modal.exception import TimeoutError as ModalTimeoutError
+from modal_proto import api_pb2
 
 from .errors import ConnectorError
 from .weights import WeightProvisioner, WeightSpec
@@ -41,6 +43,13 @@ class DeploymentTarget:
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+async def _rollover_app(client, app_id: str):
+    return await client.stub.AppRollover(api_pb2.AppRolloverRequest(app_id=app_id))
+
+
+_rollover_app_blocking = synchronizer.create_blocking(_rollover_app)
 
 
 _DEPLOYMENT_TAG = re.compile(r"^[A-Za-z0-9._-]{1,50}$")
@@ -336,8 +345,15 @@ class DeploymentService:
         strategy: str = "rolling",
         environment_name: str | None = None,
         missing_only: bool = False,
+        force: bool = False,
     ) -> dict[str, object]:
         self._validate_strategy(strategy)
+        if force and missing_only:
+            raise ConnectorError(
+                "DEPLOYMENT_MODE_CONFLICT",
+                "force 与 missingOnly 不能同时启用",
+                422,
+            )
         client = self._require_client()
         targets = self._select_targets(provider, app_name)
         if missing_only:
@@ -359,6 +375,7 @@ class DeploymentService:
                         client,
                         strategy=strategy,
                         environment_name=environment_name,
+                        force=force,
                     )
                 )
         return self._summary(rows)
@@ -419,6 +436,36 @@ class DeploymentService:
                 "retryable": isinstance(exc, _DEPLOY_RETRYABLE),
             }
 
+    def _rollover_target(
+        self,
+        target: DeploymentTarget,
+        client: modal.Client,
+        *,
+        environment_name: str | None,
+        on_phase=None,
+    ) -> dict[str, object]:
+        """Refresh containers for an already-current deployment without rebuilding it."""
+        if on_phase is not None:
+            on_phase("redeploying")
+        deployed = modal.App.lookup(
+            target.app_name,
+            client=client,
+            environment_name=environment_name,
+        )
+
+        _rollover_app_blocking(client, deployed.app_id)
+        return {
+            "provider": target.provider,
+            "app": target.app_name,
+            "module": target.module,
+            "status": "current",
+            "expectedRevision": target.revision,
+            "deployedRevision": target.revision,
+            "models": list(target.models),
+            "required": target.required,
+            "action": "rollover",
+        }
+
     def _deploy_target_with_retry(
         self,
         target: DeploymentTarget,
@@ -426,6 +473,7 @@ class DeploymentService:
         *,
         strategy: str,
         environment_name: str | None,
+        force: bool = False,
         on_attempt=None,
         on_phase=None,
     ) -> dict[str, object]:
@@ -433,13 +481,40 @@ class DeploymentService:
         for attempt in range(1, self._max_attempts + 1):
             if on_attempt is not None:
                 on_attempt(attempt)
-            last = self._deploy_target(
-                target,
-                client,
-                strategy=strategy,
-                environment_name=environment_name,
-                on_phase=on_phase,
-            )
+            current = self._target_status(target, client, environment_name) if force else None
+            if (
+                current is not None
+                and current.get("status") == "current"
+                and current.get("runnable")
+            ):
+                try:
+                    last = self._rollover_target(
+                        target,
+                        client,
+                        environment_name=environment_name,
+                        on_phase=on_phase,
+                    )
+                except Exception as exc:
+                    last = {
+                        "provider": target.provider,
+                        "app": target.app_name,
+                        "module": target.module,
+                        "status": "failed",
+                        "expectedRevision": target.revision,
+                        "models": list(target.models),
+                        "required": target.required,
+                        "error": str(exc),
+                        "retryable": isinstance(exc, _DEPLOY_RETRYABLE),
+                        "action": "rollover",
+                    }
+            else:
+                last = self._deploy_target(
+                    target,
+                    client,
+                    strategy=strategy,
+                    environment_name=environment_name,
+                    on_phase=on_phase,
+                )
             last["attempts"] = attempt
             if last.get("status") != "failed" or last.get("retryable") is not True:
                 return last
@@ -456,12 +531,19 @@ class DeploymentService:
         strategy: str = "rolling",
         environment_name: str | None = None,
         missing_only: bool = False,
+        force: bool = False,
     ) -> dict[str, object]:
         self._require_client()
         self._validate_strategy(strategy)
+        if force and missing_only:
+            raise ConnectorError(
+                "DEPLOYMENT_MODE_CONFLICT",
+                "force 与 missingOnly 不能同时启用",
+                422,
+            )
         self._select_targets(provider, app_name)
         self._invalidate_readiness_cache()
-        request_key = (provider, app_name, strategy, environment_name, missing_only)
+        request_key = (provider, app_name, strategy, environment_name, missing_only, force)
         with self._lock:
             existing_id = self._active_requests.get(request_key)
             if existing_id is not None:
@@ -479,6 +561,7 @@ class DeploymentService:
             "strategy": strategy,
             "environment": environment_name,
             "missingOnly": missing_only,
+            "force": force,
             "createdAt": timestamp,
             "updatedAt": timestamp,
             "result": None,
@@ -499,6 +582,7 @@ class DeploymentService:
                 strategy,
                 environment_name,
                 missing_only,
+                force,
             ),
             name=f"modal-gen-deploy-job-{job_id[-8:]}",
             daemon=True,
@@ -515,6 +599,7 @@ class DeploymentService:
         strategy: str,
         environment_name: str | None,
         missing_only: bool,
+        force: bool,
     ) -> None:
         self._update_job(job_id, status="running")
         try:
@@ -532,6 +617,7 @@ class DeploymentService:
                         "provider": target.provider,
                         "app": target.app_name,
                         "status": "queued",
+                        "force": force,
                     }
                     for target in targets
                 ],
@@ -545,6 +631,7 @@ class DeploymentService:
                     client,
                     strategy,
                     environment_name,
+                    force,
                 )
                 for index, target in enumerate(targets)
             ]
@@ -565,6 +652,7 @@ class DeploymentService:
         client: modal.Client,
         strategy: str,
         environment_name: str | None,
+        force: bool,
     ) -> dict[str, object]:
         lock = self._target_locks.setdefault((target.provider, target.app_name), threading.Lock())
 
@@ -581,6 +669,7 @@ class DeploymentService:
                 client,
                 strategy=strategy,
                 environment_name=environment_name,
+                force=force,
                 on_attempt=on_attempt,
                 on_phase=on_phase,
             )

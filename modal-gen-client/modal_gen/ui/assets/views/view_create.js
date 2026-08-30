@@ -135,6 +135,7 @@ export async function mountCreate(root) {
       // validate + paint inline errors
       let ok = true;
       for (const [key, ref] of Object.entries(fieldRefs)) {
+        if (!ref.batch) values[key] = readFieldControl(ref.control, ref.spec);
         const err = ref.batch
           ? validatePromptBatch(ref.control.value, ref.spec, ref.required)
           : validateField(key, ref.spec, ref.required, limits, values);
@@ -409,28 +410,42 @@ function buildField(key, spec, required, limits, values, fieldRefs) {
   let control;
   if (spec.enum) {
     control = h("select", { class: "select" }, h("option", { value: "" }, "— 选择 —"), ...spec.enum.map((v) => h("option", { value: v }, v)));
-    control.addEventListener("change", () => { values[key] = control.value || undefined; });
+    const preferred = spec.enum.includes(spec.default)
+      ? spec.default
+      : required && spec.enum.length === 1
+        ? spec.enum[0]
+        : "";
+    control.value = preferred;
   } else if (spec.type === "integer" || spec.type === "number") {
     control = h("input", { class: "input", type: "number", step: spec.type === "number" ? "any" : "1" });
     if (spec.minimum != null) control.min = spec.minimum;
     if (spec.maximum != null) control.max = spec.maximum;
-    control.addEventListener("input", () => { values[key] = control.value === "" ? undefined : Number(control.value); });
+    if (spec.default != null) control.value = String(spec.default);
   } else if (spec.type === "string") {
     if ((spec.maxLength || 0) > 160) control = h("textarea", { class: "textarea" });
     else control = h("input", { class: "input", type: "text", maxLength: spec.maxLength || 4000 });
-    control.addEventListener("input", () => { values[key] = control.value || undefined; });
+    if (typeof spec.default === "string") control.value = spec.default;
   } else {
     control = h("input", { class: "input", type: "text" });
-    control.addEventListener("input", () => { values[key] = control.value || undefined; });
+    if (spec.default != null) control.value = String(spec.default);
   }
   const errEl = h("div", { class: "field__error", dataset: { err: key } });
-  if (fieldRefs) fieldRefs[key] = { control, errEl, spec, required };
-  control.addEventListener("input", () => {
+  const sync = () => {
+    values[key] = readFieldControl(control, spec);
     const e = validateField(key, spec, required, limits, values);
     errEl.textContent = e || "";
     control.setAttribute("aria-invalid", e ? "true" : "false");
-  });
+  };
+  control.addEventListener(spec.enum ? "change" : "input", sync);
+  if (fieldRefs) fieldRefs[key] = { control, errEl, spec, required };
+  sync();
   return h("div", { class: "field" }, label, control, errEl);
+}
+
+function readFieldControl(control, spec) {
+  if (control.value === "") return undefined;
+  if (spec.type === "integer" || spec.type === "number") return Number(control.value);
+  return control.value;
 }
 
 function validateField(key, spec, required, limits, values) {

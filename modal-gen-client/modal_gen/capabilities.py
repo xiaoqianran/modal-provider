@@ -58,13 +58,19 @@ class CapabilityRegistry:
         self.store.save_snapshot(snapshot)
         return snapshot
 
-    async def snapshot_async(self, *, now: datetime | None = None) -> dict[str, object]:
+    async def snapshot_async(
+        self, *, now: datetime | None = None, force_runtime: bool = False
+    ) -> dict[str, object]:
         timestamp = now or datetime.now(UTC)
         providers: list[dict[str, object]] = []
         for adapter in self.adapters.values():
             try:
                 descriptor = adapter.descriptor()
-                providers.append(await self._with_runtime_readiness_async(adapter.id, descriptor))
+                providers.append(
+                    await self._with_runtime_readiness_async(
+                        adapter.id, descriptor, force_runtime=force_runtime
+                    )
+                )
             except ProviderError:
                 providers.append(adapter.unavailable_descriptor())
         canonical = {
@@ -99,12 +105,16 @@ class CapabilityRegistry:
         return project_runtime_readiness(descriptor, readiness)
 
     async def _with_runtime_readiness_async(
-        self, provider_id: str, descriptor: dict[str, object]
+        self,
+        provider_id: str,
+        descriptor: dict[str, object],
+        *,
+        force_runtime: bool = False,
     ) -> dict[str, object]:
         if self.deployments is None or not self.deployments.connected:
             return descriptor
         try:
-            readiness = await self.deployments.status_async(provider_id)
+            readiness = await self.deployments.status_async(provider_id, force=force_runtime)
         except Exception:
             return descriptor
         return project_runtime_readiness(descriptor, readiness)

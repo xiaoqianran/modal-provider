@@ -197,7 +197,7 @@ def test_live_gateway_builds_current_connector_job_contract(monkeypatch) -> None
     snapshot = build_capability_snapshot()
     captured = {}
 
-    def fake_req(method, path, *, json_body=None, headers=None, token=None):
+    def fake_req(method, path, *, json_body=None, headers=None, token=None, **kwargs):
         if path == "/v1/capabilities":
             return snapshot
         if path == "/connector/v1/jobs" and method == "POST":
@@ -398,7 +398,7 @@ def test_live_gateway_capability_snapshot_uses_short_ui_cache(monkeypatch) -> No
     assert gateway.capabilities()["cached"] is False
     assert gateway.capabilities()["cached"] is True
     assert gateway.capabilities(force=True)["cached"] is False
-    assert calls == [("GET", "/v1/capabilities"), ("GET", "/v1/capabilities")]
+    assert calls == [("GET", "/v1/capabilities"), ("GET", "/v1/capabilities?refresh=1")]
 
 
 def test_live_gateway_jobs_only_refreshes_visible_page(monkeypatch) -> None:
@@ -504,3 +504,83 @@ def test_ui_surfaces_deployed_but_blocked_models() -> None:
     assert 'return capability?.status === "available";' in presenter
     assert "已部署" in presenter
     assert "版本过旧" in presenter
+
+
+def test_runtime_ui_exposes_explicit_force_redeploy() -> None:
+    source = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_connect.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "重新部署 2D + 3D" in source
+    assert "force: true" in source
+    assert 'strategy: "rolling"' in source
+    assert 'app.status === "current"' in source
+    assert 'strategy: "rolling"' in source
+
+
+def test_live_gateway_submit_retries_timeout_with_same_identity(monkeypatch) -> None:
+    from modal_gen.ui.server import LiveGateway
+
+    gateway = LiveGateway()
+    gateway.token = "session-token"
+    snapshot = build_capability_snapshot()
+    attempts = []
+
+    def fake_req(method, path, **kwargs):
+        if path == "/v1/capabilities":
+            return snapshot
+        if path == "/connector/v1/jobs" and method == "POST":
+            attempts.append(kwargs)
+            if len(attempts) == 1:
+                raise RuntimeError("connector unreachable: timed out")
+            return {"job": {"id": "job_retry", "status": "accepted"}}
+        raise AssertionError((method, path, kwargs))
+
+    monkeypatch.setattr(gateway, "_req", fake_req)
+    row = gateway.submit(
+        "modal-2d",
+        "modal-2d.image.text_to_image.v1",
+        {"prompt": "test", "model": "sana-sprint-0.6b"},
+    )
+
+    assert row["id"] == "job_retry"
+    assert len(attempts) == 2
+    assert attempts[0]["timeout"] == attempts[1]["timeout"] == 20.0
+    assert attempts[0]["json_body"]["idempotencyKey"] == attempts[1]["json_body"]["idempotencyKey"]
+
+
+def test_live_gateway_force_refresh_and_redeploy_are_forwarded(monkeypatch) -> None:
+    from modal_gen.ui.server import LiveGateway
+
+    gateway = LiveGateway()
+    calls = []
+
+    def fake_req(method, path, **kwargs):
+        calls.append((method, path, kwargs))
+        return {"providers": []} if method == "GET" else {"job": {"id": "dep_1"}}
+
+    monkeypatch.setattr(gateway, "_req", fake_req)
+    gateway.deployments(force=True)
+    gateway.deploy("modal-3d", "modal-3d-rembg", force=True, strategy="rolling")
+
+    assert calls[0][1] == "/v1/deployments?refresh=1"
+    assert calls[1][2]["json_body"] == {
+        "provider": "modal-3d",
+        "missingOnly": False,
+        "force": True,
+        "strategy": "rolling",
+        "app": "modal-3d-rembg",
+    }
+
+
+def test_runtime_ui_exposes_resync_and_model_value_sync() -> None:
+    connect = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_connect.js").read_text(
+        encoding="utf-8"
+    )
+    create = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_create.js").read_text(encoding="utf-8")
+
+    assert "重新同步状态" in connect
+    assert 'apiGet("deployments?refresh=1")' in connect
+    assert "loadCapabilities({ refresh: true })" in connect
+    assert "values[key] = readFieldControl(ref.control, ref.spec)" in create
+    assert "required && spec.enum.length === 1" in create

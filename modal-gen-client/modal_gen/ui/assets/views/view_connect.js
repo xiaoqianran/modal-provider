@@ -173,7 +173,7 @@ function connectionPanel(connections, hfSecret) {
   );
   const connect = h("button", { class: "btn btn--primary connect-action", type: "button" });
   const disconnect = h("button", { class: "btn", type: "button" }, "断开全部");
-  const deployAll = h("button", { class: "btn", type: "button" }, "部署 2D + 3D");
+  const deployAll = h("button", { class: "btn", type: "button" }, "重新部署 2D + 3D");
   const hfToken = h("input", {
     class: "input input--mono",
     type: "password",
@@ -289,11 +289,18 @@ function connectionPanel(connections, hfSecret) {
     status.className = "connect-hint";
     status.textContent = "正在部署 2D / 3D Runtime；首次部署可能需要构建镜像。";
     try {
-      const result = await apiPost("deployments/deploy", { provider: "all" });
-      const failed = (result.providers || []).some((item) => ["failed", "error"].includes(item.status));
+      const result = await apiPost("deployments/deploy", {
+        provider: "all",
+        force: true,
+        strategy: "rolling",
+      });
+      const job = result.job;
+      if (!job?.id) throw new Error("Deployment Job identity 无效");
+      const finished = await waitForDeploymentJob(job.id);
+      const failed = ["failed", "partial"].includes(finished.status);
       status.className = failed ? "connect-hint connect-hint--error" : "connect-hint connect-hint--ok";
-      status.textContent = failed ? "部署未全部完成，请查看 Runtime 状态。" : "2D / 3D Runtime 已部署。";
-      toast(failed ? "部分 Runtime 部署失败" : "2D / 3D Runtime 部署完成", failed ? "danger" : "ok");
+      status.textContent = failed ? "重新部署未全部完成，请查看 Runtime 状态。" : "2D / 3D Runtime 已重新部署。";
+      toast(failed ? "部分 Runtime 重新部署失败" : "2D / 3D Runtime 重新部署完成", failed ? "danger" : "ok");
     } catch (e) {
       status.className = "connect-hint connect-hint--error";
       status.textContent = String(e.message || e);
@@ -500,10 +507,11 @@ function skeletonRows(n) {
 
 function deploymentPanel(rows) {
   const body = h("div", { class: "panel__body stack" });
-  const deployAll = deploymentAction("部署全部缺失", "all", null, body, false, true);
+  const deployAll = deploymentAction("部署全部缺失", "all", null, body, false, true, false);
+  const resync = runtimeResyncAction(body);
   body.append(h("div", { class: "row spread" },
-    h("p", { class: "muted" }, "直接调用 Modal SDK 部署；Modal 凭据保存在本机 .secrets，并在启动时自动恢复。"),
-    deployAll
+    h("p", { class: "muted" }, "部署会修改 Modal Runtime；重新同步只读取 App / revision / weights / capability，不会重新部署。"),
+    h("div", { class: "row" }, resync, deployAll)
   ));
 
   for (const row of rows) {
@@ -514,7 +522,8 @@ function deploymentPanel(rows) {
       null,
       body,
       false,
-      !["current", "stale"].includes(row.status)
+      !["current", "stale"].includes(row.status),
+      row.status === "current"
     );
     body.append(h("div", { class: "cap-row" },
       h("div", { class: "row spread" },
@@ -535,7 +544,15 @@ function deploymentPanel(rows) {
 }
 
 function runtimeAppRow(provider, app, refreshHost) {
-  const action = deploymentAction(app.status === "current" ? "重新部署" : app.status === "stale" ? "更新" : "部署", provider, app.app, refreshHost, true);
+  const action = deploymentAction(
+    app.status === "current" ? "重新部署" : app.status === "stale" ? "更新" : "部署",
+    provider,
+    app.app,
+    refreshHost,
+    true,
+    false,
+    app.status === "current"
+  );
   const weightsStatus = app.weights?.status;
   const detail = app.weightError
     ? app.weightError
@@ -557,13 +574,44 @@ function deploymentStatusBadge(status) {
   return h("span", { class: `badge badge--${mapped === "available" ? "ok" : mapped === "degraded" ? "warn" : "neutral"}` }, label);
 }
 
-function deploymentAction(label, provider, appName, refreshHost, compact = false, missingOnly = false) {
+function runtimeResyncAction(refreshHost) {
+  const button = h("button", { class: "btn", type: "button" }, "重新同步状态");
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.replaceChildren(h("span", { class: "spinner" }), "同步中…");
+    try {
+      const deployments = await apiGet("deployments?refresh=1");
+      invalidateCapabilities();
+      await loadCapabilities({ refresh: true });
+      if (refreshHost?.parentElement) {
+        refreshHost.parentElement.replaceWith(deploymentPanel(deployments.providers || []));
+      }
+      refreshCurrentRoute();
+      refreshNavCounts();
+      toast("Runtime / Capability 状态已重新同步", "ok");
+    } catch (error) {
+      toast(`重新同步失败：${String(error.message || error)}`, "danger");
+      button.disabled = false;
+      button.textContent = "重新同步状态";
+    }
+  });
+  return button;
+}
+
+function deploymentAction(
+  label, provider, appName, refreshHost, compact = false, missingOnly = false, force = false
+) {
   const button = h("button", { class: `btn ${compact ? "btn--sm" : ""}`, type: "button" }, label);
   button.addEventListener("click", async () => {
     button.disabled = true;
     button.textContent = "部署中…";
     try {
-      const payload = { provider, missingOnly };
+      const payload = {
+        provider,
+        missingOnly,
+        force,
+        strategy: "rolling",
+      };
       if (appName) payload.app = appName;
       const response = await apiPost("deployments/deploy", payload);
       const job = response.job;

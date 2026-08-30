@@ -93,7 +93,8 @@ class DemoGateway:
         self._connected = False
         return self.connections()
 
-    def deployments(self) -> dict:
+    def deployments(self, *, force: bool = False) -> dict:
+        del force
         return {
             "providers": [
                 {"id": "modal-2d", "status": "current", "apps": []},
@@ -108,7 +109,13 @@ class DemoGateway:
         return self.huggingface_secret()
 
     def deploy(
-        self, provider: str = "all", app_name: str | None = None, *, missing_only: bool = False
+        self,
+        provider: str = "all",
+        app_name: str | None = None,
+        *,
+        missing_only: bool = False,
+        force: bool = False,
+        strategy: str = "rolling",
     ) -> dict:
         rows = self.deployments()
         selected = (
@@ -125,6 +132,8 @@ class DemoGateway:
             "provider": provider,
             "app": app_name,
             "missingOnly": missing_only,
+            "force": force,
+            "strategy": strategy,
             "result": {"providers": selected},
         }
         return {"job": job}
@@ -253,8 +262,9 @@ class LiveGateway:
             return {"snapshot": self.snapshot, "stale": False, "cached": True}
         snap = self._req(
             "GET",
-            "/v1/capabilities",
+            f"/v1/capabilities{'?refresh=1' if force else ''}",
             headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+            timeout=30.0 if force else 5.0,
         )
         self.snapshot = snap
         self._snapshot_at = now
@@ -293,10 +303,10 @@ class LiveGateway:
         self._snapshot_at = 0.0
         return result
 
-    def deployments(self) -> dict:
+    def deployments(self, *, force: bool = False) -> dict:
         return self._req(
             "GET",
-            "/v1/deployments",
+            f"/v1/deployments{'?refresh=1' if force else ''}",
             headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
             timeout=30.0,
         )
@@ -319,9 +329,20 @@ class LiveGateway:
         )
 
     def deploy(
-        self, provider: str = "all", app_name: str | None = None, *, missing_only: bool = False
+        self,
+        provider: str = "all",
+        app_name: str | None = None,
+        *,
+        missing_only: bool = False,
+        force: bool = False,
+        strategy: str = "rolling",
     ) -> dict:
-        body = {"provider": provider, "missingOnly": missing_only}
+        body = {
+            "provider": provider,
+            "missingOnly": missing_only,
+            "force": force,
+            "strategy": strategy,
+        }
         if app_name:
             body["app"] = app_name
         return self._req(
@@ -469,7 +490,27 @@ class LiveGateway:
         body["requestHash"] = request_hash(body)
         body["idempotencyKey"] = idempotency_key(body)
         self._ensure_session()
-        payload = self._req("POST", "/connector/v1/jobs", json_body=body, token=self.token)
+        try:
+            payload = self._req(
+                "POST",
+                "/connector/v1/jobs",
+                json_body=body,
+                token=self.token,
+                timeout=20.0,
+            )
+        except RuntimeError as exc:
+            # Submission is idempotent. A timeout after the Connector accepted the
+            # request is an unknown outcome, not a safe reason to report failure.
+            # Retry once with the exact same idempotency key to recover the result.
+            if "timed out" not in str(exc).lower():
+                raise
+            payload = self._req(
+                "POST",
+                "/connector/v1/jobs",
+                json_body=body,
+                token=self.token,
+                timeout=20.0,
+            )
         return payload.get("job") if isinstance(payload, dict) else payload
 
     def cancel(self, job_id: str) -> dict:
@@ -620,7 +661,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(g.connections())
         if name == "deployments":
             try:
-                return self._send_json(g.deployments())
+                params = parse_qs(query)
+                force = params.get("refresh", ["0"])[0] in {"1", "true", "yes"}
+                return self._send_json(g.deployments(force=force))
             except RuntimeError as exc:
                 return self._send_json({"error": str(exc)}, 409)
         if name == "secrets/huggingface":
@@ -717,6 +760,8 @@ class Handler(BaseHTTPRequestHandler):
                         body.get("provider", "all"),
                         body.get("app"),
                         missing_only=bool(body.get("missingOnly", False)),
+                        force=bool(body.get("force", False)),
+                        strategy=str(body.get("strategy") or "rolling"),
                     )
                 )
             except RuntimeError as exc:

@@ -489,3 +489,86 @@ def test_missing_app_skips_weight_status_lookup(monkeypatch):
     assert row["status"] == "missing"
     assert row["runnable"] is False
     assert "weights" not in row
+
+
+def test_force_and_missing_only_are_mutually_exclusive():
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker")
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+
+    with pytest.raises(ConnectorError) as exc:
+        service.deploy("modal-2d", missing_only=True, force=True)
+    assert exc.value.code == "DEPLOYMENT_MODE_CONFLICT"
+
+
+def test_force_deploy_rolls_over_current_runtime(monkeypatch):
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker", "sha256-current")
+    rollover_requests = []
+
+    class Stub:
+        async def AppRollover(self, request):
+            rollover_requests.append(request)
+            return SimpleNamespace()
+
+    client = SimpleNamespace(stub=Stub())
+    service = DeploymentService(targets=(target,))
+    service._client = client
+
+    class RemoteApp:
+        app_id = "ap_current"
+
+        def get_tags(self, **_kwargs):
+            return {"modal-gen-revision": "sha256-current"}
+
+    monkeypatch.setattr(
+        "modal_gen.deployments.modal.App.lookup", lambda *_args, **_kwargs: RemoteApp()
+    )
+    monkeypatch.setattr(
+        "modal_gen.deployments.importlib.import_module",
+        lambda _name: (_ for _ in ()).throw(
+            AssertionError("current force redeploy must not rebuild")
+        ),
+    )
+
+    result = service.deploy("modal-2d", force=True)
+    app = result["providers"][0]["apps"][0]
+
+    assert app["status"] == "current"
+    assert app["action"] == "rollover"
+    assert len(rollover_requests) == 1
+    assert rollover_requests[0].app_id == "ap_current"
+
+
+def test_force_deploy_stale_runtime_publishes_latest_code(monkeypatch):
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker", "sha256-new")
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+    calls = []
+
+    monkeypatch.setattr(
+        service,
+        "_target_status",
+        lambda *_args, **_kwargs: {"status": "stale", "runnable": False},
+    )
+
+    class App:
+        def deploy(self, **kwargs):
+            calls.append(kwargs)
+            return self
+
+        def get_tags(self, **_kwargs):
+            return {}
+
+        def set_tags(self, *_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr(
+        "modal_gen.deployments.importlib.import_module",
+        lambda _name: SimpleNamespace(app=App()),
+    )
+
+    result = service.deploy("modal-2d", force=True)
+
+    assert result["providers"][0]["status"] == "current"
+    assert len(calls) == 1
+    assert calls[0]["strategy"] == "rolling"

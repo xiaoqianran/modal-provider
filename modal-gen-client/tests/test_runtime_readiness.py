@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from modal_gen.capabilities import CapabilityRegistry
 from modal_gen.storage import Store
 
@@ -108,3 +110,18 @@ def test_required_runtime_degrades_provider_when_worker_is_ready(tmp_path):
     assert capability["status"] == "degraded"
     assert capability["readyModels"] == ["ready"]
     assert capability["runtimeBlockers"] == [{"app": "prep", "status": "missing", "error": None}]
+
+
+def test_async_snapshot_can_force_runtime_readiness_refresh(tmp_path):
+    calls = []
+
+    class AsyncDeployments(Deployments):
+        async def status_async(self, provider, *, force=False):
+            calls.append((provider, force))
+            return self.cached_status(provider)
+
+    registry = CapabilityRegistry(Store(tmp_path / "db.sqlite3"), [Adapter()], AsyncDeployments())
+    snapshot = asyncio.run(registry.snapshot_async(force_runtime=True))
+
+    assert snapshot["providers"][0]["status"] == "available"
+    assert calls == [("modal-x", True)]

@@ -147,8 +147,8 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         return {"providers": rows}
 
     @app.get("/v1/deployments")
-    async def deployments(provider: str | None = None):
-        return await current().deployments.status_async(provider)
+    async def deployments(provider: str | None = None, refresh: bool = False):
+        return await current().deployments.status_async(provider, force=refresh)
 
     @app.get("/v1/secrets/huggingface")
     async def huggingface_secret_status():
@@ -190,6 +190,9 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         app_name = payload.get("app")
         if app_name is not None and not isinstance(app_name, str):
             raise ConnectorError("DEPLOYMENT_APP_INVALID", "app 必须是字符串", 422)
+        force = payload.get("force", False)
+        if not isinstance(force, bool):
+            raise ConnectorError("DEPLOYMENT_FORCE_INVALID", "force 必须是布尔值", 422)
         strategy = payload.get("strategy", "rolling")
         if not isinstance(strategy, str):
             raise ConnectorError("DEPLOYMENT_STRATEGY_INVALID", "strategy 必须是字符串", 422)
@@ -205,12 +208,13 @@ def create_app(state: Runtime | None = None) -> FastAPI:
             strategy=strategy,
             environment_name=environment_name or None,
             missing_only=missing_only,
+            force=force,
         )
         return {"job": job}
 
     @app.get("/v1/capabilities")
-    async def local_capabilities():
-        return await current().capabilities.snapshot_async()
+    async def local_capabilities(refresh: bool = False):
+        return await current().capabilities.snapshot_async(force_runtime=refresh)
 
     @app.get("/v1/pairings")
     def pairings():
