@@ -56,4 +56,6 @@ def test_launcher_fails_before_starting_threads_when_connector_port_is_busy(monk
 
     assert exc.value.code == 2
     assert calls == []
-    err = capsys.readouterr().err`n    assert "Connector" in err`n    assert "48123" in err`n
+    err = capsys.readouterr().err
+    assert "Connector" in err
+    assert "48123" in err
