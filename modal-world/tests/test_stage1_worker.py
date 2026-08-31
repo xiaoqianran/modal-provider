@@ -70,6 +70,7 @@ def test_stage1_uses_persistent_hf_cache_and_preloads_hidden_models():
 
 def test_stage1_rejects_hidden_navmesh_failures():
     worker = Path("modal_world/stage2_app.py").read_text()
+    assert 'target / "render_results/global_mesh.ply"' in worker
     assert 'target / "navmesh/metadata.json"' in worker
     for marker in (
         "Navmesh Error:",

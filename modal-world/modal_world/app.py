@@ -11,6 +11,7 @@ from .hyworld2_runtime import (
     HYWORLD2_REVISION,
     HYWORLD2_SOURCE,
     hyworld2_artifact_image,
+    hyworld2_panogen_image,
     hyworld2_worldgen_stage1_image,
     hyworld2_worldgen_stage3_image,
     hyworld2_worldgen_stage5_image,
@@ -210,6 +211,144 @@ def worldmirror_office_inference() -> dict:
 
 worldgen_outputs = modal.Volume.from_name("hyworld2-worldgen-output", create_if_missing=True)
 hf_secret = modal.Secret.from_name(os.environ.get("MODAL_WORLD_HF_SECRET", "hyworld2-hf"))
+
+GARDEN_PANO_PROMPT = (
+    "A breathtaking luxury English botanical garden courtyard, photorealistic and physically plausible. "
+    "Human eye-level camera around 1.6 meters above the ground. A broad elegant natural-stone pathway, "
+    "2 to 3 meters wide, stays continuous, level, unobstructed and forms a gentle loop around a central "
+    "circular lawn. Rich but organized flower beds with roses, hydrangeas, lavender and white flowers, "
+    "carefully trimmed green hedges, mature ornamental trees set away from the main walking paths, a refined "
+    "wooden garden pavilion in the middle distance, stone benches, warm garden lanterns and low stone boundary "
+    "walls. Keep the center open, spacious and clearly walkable. Soft bright morning sunlight, realistic materials, "
+    "lush vegetation, elegant landscape architecture, high-end botanical garden photography, coherent human-scale "
+    "geometry, no people, no text, no signs, no vehicles, no fantasy architecture, no floating objects, no water, "
+    "no narrow bridges, no dense foliage directly in front of the camera, no extreme depth of field."
+)
+
+
+@app.function(
+    image=hyworld2_panogen_image,
+    gpu=GPU,
+    cpu=8.0,
+    memory=65536,
+    volumes={"/models": model_cache, "/worldgen": worldgen_outputs},
+    secrets=[hf_secret],
+    timeout=90 * 60,
+)
+def worldgen_garden_stage0(
+    job_id: str = "garden-v1",
+    source_name: str = "reference.png",
+    seed: int = 42,
+) -> dict:
+    """Expand a perspective garden reference into the ERP panorama consumed by WorldNav."""
+    import gc
+    import os
+    import sys
+    import time
+    from pathlib import Path
+
+    import torch
+    from PIL import Image
+
+    worldgen_outputs.reload()
+    target = resolve_worldgen_job_root(job_id)
+    source = target / source_name
+    if not source.is_file():
+        raise RuntimeError(f"Stage 0 source image is missing: {source}")
+
+    output = target / "panorama.png"
+    manifest = build_stage_manifest(
+        job_id=job_id,
+        stage="stage0",
+        hyworld_revision=HYWORLD2_REVISION,
+        input_fingerprint=fingerprint_files([source], root=target),
+        config={
+            "profile": "hy-pano-qwen-image-edit-v1",
+            "model": "Qwen/Qwen-Image-Edit-2509",
+            "lora": "tencent/HY-World-2.0/HY-Pano-2.0",
+            "seed": int(seed),
+            "height": 960,
+            "width": 1952,
+            "blend_width": 32,
+            "steps": 40,
+            "prompt": GARDEN_PANO_PROMPT,
+        },
+    )
+    if output.is_file() and manifest_matches(target, "stage0", manifest):
+        with Image.open(output) as image:
+            if image.size != (1920, 960):
+                raise RuntimeError(f"resumed Stage 0 panorama has invalid size: {image.size}")
+        return {
+            "resumed": True,
+            "target": str(target),
+            "panorama": str(output),
+            "bytes": output.stat().st_size,
+        }
+
+    os.environ["HF_HOME"] = "/models/huggingface"
+    os.environ["HUGGINGFACE_HUB_CACHE"] = "/models/huggingface/hub"
+    os.environ["HF_XET_HIGH_PERFORMANCE"] = "1"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+    panogen_root = Path(HYWORLD2_SOURCE) / "hyworld2/panogen"
+    for path in (str(panogen_root), HYWORLD2_SOURCE):
+        if path not in sys.path:
+            sys.path.insert(0, path)
+
+    from pipeline_with_qwen_image import HunyuanPanoPipeline
+
+    torch.cuda.reset_peak_memory_stats()
+    load_started = time.perf_counter()
+    pipeline = HunyuanPanoPipeline.from_pretrained(
+        "Qwen/Qwen-Image-Edit-2509",
+        lora_path="tencent/HY-World-2.0",
+        lora_subfolder="HY-Pano-2.0",
+    )
+    torch.cuda.synchronize()
+    load_s = time.perf_counter() - load_started
+
+    infer_started = time.perf_counter()
+    panorama = pipeline(
+        str(source),
+        prompt=GARDEN_PANO_PROMPT,
+        negative_prompt=(
+            "people, text, signs, cars, water, ponds, distorted architecture, broken paths, "
+            "floating plants, giant foreground objects, narrow obstructed walkways"
+        ),
+        seed=int(seed),
+        height=960,
+        width=1952,
+        num_inference_steps=40,
+        guidance_scale=1.0,
+        true_cfg_scale=7.5,
+        blend_width=32,
+    )
+    torch.cuda.synchronize()
+    infer_s = time.perf_counter() - infer_started
+    if panorama.mode != "RGB":
+        panorama = panorama.convert("RGB")
+    if panorama.size != (1920, 960):
+        raise RuntimeError(f"Stage 0 generated invalid ERP size: {panorama.size}")
+    target.mkdir(parents=True, exist_ok=True)
+    panorama.save(output)
+    write_stage_manifest(target, "stage0", manifest)
+    model_cache.commit()
+    worldgen_outputs.commit()
+
+    peak_gb = torch.cuda.max_memory_allocated() / 1024**3
+    del panorama, pipeline
+    gc.collect()
+    torch.cuda.empty_cache()
+    return {
+        "resumed": False,
+        "target": str(target),
+        "panorama": str(output),
+        "bytes": output.stat().st_size,
+        "load_s": round(load_s, 3),
+        "inference_s": round(infer_s, 3),
+        "peak_allocated_gb": round(peak_gb, 3),
+        "seed": int(seed),
+        "size": [1920, 960],
+    }
 
 
 def _spawn_worker_call(method, *, job_id: str, wait_timeout_s: float) -> dict:
@@ -959,6 +1098,263 @@ def preflight_worldgen_case000_stage5(job_id: str = "case000") -> dict:
     Path("/models/stage5_preflight.json").write_text(json.dumps(report, indent=2) + "\n")
     model_cache.commit()
     return report
+
+
+@app.function(
+    image=hyworld2_worldgen_stage5_image,
+    gpu=GPU,
+    cpu=16.0,
+    memory=65536,
+    volumes={
+        "/models": model_cache.with_mount_options(read_only=True),
+        "/runtime-cache": runtime_cache,
+        "/worldgen": worldgen_outputs,
+    },
+    timeout=3 * 60 * 60,
+)
+def worldgen_case000_stage5(job_id: str = "case000", force: bool = False) -> dict:
+    """Run the full documented single-GPU 3DGS profile and export its fused mesh."""
+    import json
+    import os
+    import shutil
+    import subprocess
+    import sys
+    import threading
+    import time
+    from pathlib import Path
+
+    os.environ["TORCH_HOME"] = "/models/torch"
+    os.environ["XDG_CACHE_HOME"] = "/models/cache"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+    os.environ["PYTHONFAULTHANDLER"] = "1"
+    os.environ["CUDA_CACHE_PATH"] = "/runtime-cache/cuda-cache"
+    os.environ["CUDA_CACHE_MAXSIZE"] = str(4 * 1024**3)
+    os.environ["TORCH_EXTENSIONS_DIR"] = "/runtime-cache/torch-extensions"
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/runtime-cache/torchinductor"
+    os.environ["TRITON_CACHE_DIR"] = "/runtime-cache/triton"
+
+    worldgen_outputs.reload()
+    target = resolve_worldgen_job_root(job_id)
+    data_dir = target / "gs_data"
+    result_dir = target / "gs_result"
+    required = [
+        data_dir / "cameras.json",
+        data_dir / "points.ply",
+        data_dir / "meta_info.json",
+        data_dir / "images",
+        data_dir / "normals",
+    ]
+    missing = [str(path) for path in required if not path.exists()]
+    if missing:
+        raise RuntimeError(f"Stage 5 full missing GS data: {missing}")
+    vgg_cache = Path("/models/torch/hub/checkpoints/vgg16-397923af.pth")
+    if not vgg_cache.is_file():
+        raise RuntimeError(
+            "Stage 5 VGG16 cache missing; run preflight_worldgen_case000_stage5 first"
+        )
+
+    stage4_manifest = stage_manifest_path(target, "stage4")
+    fingerprint_inputs = [
+        data_dir / "cameras.json",
+        data_dir / "points.ply",
+        data_dir / "meta_info.json",
+    ]
+    if stage4_manifest.is_file():
+        fingerprint_inputs.append(stage4_manifest)
+    steps = 8000
+    manifest = build_stage_manifest(
+        job_id=job_id,
+        stage="stage5",
+        hyworld_revision=HYWORLD2_REVISION,
+        input_fingerprint=fingerprint_files(fingerprint_inputs, root=target),
+        config={
+            "profile": "single-gpu-full-v1",
+            "steps": steps,
+            "save_ply": True,
+            "convert_to_spz": True,
+            "export_mesh": True,
+            "mesh_voxel_size": 0.05,
+        },
+    )
+    final_ply = result_dir / "ply" / "point_cloud_7999.ply"
+    final_spz = result_dir / "ply" / "point_cloud_7999.spz"
+    final_mesh = result_dir / "ply" / "fuse_post.ply"
+    final_outputs = (final_ply, final_spz, final_mesh)
+    log_path = target / "stage5.log"
+    timing_path = target / "stage5_timing.json"
+    outputs_complete = all(path.is_file() and path.stat().st_size > 0 for path in final_outputs)
+    if not force and outputs_complete:
+        if manifest_matches(target, "stage5", manifest):
+            return {
+                "resumed": True,
+                "adopted": False,
+                "steps": steps,
+                "result_dir": str(result_dir),
+                "ply_bytes": final_ply.stat().st_size,
+                "spz_bytes": final_spz.stat().st_size,
+                "mesh_bytes": final_mesh.stat().st_size,
+            }
+
+        # HYWorld2's pinned single-GPU trainer used to call an unguarded
+        # dist.barrier() *after* PLY/SPZ and mesh export. Adopt that exact
+        # terminal-failure shape only when the inputs have not changed.
+        prior_timing = None
+        if timing_path.is_file():
+            try:
+                prior_timing = json.loads(timing_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                prior_timing = None
+        outputs_fresh = min(path.stat().st_mtime_ns for path in final_outputs) >= max(
+            path.stat().st_mtime_ns for path in fingerprint_inputs
+        )
+        terminal_barrier_failure = (
+            prior_timing is not None
+            and prior_timing.get("steps") == steps
+            and prior_timing.get("returncode") == 1
+            and outputs_fresh
+            and log_path.is_file()
+            and "UnboundLocalError: cannot access local variable 'dist'"
+            in log_path.read_text(errors="replace")
+        )
+        if terminal_barrier_failure:
+            prior_timing["adopted_terminal_barrier_failure"] = True
+            timing_path.write_text(json.dumps(prior_timing, indent=2) + "\n")
+            write_stage_manifest(target, "stage5", manifest)
+            worldgen_outputs.commit()
+            return {
+                "resumed": True,
+                "adopted": True,
+                "upstream_returncode": 1,
+                "steps": steps,
+                "result_dir": str(result_dir),
+                "ply_bytes": final_ply.stat().st_size,
+                "spz_bytes": final_spz.stat().st_size,
+                "mesh_bytes": final_mesh.stat().st_size,
+            }
+    if result_dir.exists():
+        shutil.rmtree(result_dir)
+
+    worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
+    command = [
+        sys.executable,
+        "-X",
+        "faulthandler",
+        "-u",
+        "-m",
+        "world_gs_trainer",
+        "default",
+        "--data_dir",
+        str(data_dir),
+        "--result_dir",
+        str(result_dir),
+        "--max_steps",
+        str(steps),
+        "--save_steps",
+        str(steps),
+        "--eval_steps",
+        str(steps),
+        "--ply_steps",
+        str(steps),
+        "--save_ply",
+        "--convert_to_spz",
+        "--disable_video",
+        "--disable_viewer",
+        "--use_scale_regularization",
+        "--antialiased",
+        "--depth_loss",
+        "--normal_loss",
+        "--sky_depth_from_pcd",
+        "--use_mask_gaussian",
+        "--mask_export_stochastic",
+        "--no-mask-export-anchor-protection",
+        "--use_anchor_protection",
+        "--export_mesh",
+        "--strategy.refine-start-iter",
+        "800",
+        "--strategy.refine-stop-iter",
+        "4000",
+        "--strategy.refine-every",
+        "533",
+        "--strategy.refine-scale2d-stop-iter",
+        "4000",
+        "--strategy.reset-every",
+        "99990",
+        "--strategy.grow-grad2d",
+        "0.0001",
+        "--strategy.prune-scale3d",
+        "0.1",
+    ]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{worldgen_root}:{HYWORLD2_SOURCE}"
+
+    stop_monitor = threading.Event()
+    gpu_peak_mib = 0
+
+    def monitor_gpu() -> None:
+        nonlocal gpu_peak_mib
+        while not stop_monitor.wait(1.0):
+            try:
+                raw = subprocess.check_output(
+                    ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                    text=True,
+                    timeout=5,
+                ).splitlines()[0]
+                gpu_peak_mib = max(gpu_peak_mib, int(raw.strip()))
+            except (subprocess.SubprocessError, ValueError, IndexError):
+                pass
+
+    monitor = threading.Thread(target=monitor_gpu, daemon=True)
+    monitor.start()
+    started = time.perf_counter()
+    try:
+        with log_path.open("w") as log:
+            completed = subprocess.run(
+                command,
+                cwd=worldgen_root,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+                timeout=170 * 60,
+            )
+    finally:
+        stop_monitor.set()
+        monitor.join(timeout=5)
+
+    elapsed = time.perf_counter() - started
+    timing = {
+        "steps": steps,
+        "stage5_s": round(elapsed, 3),
+        "gpu_peak_used_mib": gpu_peak_mib,
+        "returncode": completed.returncode,
+    }
+    timing_path.write_text(json.dumps(timing, indent=2) + "\n")
+    runtime_cache.commit()
+    worldgen_outputs.commit()
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"Stage 5 full failed with exit {completed.returncode}:\n"
+            f"{log_path.read_text(errors='replace')[-40000:]}"
+        )
+    missing_outputs = [
+        str(path) for path in (final_ply, final_spz, final_mesh) if not path.is_file()
+    ]
+    if missing_outputs:
+        raise RuntimeError(f"Stage 5 full completed without final outputs: {missing_outputs}")
+
+    write_stage_manifest(target, "stage5", manifest)
+    worldgen_outputs.commit()
+    return {
+        **timing,
+        "resumed": False,
+        "result_dir": str(result_dir),
+        "ply_bytes": final_ply.stat().st_size,
+        "spz_bytes": final_spz.stat().st_size,
+        "mesh_bytes": final_mesh.stat().st_size,
+        "mesh": str(final_mesh),
+        "log_tail": log_path.read_text(errors="replace")[-10000:],
+    }
 
 
 @app.function(

@@ -8,6 +8,7 @@ from .stage1_patch import patch_stage1_worldnav
 from .stage2_patch import patch_stage2_single_gpu
 from .stage3_patch import patch_stage3_runtime
 from .stage4_patch import patch_stage4_single_gpu
+from .stage5_patch import patch_stage5_single_gpu
 
 ARTIFACT_VOLUME_NAME = "modal-build-artifacts"
 GPU = "RTX-PRO-6000"
@@ -110,6 +111,30 @@ hyworld2_artifact_image = (
 HYWORLD2_REVISION = "df9988efb87bfc0f4947eb3889411cf957478b06"
 HYWORLD2_SOURCE = "/opt/HY-World-2.0"
 
+# HY-Pano 2.0 uses the same pinned upstream revision as WorldNav/WorldStereo,
+# but keeps an isolated dependency layer because its Qwen-Image backend pins
+# transformers 4.x while Stage 1 currently uses transformers 5.x.
+hyworld2_panogen_image = (
+    hyworld2_artifact_image.apt_install("git")
+    .pip_install(
+        "einops==0.8.1",
+        "numpy==2.2.0",
+        "pillow>=11,<13",
+        "diffusers==0.36.0",
+        "peft==0.18.1",
+        "safetensors==0.7.0",
+        "tokenizers==0.22.0",
+        "transformers[accelerate,tiktoken]==4.57.1",
+        "huggingface_hub[cli]>=0.36,<1",
+        "loguru>=0.7.3",
+    )
+    .run_commands(
+        f"git clone --filter=blob:none https://github.com/Tencent-Hunyuan/HY-World-2.0.git {HYWORLD2_SOURCE}",
+        f"cd {HYWORLD2_SOURCE} && git checkout --detach {HYWORLD2_REVISION}",
+    )
+    .env({"PYTHONPATH": f"{HYWORLD2_SOURCE}/hyworld2/panogen:{HYWORLD2_SOURCE}"})
+)
+
 hyworld2_worldmirror_image = (
     hyworld2_artifact_image.pip_install(
         "huggingface_hub>=0.36,<1",
@@ -173,16 +198,20 @@ hyworld2_worldgen_stage3_image = (
     .pip_install("imagesize==1.4.1")
 )
 
-hyworld2_worldgen_stage5_image = hyworld2_worldgen_stage3_image.pip_install(
-    "tensorboard>=2.19,<3",
-    "torchmetrics==1.7.2",
-    "viser==0.2.23",
-    "tyro==1.0.8",
-    "PyYAML>=6,<7",
-    "splines>=0.3,<1",
-).pip_install(
-    "numpy==1.26.4",
-    "plyfile==1.1.3",
-    "ml-dtypes==0.5.4",
-    "ninja>=1.11,<2",
+hyworld2_worldgen_stage5_image = (
+    hyworld2_worldgen_stage3_image.run_function(patch_stage5_single_gpu, args=(HYWORLD2_SOURCE,))
+    .pip_install(
+        "tensorboard>=2.19,<3",
+        "torchmetrics==1.7.2",
+        "viser==0.2.23",
+        "tyro==1.0.8",
+        "PyYAML>=6,<7",
+        "splines>=0.3,<1",
+    )
+    .pip_install(
+        "numpy==1.26.4",
+        "plyfile==1.1.3",
+        "ml-dtypes==0.5.4",
+        "ninja>=1.11,<2",
+    )
 )

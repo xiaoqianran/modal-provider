@@ -177,6 +177,7 @@ class WorldNavRenderer:
             target / "objects.json",
             target / "camera_trajectory/target_camera.json",
             target / "render_results/global_pcd.ply",
+            target / "render_results/global_mesh.ply",
             target / "navmesh/metadata.json",
         ]
         if not force and all(path.exists() for path in required):
