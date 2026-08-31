@@ -15,3 +15,6 @@ node_modules/
 .real-cloud-smoke*.pid
 .tmp-modal-gen-smoke*.log
 .tmp_real_cloud_smoke*.py
+.tmp-modal-gen*.log
+.tmp-modal-gen*.out.log
+.tmp-modal-gen*.err.log

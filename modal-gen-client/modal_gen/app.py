@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from typing import Any
 
@@ -80,10 +81,25 @@ def create_app(state: Runtime | None = None) -> FastAPI:
             target.capabilities.disconnect_all()
             _LOG.warning("无法自动恢复已保存的 Modal 凭据: %s", exc)
 
+    restore_task: asyncio.Task[None] | None = None
+
+    async def stop_credential_restore() -> None:
+        nonlocal restore_task
+        task, restore_task = restore_task, None
+        if task is None or task.done():
+            return
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        await restore_saved_credentials()
-        yield
+        nonlocal restore_task
+        restore_task = asyncio.create_task(restore_saved_credentials())
+        try:
+            yield
+        finally:
+            await stop_credential_restore()
 
     app = FastAPI(
         title="modal-gen Connector",
@@ -129,6 +145,7 @@ def create_app(state: Runtime | None = None) -> FastAPI:
 
     @app.post("/v1/providers/connect")
     async def connect_providers(request: Request):
+        await stop_credential_restore()
         payload = await _json_body(request)
         token_id = payload.get("tokenId")
         token_secret = payload.get("tokenSecret")
@@ -141,7 +158,8 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         return {"providers": rows}
 
     @app.post("/v1/providers/disconnect")
-    def disconnect_providers():
+    async def disconnect_providers():
+        await stop_credential_restore()
         current().deployments.disconnect()
         rows = current().capabilities.disconnect_all()
         return {"providers": rows}

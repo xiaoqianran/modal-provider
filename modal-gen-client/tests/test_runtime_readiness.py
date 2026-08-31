@@ -146,7 +146,7 @@ def test_async_readiness_failure_fails_closed(tmp_path):
     assert "control plane unavailable" in capability["runtimeBlockers"][0]["error"]
 
 
-def test_sync_readiness_without_cache_queries_live_status(tmp_path):
+def test_sync_readiness_without_cache_does_not_query_live_status(tmp_path):
     calls = []
 
     class UncachedDeployments(Deployments):
@@ -155,7 +155,7 @@ def test_sync_readiness_without_cache_queries_live_status(tmp_path):
 
         def status(self, provider):
             calls.append(provider)
-            return super().cached_status(provider)
+            raise AssertionError("sync snapshot must not query the Modal control plane")
 
     registry = CapabilityRegistry(
         Store(tmp_path / "db.sqlite3"), [Adapter()], UncachedDeployments()
@@ -163,7 +163,8 @@ def test_sync_readiness_without_cache_queries_live_status(tmp_path):
     provider = registry.snapshot()["providers"][0]
 
     assert provider["status"] == "available"
-    assert calls == ["modal-x"]
+    assert "runtimeReadiness" not in provider
+    assert calls == []
 
 
 def test_submission_runtime_gate_rejects_missing_selected_worker(tmp_path):

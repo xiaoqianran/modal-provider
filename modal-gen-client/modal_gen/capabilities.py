@@ -101,10 +101,10 @@ class CapabilityRegistry:
             return descriptor
         try:
             readiness = self.deployments.cached_status(provider_id)
-            if readiness is None:
-                readiness = self.deployments.status(provider_id)
         except Exception as exc:
             return project_runtime_failure(descriptor, provider_id, exc)
+        if readiness is None:
+            return descriptor
         return project_runtime_readiness(descriptor, readiness)
 
     async def _with_runtime_readiness_async(
