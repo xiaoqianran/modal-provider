@@ -303,11 +303,20 @@ function connectionPanel(connections, hfSecret) {
       });
       const job = result.job;
       if (!job?.id) throw new Error("Deployment Job identity 无效");
-      const finished = await waitForDeploymentJob(job.id);
-      const failed = ["failed", "partial"].includes(finished.status);
-      status.className = failed ? "connect-hint connect-hint--error" : "connect-hint connect-hint--ok";
-      status.textContent = failed ? `${label}未全部完成，请查看 Runtime 状态。` : `${label}完成。`;
-      toast(failed ? `${label}部分失败` : `${label}完成`, failed ? "danger" : "ok");
+      status.className = "connect-hint connect-hint--ok";
+      status.textContent = `${label}已提交，后台继续执行。`;
+      toast(`${label}已提交`, "ok");
+      trackDeploymentJob(job.id, {
+        onFinished: (finished) => {
+          const failed = ["failed", "partial"].includes(finished.status);
+          status.className = failed ? "connect-hint connect-hint--error" : "connect-hint connect-hint--ok";
+          status.textContent = failed ? `${label}未全部完成，请查看 Runtime 状态。` : `${label}完成。`;
+          toast(failed ? `${label}部分失败` : `${label}完成`, failed ? "danger" : "ok");
+          invalidateCapabilities();
+          refreshCurrentRoute();
+          refreshNavCounts();
+        },
+      });
     } catch (e) {
       status.className = "connect-hint connect-hint--error";
       status.textContent = String(e.message || e);
@@ -641,18 +650,20 @@ function deploymentAction(
       const response = await apiPost("deployments/deploy", payload);
       const job = response.job;
       if (!job?.id) throw new Error("Deployment Job identity 无效");
-      toast("Deployment Job 已提交", "ok");
-      const finished = await waitForDeploymentJob(job.id, (current) => {
-        const targets = current.targets || [];
-        const done = targets.filter((item) => ["current", "failed"].includes(item.status)).length;
-        button.textContent = targets.length ? `部署 ${done}/${targets.length}` : "部署中…";
+      toast("Deployment Job 已提交，后台继续执行", "ok");
+      trackDeploymentJob(job.id, {
+        onFinished: async (finished) => {
+          const failed = ["failed", "partial"].includes(finished.status);
+          toast(
+            failed ? "Runtime 部署未全部成功" : "Runtime 部署完成",
+            failed ? "danger" : "ok"
+          );
+          await refreshDeploymentPanel(refreshHost);
+          invalidateCapabilities();
+          refreshCurrentRoute();
+          refreshNavCounts();
+        },
       });
-      const failed = ["failed", "partial"].includes(finished.status);
-      toast(
-        failed ? "Runtime 部署未全部成功" : "Runtime 部署完成",
-        failed ? "danger" : "ok"
-      );
-      await refreshDeploymentPanel(refreshHost);
     } catch (error) {
       toast(String(error.message || error), "danger");
     } finally {
@@ -661,6 +672,14 @@ function deploymentAction(
     }
   });
   return button;
+}
+
+function trackDeploymentJob(jobId, { onProgress = null, onFinished = null } = {}) {
+  void waitForDeploymentJob(jobId, onProgress)
+    .then((job) => onFinished?.(job))
+    .catch((error) => {
+      toast(`Deployment Job 状态跟踪失败：${String(error.message || error)}`, "danger");
+    });
 }
 
 async function waitForDeploymentJob(jobId, onProgress = null) {
