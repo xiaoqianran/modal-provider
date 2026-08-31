@@ -18,7 +18,6 @@ from .hyworld2_runtime import (
     hyworld2_worldmirror_image,
 )
 from .service import capabilities as local_capabilities
-from .worldgen_policy import sanitize_semantic_labels
 from .worldgen_job import (
     build_stage_manifest,
     fingerprint_files,
@@ -27,6 +26,7 @@ from .worldgen_job import (
     stage_manifest_path,
     write_stage_manifest,
 )
+from .worldgen_policy import sanitize_semantic_labels
 
 app = modal.App("modal-world")
 
@@ -226,6 +226,7 @@ GARDEN_PANO_PROMPT = (
     "no transient or moving objects, no text, no signs, no vehicles, no fantasy architecture, no floating objects, "
     "no water, no narrow bridges, no dense foliage directly in front of the camera, no extreme depth of field."
 )
+
 
 def _sanitize_garden_semantics(target) -> dict:
     import json

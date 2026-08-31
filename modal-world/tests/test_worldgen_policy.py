@@ -30,7 +30,10 @@ def test_camera_budget_round_robins_trajectory_groups(tmp_path: Path):
     assert len(selected) == 4
     assert sum(camera_frame_count(path) for path in selected) == 320
     assert {path.parent.parent.name.split("_")[0] for path in selected} == {
-        "view", "target", "wonder", "reconstruct"
+        "view",
+        "target",
+        "wonder",
+        "reconstruct",
     }
 
 
@@ -49,11 +52,11 @@ def test_garden_semantics_remove_unrequested_categories():
     kept, removed = sanitize_semantic_labels(labels)
     assert kept == ["tree", "bench", "gazebo"]
     assert removed == ["statue", "trash can", "Butterfly"]
-    assert set(label.lower() for label in kept) <= GARDEN_ALLOWED_SEMANTICS
+    assert {label.lower() for label in kept} <= GARDEN_ALLOWED_SEMANTICS
 
 
 def test_garden_semantics_require_list():
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         sanitize_semantic_labels({"tree": 1})
 
 
@@ -76,6 +79,9 @@ def test_garden_prompt_forbids_transient_visual_hallucinations():
 
 def test_non_reference_worlds_use_camera_budget_but_case000_does_not():
     source = Path("modal_world/stage2_app.py").read_text()
-    assert 'frame_budget = None if job_id == "case000" else NON_REFERENCE_CAMERA_FRAME_BUDGET' in source
+    assert (
+        'frame_budget = None if job_id == "case000" else NON_REFERENCE_CAMERA_FRAME_BUDGET'
+        in source
+    )
     assert '"camera_frame_budget": frame_budget' in source
-    assert 'stale_output.unlink()' in source
+    assert "stale_output.unlink()" in source

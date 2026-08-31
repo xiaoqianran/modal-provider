@@ -1,21 +1,23 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 NON_REFERENCE_CAMERA_FRAME_BUDGET = 320
 TRAJECTORY_GROUPS = ("view", "target", "wonder", "reconstruct")
-GARDEN_ALLOWED_SEMANTICS = frozenset({
-    "tree",
-    "bench",
-    "door",
-    "gazebo",
-    "lamp",
-    "pillar",
-    "fence",
-    "shrub",
-})
+GARDEN_ALLOWED_SEMANTICS = frozenset(
+    {
+        "tree",
+        "bench",
+        "door",
+        "gazebo",
+        "lamp",
+        "pillar",
+        "fence",
+        "shrub",
+    }
+)
 
 
 def camera_frame_count(camera_path: Path) -> int:
@@ -66,7 +68,7 @@ def sanitize_semantic_labels(
     allowed: frozenset[str] = GARDEN_ALLOWED_SEMANTICS,
 ) -> tuple[list[str], list[str]]:
     if not isinstance(labels, list):
-        raise ValueError("semantics must be a JSON list")
+        raise TypeError("semantics must be a JSON list")
     normalized = [str(item).strip() for item in labels if str(item).strip()]
     kept = [item for item in normalized if item.lower() in allowed]
     removed = [item for item in normalized if item.lower() not in allowed]
