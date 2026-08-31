@@ -506,16 +506,19 @@ def test_ui_surfaces_deployed_but_blocked_models() -> None:
     assert "版本过旧" in presenter
 
 
-def test_runtime_ui_exposes_explicit_force_redeploy() -> None:
+def test_runtime_ui_exposes_explicit_global_deployment_modes() -> None:
     source = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_connect.js").read_text(
         encoding="utf-8"
     )
 
+    assert "仅部署缺失 Runtime" in source
     assert "重新部署全部 Runtime" in source
+    assert "missingOnly: true" in source
+    assert "force: false" in source
+    assert "missingOnly: false" in source
     assert "force: true" in source
     assert 'strategy: "rolling"' in source
     assert 'app.status === "current"' in source
-    assert 'strategy: "rolling"' in source
 
 
 def test_live_gateway_submit_retries_timeout_with_same_identity(monkeypatch) -> None:

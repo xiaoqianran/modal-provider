@@ -173,6 +173,7 @@ function connectionPanel(connections, hfSecret) {
   );
   const connect = h("button", { class: "btn btn--primary connect-action", type: "button" });
   const disconnect = h("button", { class: "btn", type: "button" }, "断开全部");
+  const deployMissing = h("button", { class: "btn", type: "button" }, "仅部署缺失 Runtime");
   const deployAll = h("button", { class: "btn", type: "button" }, "重新部署全部 Runtime");
   const hfToken = h("input", {
     class: "input input--mono",
@@ -284,10 +285,11 @@ function connectionPanel(connections, hfSecret) {
     }
   });
 
-  deployAll.addEventListener("click", async () => {
+  async function runGlobalDeployment({ missingOnly, force, label }) {
+    deployMissing.disabled = true;
     deployAll.disabled = true;
     status.className = "connect-hint";
-    status.textContent = "正在部署全部 Runtime；首次部署可能需要构建镜像。";
+    status.textContent = `${label}；首次部署可能需要构建镜像。`;
     try {
       const secretState = await apiGet("secrets/huggingface");
       if (!secretState.configured) {
@@ -295,7 +297,8 @@ function connectionPanel(connections, hfSecret) {
       }
       const result = await apiPost("deployments/deploy", {
         provider: "all",
-        force: true,
+        missingOnly,
+        force,
         strategy: "rolling",
       });
       const job = result.job;
@@ -303,15 +306,28 @@ function connectionPanel(connections, hfSecret) {
       const finished = await waitForDeploymentJob(job.id);
       const failed = ["failed", "partial"].includes(finished.status);
       status.className = failed ? "connect-hint connect-hint--error" : "connect-hint connect-hint--ok";
-      status.textContent = failed ? "重新部署未全部完成，请查看 Runtime 状态。" : "全部 Runtime 已重新部署。";
-      toast(failed ? "部分 Runtime 重新部署失败" : "全部 Runtime 重新部署完成", failed ? "danger" : "ok");
+      status.textContent = failed ? `${label}未全部完成，请查看 Runtime 状态。` : `${label}完成。`;
+      toast(failed ? `${label}部分失败` : `${label}完成`, failed ? "danger" : "ok");
     } catch (e) {
       status.className = "connect-hint connect-hint--error";
       status.textContent = String(e.message || e);
     } finally {
+      deployMissing.disabled = false;
       deployAll.disabled = false;
     }
-  });
+  }
+
+  deployMissing.addEventListener("click", () => runGlobalDeployment({
+    missingOnly: true,
+    force: false,
+    label: "部署缺失 Runtime",
+  }));
+
+  deployAll.addEventListener("click", () => runGlobalDeployment({
+    missingOnly: false,
+    force: true,
+    label: "重新部署全部 Runtime",
+  }));
 
   disconnect.addEventListener("click", async () => {
     disconnect.disabled = true;
@@ -360,7 +376,7 @@ function connectionPanel(connections, hfSecret) {
     status,
     h("label", { class: "drawer-field" }, h("span", {}, "Modal Token ID"), tokenId),
     h("label", { class: "drawer-field" }, h("span", {}, "Modal Token Secret"), tokenSecret),
-    h("div", { class: "drawer-actions" }, disconnect, deployAll, connect),
+    h("div", { class: "drawer-actions" }, disconnect, deployMissing, deployAll, connect),
     h("div", { class: "drawer-section" },
       h("div", { class: "drawer-section__title" }, "Hugging Face"),
       h("p", { class: "drawer-copy" },
