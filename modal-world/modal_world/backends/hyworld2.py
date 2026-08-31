@@ -189,13 +189,22 @@ class HYWorld2Backend(WorldBackend):
             ".npz": "tensor_data",
             ".npy": "tensor_data",
         }
+        roles = {
+            "render_results/global_mesh.ply": "world-mesh",
+            "camera_trajectory/target_camera.json": "world-semantics",
+        }
         found: list[Artifact] = []
         for path in sorted(root.rglob("*")):
             if not path.is_file():
                 continue
             kind = kinds.get(path.suffix.lower())
-            if kind:
-                found.append(Artifact(kind=kind, path=path))
+            if not kind:
+                continue
+            relative = path.relative_to(root).as_posix()
+            role = roles.get(relative)
+            if path.suffix.lower() == ".spz":
+                role = "world-visual"
+            found.append(Artifact(kind=kind, path=path, role=role))
         return tuple(found)
 
     @staticmethod

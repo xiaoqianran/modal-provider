@@ -44,6 +44,7 @@ class WorldRequest:
 class Artifact:
     kind: str
     path: Path
+    role: str | None = None
     media_type: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
