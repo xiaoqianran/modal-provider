@@ -31,7 +31,7 @@ def test_stage3_worker_is_persistent_and_model_load_is_enter_only():
     source = Path("modal_world/stage3_app.py").read_text()
     assert 'app = modal.App("modal-world-stage3")' in source
     assert "min_containers=0" in source
-    assert "scaledown_window=5 * 60" in source
+    assert "scaledown_window=30" in source
     assert "max_containers=1" in source
     assert "model_cache.with_mount_options(read_only=True)" in source
     assert '"hyworld2-runtime-cache-v2", create_if_missing=True, version=2' in source
@@ -148,3 +148,17 @@ def test_stage3_reload_worldgen_volume_before_generate():
     source = Path("modal_world/stage3_app.py").read_text()
     generate = source[source.index("def generate") :]
     assert "worldgen_outputs.reload()" in generate[:300]
+
+
+def test_stage3_checkpoints_completed_gpu_work_to_volume():
+    source = Path("modal_world/stage3_app.py").read_text()
+    start = source.index('def generate(self, job_id: str = "case000", force: bool = False)')
+    section = source[start:]
+    assert "checkpoint_every = 4" in section
+    assert "generated_since_commit += 1" in section
+    assert "worldgen_outputs.commit()" in section
+    assert "memory_bank.apply_worldmirror(skip_exist=True)" in section
+    apply_worldmirror = section.index("memory_bank.apply_worldmirror(skip_exist=True)")
+    alignment = section.index("memory_bank.alignment(debug_mode=False)")
+    assert "worldgen_outputs.commit()" in section[apply_worldmirror:alignment]
+    assert '"checkpoint_commits": checkpoint_commits' in section

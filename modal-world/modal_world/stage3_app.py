@@ -78,7 +78,9 @@ def verify_stage3_module_paths() -> dict[str, Any]:
     startup_timeout=30 * 60,
     min_containers=0,
     max_containers=1,
-    scaledown_window=5 * 60,
+    # Stage 4 does not reuse this heavyweight worker. Keep only a short idle
+    # grace period after Stage 3 instead of paying for five idle GPU minutes.
+    scaledown_window=30,
 )
 class WorldStereoWorker:
     @modal.enter()
@@ -291,6 +293,13 @@ class WorldStereoWorker:
                 pcd_std_ratio=2.0,
             )
 
+        # Stage 3 is the only long-running worldgen stage (~tens of minutes).
+        # Persist completed trajectories periodically so Modal preemption or a
+        # container crash loses at most a small amount of expensive GPU work.
+        checkpoint_every = 4
+        generated_since_commit = 0
+        checkpoint_commits = 0
+
         try:
             for render_path in render_list:
                 view_id, traj_id = render_path.split("/")[-3:-1]
@@ -387,9 +396,22 @@ class WorldStereoWorker:
                     view_id=view_id,
                     traj_id=traj_id,
                 )
+                generated_since_commit += 1
+                if generated_since_commit >= checkpoint_every:
+                    worldgen_outputs.commit()
+                    checkpoint_commits += 1
+                    generated_since_commit = 0
 
+            if generated_since_commit:
+                worldgen_outputs.commit()
+                checkpoint_commits += 1
+                generated_since_commit = 0
             with timer.track("Run World Mirror"):
                 memory_bank.apply_worldmirror(skip_exist=True)
+            # WorldMirror is itself reusable (`skip_exist=True`), so make its
+            # completed artifacts durable before the expensive alignment pass.
+            worldgen_outputs.commit()
+            checkpoint_commits += 1
             with timer.track("Memory bank Alignment"):
                 memory_bank.alignment(debug_mode=False)
             alignment_profile = {
@@ -431,6 +453,7 @@ class WorldStereoWorker:
             "gpu_peak_used_mib": int(torch.cuda.max_memory_allocated() / (1024**2)),
             "result_count": len(results),
             "aligned_pcd_exists": aligned_pcd.is_file(),
+            "checkpoint_commits": checkpoint_commits,
             "alignment_profile": alignment_profile,
             "alignment_phase2_profile": alignment_phase2_profile,
             "alignment_phase2_detail": alignment_phase2_detail,
