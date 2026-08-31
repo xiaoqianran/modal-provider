@@ -24,6 +24,7 @@ from .worldgen_job import (
     stage_manifest_path,
     write_stage_manifest,
 )
+from .worldgen_policy import NON_REFERENCE_CAMERA_FRAME_BUDGET, select_camera_files
 
 app = modal.App("modal-world-stage3")
 model_cache = modal.Volume.from_name("hyworld2-models", create_if_missing=True)
@@ -188,17 +189,18 @@ class WorldStereoWorker:
         }
 
     def _stage3_manifest(self, *, job_id: str, target: Path) -> dict[str, Any]:
-        camera_files = sorted(target.glob("render_results/*/traj*/camera.json"))
-        renders = sorted(target.glob("render_results/*/traj*/render.mp4"))
-        masks = sorted(target.glob("render_results/*/traj*/render_mask.mp4"))
-        captions = sorted(target.glob("render_results/*/traj*/traj_caption.json"))
+        all_camera_files = sorted(target.glob("render_results/*/traj*/camera.json"))
+        frame_budget = None if job_id == "case000" else NON_REFERENCE_CAMERA_FRAME_BUDGET
+        camera_files = select_camera_files(all_camera_files, frame_budget)
+        renders = [path.with_name("render.mp4") for path in camera_files]
+        masks = [path.with_name("render_mask.mp4") for path in camera_files]
+        captions = [path.with_name("traj_caption.json") for path in camera_files]
         inputs = [*camera_files, *renders, *masks, *captions]
-        if not camera_files or not (
-            len(camera_files) == len(renders) == len(masks) == len(captions)
-        ):
+        missing = [path for path in (*renders, *masks, *captions) if not path.is_file()]
+        if not camera_files or missing:
             raise RuntimeError(
-                f"Stage 2 incomplete: cameras={len(camera_files)} renders={len(renders)} "
-                f"masks={len(masks)} captions={len(captions)}"
+                f"Stage 2 incomplete for selected trajectories: cameras={len(camera_files)} "
+                f"missing={len(missing)}"
             )
         for caption in captions:
             payload = json.loads(caption.read_text())
@@ -211,6 +213,8 @@ class WorldStereoWorker:
             input_fingerprint=fingerprint_files(inputs, root=target),
             config={
                 "model_type": _MODEL_TYPE,
+                "camera_frame_budget": frame_budget,
+                "selected_trajectory_count": len(camera_files),
                 "align_nframe": 8,
                 "max_reference": 8,
                 "downsampled_pts": 2_000_000,
@@ -228,7 +232,7 @@ class WorldStereoWorker:
         import imagesize
         import numpy as np
         from diffusers.utils import export_to_video
-        from src.data_utils import load_mutli_traj_dataset, sort_trajs
+        from src.data_utils import load_mutli_traj_dataset
         from src.general_utils import Timer, load_video, set_seed
         from src.retrieval_wm import PanoramaMemoryBank
 
@@ -236,7 +240,10 @@ class WorldStereoWorker:
         target = resolve_worldgen_job_root(job_id)
         manifest = self._stage3_manifest(job_id=job_id, target=target)
         aligned_pcd = target / f"render_results/generation_bank_{_MODEL_TYPE}/aligned_pcd.ply"
-        render_list = sort_trajs(str(target / "render_results"))
+        all_camera_files = sorted(target.glob("render_results/*/traj*/camera.json"))
+        frame_budget = None if job_id == "case000" else NON_REFERENCE_CAMERA_FRAME_BUDGET
+        camera_files = select_camera_files(all_camera_files, frame_budget)
+        render_list = [str(path.with_name("render.mp4")) for path in camera_files]
         results = sorted(target.glob(f"render_results/*/traj*/{_MODEL_TYPE}_result.mp4"))
         expected_count = len(render_list)
         if not force and aligned_pcd.is_file() and len(results) == expected_count:

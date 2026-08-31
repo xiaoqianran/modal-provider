@@ -28,3 +28,11 @@ def test_stage3_requests_high_cpu_memory_and_scales_to_zero():
 def test_stage3_records_host_peak_rss():
     source = Path("modal_world/stage3_app.py").read_text()
     assert '"host_peak_rss_mib": host_peak_rss_mib' in source
+
+
+def test_stage3_uses_same_camera_budget_as_stage2():
+    source = Path("modal_world/stage3_app.py").read_text()
+    assert "NON_REFERENCE_CAMERA_FRAME_BUDGET" in source
+    assert "select_camera_files(all_camera_files, frame_budget)" in source
+    assert 'render_list = [str(path.with_name("render.mp4")) for path in camera_files]' in source
+    assert "Stage 2 incomplete for selected trajectories" in source
