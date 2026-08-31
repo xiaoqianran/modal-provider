@@ -67,7 +67,7 @@ def verify_stage3_module_paths() -> dict[str, Any]:
     image=hyworld2_worldgen_stage3_image,
     gpu=GPU,
     cpu=16.0,
-    memory=131072,
+    memory=(98304, 131072),
     volumes={
         "/models": model_cache.with_mount_options(read_only=True),
         "/runtime-cache": runtime_cache,
@@ -446,11 +446,18 @@ class WorldStereoWorker:
 
         stage3_s = time.perf_counter() - started
         results = sorted(target.glob(f"render_results/*/traj*/{_MODEL_TYPE}_result.mp4"))
+        try:
+            import resource
+
+            host_peak_rss_mib = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024)
+        except (ImportError, AttributeError):
+            host_peak_rss_mib = None
         timing = {
             "stage3_s": round(stage3_s, 3),
             "worker_load_s": round(self.load_s, 3),
             "worker_call_index": call_index,
             "gpu_peak_used_mib": int(torch.cuda.max_memory_allocated() / (1024**2)),
+            "host_peak_rss_mib": host_peak_rss_mib,
             "result_count": len(results),
             "aligned_pcd_exists": aligned_pcd.is_file(),
             "checkpoint_commits": checkpoint_commits,
