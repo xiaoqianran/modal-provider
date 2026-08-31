@@ -370,11 +370,8 @@ class DeploymentService:
             providers.append({"id": provider, "status": "disconnected", "apps": apps})
         return {"connected": False, "providers": providers}
 
-
     @staticmethod
-    def _ensure_target_secrets(
-        targets: tuple[DeploymentTarget, ...], client: modal.Client
-    ) -> None:
+    def _ensure_target_secrets(targets: tuple[DeploymentTarget, ...], client: modal.Client) -> None:
         required = tuple(dict.fromkeys(secret for target in targets for secret in target.secrets))
         if not required:
             return

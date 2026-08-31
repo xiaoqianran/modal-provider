@@ -117,7 +117,8 @@ def test_manual_login_cancels_background_credential_restore(monkeypatch, tmp_pat
         async with app.router.lifespan_context(app):
             await asyncio.wait_for(restore_started.wait(), timeout=1)
             route = next(
-                route for route in app.routes
+                route
+                for route in app.routes
                 if getattr(route, "path", None) == "/v1/providers/connect"
             )
             from starlette.requests import Request
