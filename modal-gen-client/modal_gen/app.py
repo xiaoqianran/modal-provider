@@ -220,7 +220,8 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         missing_only = payload.get("missingOnly", False)
         if not isinstance(missing_only, bool):
             raise ConnectorError("DEPLOYMENT_MISSING_ONLY_INVALID", "missingOnly 必须是布尔值", 422)
-        job = current().deployments.start_deploy(
+        job = await run_in_threadpool(
+            current().deployments.start_deploy,
             provider,
             app_name=app_name,
             strategy=strategy,
