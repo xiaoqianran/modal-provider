@@ -511,7 +511,7 @@ def test_runtime_ui_exposes_explicit_force_redeploy() -> None:
         encoding="utf-8"
     )
 
-    assert "重新部署 2D + 3D" in source
+    assert "重新部署全部 Runtime" in source
     assert "force: true" in source
     assert 'strategy: "rolling"' in source
     assert 'app.status === "current"' in source

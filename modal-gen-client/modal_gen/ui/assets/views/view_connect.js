@@ -173,7 +173,7 @@ function connectionPanel(connections, hfSecret) {
   );
   const connect = h("button", { class: "btn btn--primary connect-action", type: "button" });
   const disconnect = h("button", { class: "btn", type: "button" }, "断开全部");
-  const deployAll = h("button", { class: "btn", type: "button" }, "重新部署 2D + 3D");
+  const deployAll = h("button", { class: "btn", type: "button" }, "重新部署全部 Runtime");
   const hfToken = h("input", {
     class: "input input--mono",
     type: "password",
@@ -269,7 +269,7 @@ function connectionPanel(connections, hfSecret) {
       command.value = "";
       status.className = "connect-hint connect-hint--ok";
       status.textContent = "Modal 已连接。";
-      toast("2D / 3D 已连接 Modal", "ok");
+      toast("2D / 3D / World 已连接 Modal", "ok");
       invalidateCapabilities();
       loadCapabilities({ refresh: true }).then(() => {
         refreshCurrentRoute();
@@ -287,7 +287,7 @@ function connectionPanel(connections, hfSecret) {
   deployAll.addEventListener("click", async () => {
     deployAll.disabled = true;
     status.className = "connect-hint";
-    status.textContent = "正在部署 2D / 3D Runtime；首次部署可能需要构建镜像。";
+    status.textContent = "正在部署全部 Runtime；首次部署可能需要构建镜像。";
     try {
       const result = await apiPost("deployments/deploy", {
         provider: "all",
@@ -299,8 +299,8 @@ function connectionPanel(connections, hfSecret) {
       const finished = await waitForDeploymentJob(job.id);
       const failed = ["failed", "partial"].includes(finished.status);
       status.className = failed ? "connect-hint connect-hint--error" : "connect-hint connect-hint--ok";
-      status.textContent = failed ? "重新部署未全部完成，请查看 Runtime 状态。" : "2D / 3D Runtime 已重新部署。";
-      toast(failed ? "部分 Runtime 重新部署失败" : "2D / 3D Runtime 重新部署完成", failed ? "danger" : "ok");
+      status.textContent = failed ? "重新部署未全部完成，请查看 Runtime 状态。" : "全部 Runtime 已重新部署。";
+      toast(failed ? "部分 Runtime 重新部署失败" : "全部 Runtime 重新部署完成", failed ? "danger" : "ok");
     } catch (e) {
       status.className = "connect-hint connect-hint--error";
       status.textContent = String(e.message || e);
@@ -316,7 +316,7 @@ function connectionPanel(connections, hfSecret) {
       connectedNow = false;
       status.className = "connect-hint";
       status.textContent = "Modal 已断开。已保存的本机凭据仍会在下次启动时自动恢复。";
-      toast("2D / 3D 已断开 Modal", "ok");
+      toast("2D / 3D / World 已断开 Modal", "ok");
       invalidateCapabilities();
       refreshCurrentRoute();
       refreshNavCounts();
@@ -338,7 +338,7 @@ function connectionPanel(connections, hfSecret) {
       h("div", { class: "connect-provider" },
         dot,
         h("div", {},
-          h("strong", {}, item.id === "modal-2d" ? "Modal 2D" : item.id === "modal-3d" ? "Modal 3D" : item.id),
+          h("strong", {}, item.id === "modal-2d" ? "Modal 2D" : item.id === "modal-3d" ? "Modal 3D" : item.id === "modal-world" ? "Modal World" : item.id),
           label
         )
       )
@@ -347,7 +347,7 @@ function connectionPanel(connections, hfSecret) {
   renderConnectionState();
 
   return h("div", { class: "modal-settings" },
-    h("p", { class: "drawer-copy" }, "一组凭证同时用于本机 2D / 3D Provider。连接成功后持久化到本机 .secrets/modal.json；新凭据会覆盖旧凭据。"),
+    h("p", { class: "drawer-copy" }, "一组凭证同时用于本机 2D / 3D / World Provider。连接成功后持久化到本机 .secrets/modal.json；新凭据会覆盖旧凭据。"),
     statusGrid,
     h("label", { class: "drawer-field" },
       h("span", {}, "粘贴 modal token set 命令"),
@@ -376,12 +376,16 @@ function providerCard(provider, connection) {
     ? "2D 图片生成"
     : provider.id === "modal-3d"
       ? "3D 资产生成"
-      : provider.displayName || provider.id;
+      : provider.id === "modal-world"
+        ? "World 世界生成"
+        : provider.displayName || provider.id;
   const serviceCopy = provider.id === "modal-2d"
     ? "Prompt → 图片。选择已就绪模型后直接创建任务。"
     : provider.id === "modal-3d"
       ? "图片 → GLB。前处理与 3D Worker 会分别显示就绪状态。"
-      : "生成能力";
+      : provider.id === "modal-world"
+        ? "图片 + Prompt → Mesh / Semantics / Visual 世界产物。"
+        : "生成能力";
   const technical = h("details", { class: "provider-technical" },
     h("summary", {}, "技术信息"),
     kv([
@@ -515,7 +519,7 @@ function deploymentPanel(rows) {
   ));
 
   for (const row of rows) {
-    const providerLabel = row.id === "modal-2d" ? "2D Runtime" : row.id === "modal-3d" ? "3D Runtime" : row.id;
+    const providerLabel = row.id === "modal-2d" ? "2D Runtime" : row.id === "modal-3d" ? "3D Runtime" : row.id === "modal-world" ? "World Runtime" : row.id;
     const providerAction = deploymentAction(
       row.status === "current" ? "重新部署全部" : row.status === "stale" ? "更新全部" : "部署缺失",
       row.id,

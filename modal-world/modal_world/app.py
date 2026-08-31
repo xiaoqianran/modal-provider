@@ -239,6 +239,7 @@ def worldgen_garden_stage0(
     job_id: str = "garden-v1",
     source_name: str = "reference.png",
     seed: int = 42,
+    prompt: str = GARDEN_PANO_PROMPT,
 ) -> dict:
     """Expand a perspective garden reference into the ERP panorama consumed by WorldNav."""
     import gc
@@ -249,6 +250,10 @@ def worldgen_garden_stage0(
 
     import torch
     from PIL import Image
+
+    prompt = str(prompt).strip()
+    if not prompt:
+        raise ValueError("Stage 0 prompt must not be empty")
 
     worldgen_outputs.reload()
     target = resolve_worldgen_job_root(job_id)
@@ -271,7 +276,7 @@ def worldgen_garden_stage0(
             "width": 1952,
             "blend_width": 32,
             "steps": 40,
-            "prompt": GARDEN_PANO_PROMPT,
+            "prompt": prompt,
         },
     )
     if output.is_file() and manifest_matches(target, "stage0", manifest):
@@ -309,7 +314,7 @@ def worldgen_garden_stage0(
     infer_started = time.perf_counter()
     panorama = pipeline(
         str(source),
-        prompt=GARDEN_PANO_PROMPT,
+        prompt=prompt,
         negative_prompt=(
             "people, text, signs, cars, water, ponds, distorted architecture, broken paths, "
             "floating plants, giant foreground objects, narrow obstructed walkways"
@@ -1527,4 +1532,84 @@ def worldgen_case000_stage5_smoke(job_id: str = "case000") -> dict:
         "ply_bytes": sum(path.stat().st_size for path in plys),
         "spz_bytes": sum(path.stat().st_size for path in spzs),
         "log_tail": log_path.read_text(errors="replace")[-8000:],
+    }
+
+
+def _runtime_world_artifact(path, *, job_id: str, role: str, mime: str) -> dict:
+    import hashlib
+
+    if not path.is_file() or path.stat().st_size <= 0:
+        raise RuntimeError(f"World artifact missing: {path}")
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(4 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return {
+        "id": f"{job_id}_{role.replace('-', '_')}",
+        "role": role,
+        "mime": mime,
+        "bytes": path.stat().st_size,
+        "sha256": digest.hexdigest(),
+        "path": path.relative_to("/worldgen").as_posix(),
+    }
+
+
+@app.function(
+    image=base_image,
+    cpu=1.0,
+    memory=2048,
+    volumes={"/worldgen": worldgen_outputs},
+    timeout=6 * 60 * 60,
+)
+def worldgen_pipeline(
+    job_id: str,
+    prompt: str,
+    source_name: str = "reference.png",
+    seed: int = 42,
+    force: bool = False,
+) -> dict:
+    """Run the existing five-stage HYWorld2 chain as one durable async provider call."""
+
+    prompt = str(prompt).strip()
+    if not prompt:
+        raise ValueError("worldgen prompt must not be empty")
+
+    stages = {
+        "stage0": worldgen_garden_stage0.remote(
+            job_id=job_id, source_name=source_name, seed=int(seed), prompt=prompt
+        ),
+        "stage1": worldgen_case000_stage1.remote(job_id=job_id),
+        "stage2": worldgen_case000_stage2.remote(job_id=job_id),
+        "stage3": worldgen_case000_stage3.remote(job_id=job_id),
+        "stage4": worldgen_case000_stage4.remote(job_id=job_id),
+        "stage5": worldgen_case000_stage5.remote(job_id=job_id, force=bool(force)),
+    }
+
+    worldgen_outputs.reload()
+    target = resolve_worldgen_job_root(job_id)
+    artifacts = [
+        _runtime_world_artifact(
+            target / "render_results/global_mesh.ply",
+            job_id=job_id,
+            role="world-mesh",
+            mime="model/ply",
+        ),
+        _runtime_world_artifact(
+            target / "camera_trajectory/target_camera.json",
+            job_id=job_id,
+            role="world-semantics",
+            mime="application/json",
+        ),
+        _runtime_world_artifact(
+            target / "gs_result/ply/point_cloud_7999.spz",
+            job_id=job_id,
+            role="world-visual",
+            mime="model/spz",
+        ),
+    ]
+    return {
+        "model": "hyworld2",
+        "job_id": job_id,
+        "artifacts": artifacts,
+        "stages": stages,
     }

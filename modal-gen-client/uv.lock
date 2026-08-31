@@ -616,6 +616,7 @@ dependencies = [
     { name = "modal-2d-client-agent" },
     { name = "modal-3d" },
     { name = "modal-3d-client" },
+    { name = "modal-world" },
     { name = "uvicorn" },
 ]
 
@@ -633,6 +634,7 @@ requires-dist = [
     { name = "modal-2d-client-agent", editable = "../modal-2D-client" },
     { name = "modal-3d", editable = "../modal-3D" },
     { name = "modal-3d-client", editable = "../modal-3D-client" },
+    { name = "modal-world", editable = "../modal-world" },
     { name = "uvicorn", specifier = ">=0.35,<1" },
 ]
 
@@ -641,6 +643,22 @@ dev = [
     { name = "pytest", specifier = ">=8,<10" },
     { name = "ruff", specifier = ">=0.12,<1" },
 ]
+
+[[package]]
+name = "modal-world"
+version = "0.1.0"
+source = { editable = "../modal-world" }
+dependencies = [
+    { name = "modal", extra = ["api-proxy-support"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "modal", extras = ["api-proxy-support"], specifier = ">=1.5,<2" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
+]
+provides-extras = ["dev", "hyworld2"]
 
 [[package]]
 name = "multidict"
