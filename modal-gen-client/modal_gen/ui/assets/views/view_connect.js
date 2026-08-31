@@ -173,8 +173,8 @@ function connectionPanel(connections, hfSecret) {
   );
   const connect = h("button", { class: "btn btn--primary connect-action", type: "button" });
   const disconnect = h("button", { class: "btn", type: "button" }, "断开全部");
-  const deployMissing = h("button", { class: "btn", type: "button" }, "仅部署缺失 Runtime");
-  const deployAll = h("button", { class: "btn", type: "button" }, "重新部署全部 Runtime");
+  const deployMissing = h("button", { class: "btn", type: "button" }, "补缺失");
+  const deployAll = h("button", { class: "btn", type: "button" }, "全部重部署");
   const hfToken = h("input", {
     class: "input input--mono",
     type: "password",
@@ -326,7 +326,7 @@ function connectionPanel(connections, hfSecret) {
   deployAll.addEventListener("click", () => runGlobalDeployment({
     missingOnly: false,
     force: true,
-    label: "重新部署全部 Runtime",
+    label: "全部重部署",
   }));
 
   disconnect.addEventListener("click", async () => {
@@ -376,7 +376,8 @@ function connectionPanel(connections, hfSecret) {
     status,
     h("label", { class: "drawer-field" }, h("span", {}, "Modal Token ID"), tokenId),
     h("label", { class: "drawer-field" }, h("span", {}, "Modal Token Secret"), tokenSecret),
-    h("div", { class: "drawer-actions" }, disconnect, deployMissing, deployAll, connect),
+    h("div", { class: "drawer-actions" }, disconnect, connect),
+    h("div", { class: "drawer-actions" }, deployMissing, deployAll),
     h("div", { class: "drawer-section" },
       h("div", { class: "drawer-section__title" }, "Hugging Face"),
       h("p", { class: "drawer-copy" },

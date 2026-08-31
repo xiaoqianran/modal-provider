@@ -511,8 +511,8 @@ def test_runtime_ui_exposes_explicit_global_deployment_modes() -> None:
         encoding="utf-8"
     )
 
-    assert "仅部署缺失 Runtime" in source
-    assert "重新部署全部 Runtime" in source
+    assert "补缺失" in source
+    assert "全部重部署" in source
     assert "missingOnly: true" in source
     assert "force: false" in source
     assert "missingOnly: false" in source
