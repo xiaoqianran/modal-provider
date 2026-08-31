@@ -18,6 +18,7 @@ from .hyworld2_runtime import (
     hyworld2_worldmirror_image,
 )
 from .service import capabilities as local_capabilities
+from .worldgen_policy import sanitize_semantic_labels
 from .worldgen_job import (
     build_stage_manifest,
     fingerprint_files,
@@ -221,9 +222,23 @@ GARDEN_PANO_PROMPT = (
     "wooden garden pavilion in the middle distance, stone benches, warm garden lanterns and low stone boundary "
     "walls. Keep the center open, spacious and clearly walkable. Soft bright morning sunlight, realistic materials, "
     "lush vegetation, elegant landscape architecture, high-end botanical garden photography, coherent human-scale "
-    "geometry, no people, no text, no signs, no vehicles, no fantasy architecture, no floating objects, no water, "
-    "no narrow bridges, no dense foliage directly in front of the camera, no extreme depth of field."
+    "geometry, no people, no animals, no birds, no butterflies, no insects, no statues, no trash cans, "
+    "no transient or moving objects, no text, no signs, no vehicles, no fantasy architecture, no floating objects, "
+    "no water, no narrow bridges, no dense foliage directly in front of the camera, no extreme depth of field."
 )
+
+def _sanitize_garden_semantics(target) -> dict:
+    import json
+
+    path = target / "objects.json"
+    if not path.is_file():
+        raise RuntimeError(f"Garden semantics missing: {path}")
+    try:
+        kept, removed = sanitize_semantic_labels(json.loads(path.read_text()))
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+    path.write_text(json.dumps(kept, indent=2) + "\n")
+    return {"kept": kept, "removed": removed}
 
 
 @app.function(
@@ -1574,28 +1589,39 @@ def worldgen_pipeline(
     if not prompt:
         raise ValueError("worldgen prompt must not be empty")
 
-    stages = {
-        "stage0": worldgen_garden_stage0.remote(
-            job_id=job_id, source_name=source_name, seed=int(seed), prompt=prompt
-        ),
-        "stage1": worldgen_case000_stage1.remote(job_id=job_id),
-        "stage2": worldgen_case000_stage2.remote(job_id=job_id),
-        "stage3": worldgen_case000_stage3.remote(job_id=job_id),
-        "stage4": worldgen_case000_stage4.remote(job_id=job_id),
-        "stage5": worldgen_case000_stage5.remote(job_id=job_id, force=bool(force)),
-    }
+    stages = {}
+    stages["stage0"] = worldgen_garden_stage0.remote(
+        job_id=job_id, source_name=source_name, seed=int(seed), prompt=prompt
+    )
+    stages["stage1"] = worldgen_case000_stage1.remote(job_id=job_id)
+
+    worldgen_outputs.reload()
+    target = resolve_worldgen_job_root(job_id)
+    if job_id != "case000":
+        stages["semantic_sanitize"] = _sanitize_garden_semantics(target)
+        worldgen_outputs.commit()
+
+    stages["stage2"] = worldgen_case000_stage2.remote(job_id=job_id)
+    stages["stage3"] = worldgen_case000_stage3.remote(job_id=job_id)
+    stages["stage4"] = worldgen_case000_stage4.remote(job_id=job_id)
+    stages["stage5"] = worldgen_case000_stage5.remote(job_id=job_id, force=bool(force))
+
+    runtime_compile = modal.Function.from_name(
+        "modal-world-runtime-compile", "compile_world_runtime"
+    ).remote(job_id=job_id, force=bool(force))
+    stages["runtime_compile"] = runtime_compile
 
     worldgen_outputs.reload()
     target = resolve_worldgen_job_root(job_id)
     artifacts = [
         _runtime_world_artifact(
-            target / "render_results/global_mesh.ply",
+            target / "runtime/environment.ply",
             job_id=job_id,
             role="world-mesh",
             mime="model/ply",
         ),
         _runtime_world_artifact(
-            target / "camera_trajectory/target_camera.json",
+            target / "objects.json",
             job_id=job_id,
             role="world-semantics",
             mime="application/json",

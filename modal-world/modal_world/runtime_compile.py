@@ -85,6 +85,7 @@ def build_runtime_world_manifest(
         "schemaVersion": 1,
         "id": job_id,
         "coordinateSystem": "z-up",
+        "metersPerUnit": 1.0,
         "artifacts": artifacts,
         "layout": runtime_layout_from_z_up_bounds(source_min_bound, source_max_bound),
         "mesh": {

@@ -6,7 +6,6 @@ import shutil
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from glob import glob
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +25,11 @@ from .worldgen_job import (
     stage_manifest_path,
     write_stage_manifest,
 )
+from .worldgen_policy import (
+    NON_REFERENCE_CAMERA_FRAME_BUDGET,
+    camera_frame_count,
+    select_camera_files,
+)
 
 app = modal.App("modal-world-stage2")
 model_cache = modal.Volume.from_name("hyworld2-models", create_if_missing=True)
@@ -36,6 +40,10 @@ worldgen_outputs = modal.Volume.from_name("hyworld2-worldgen-output", create_if_
 hf_secret = modal.Secret.from_name(os.environ.get("MODAL_WORLD_HF_SECRET", "hyworld2-hf"))
 
 _MODEL_ID = "Qwen/Qwen3-VL-8B-Instruct"
+
+
+def _trajectory_outputs(camera_files: list[Path], filename: str) -> list[Path]:
+    return [path.with_name(filename) for path in camera_files]
 
 
 @app.cls(
@@ -280,11 +288,13 @@ class WorldNavRenderer:
 
     @staticmethod
     def _manifest(job_id: str, target: Path) -> tuple[dict[str, Any], list[Path]]:
-        camera_files = sorted(target.glob("render_results/*/traj*/camera.json"))
+        all_camera_files = sorted(target.glob("render_results/*/traj*/camera.json"))
+        frame_budget = None if job_id == "case000" else NON_REFERENCE_CAMERA_FRAME_BUDGET
+        camera_files = select_camera_files(all_camera_files, frame_budget)
         inputs = [
             target / "camera_trajectory/target_camera.json",
             target / "render_results/global_pcd.ply",
-            *camera_files,
+            *all_camera_files,
         ]
         manifest = build_stage_manifest(
             job_id=job_id,
@@ -297,6 +307,9 @@ class WorldNavRenderer:
                 "render_radius": 0.008,
                 "points_per_pixel": 20,
                 "slice_size": 4,
+                "camera_frame_budget": frame_budget,
+                "selected_trajectory_count": len(camera_files),
+                "selected_camera_frames": sum(camera_frame_count(path) for path in camera_files),
             },
         )
         return manifest, camera_files
@@ -318,13 +331,13 @@ class WorldNavRenderer:
             raise RuntimeError("Stage 1 global point cloud is missing")
 
         manifest, camera_files = self._manifest(job_id, target)
-        renders = sorted(target.glob("render_results/*/traj*/render.mp4"))
-        masks = sorted(target.glob("render_results/*/traj*/render_mask.mp4"))
-        captions = sorted(target.glob("render_results/*/traj*/traj_caption.json"))
+        renders = _trajectory_outputs(camera_files, "render.mp4")
+        masks = _trajectory_outputs(camera_files, "render_mask.mp4")
+        captions = _trajectory_outputs(camera_files, "traj_caption.json")
         if (
             not force
             and camera_files
-            and len(camera_files) == len(renders) == len(masks) == len(captions)
+            and all(path.is_file() for path in (*renders, *masks, *captions))
         ):
             valid_captions = True
             for caption in captions:
@@ -358,20 +371,20 @@ class WorldNavRenderer:
         torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter()
 
-        scene = str(target)
-        traj_list = (
-            glob(f"{scene}/render_results/view*/traj*")
-            + glob(f"{scene}/render_results/target*/traj*")
-            + glob(f"{scene}/render_results/wonder*/traj*")
-            + glob(f"{scene}/render_results/reconstruct*/traj*")
-        )
-        traj_list.sort()
+        selected_camera_set = set(camera_files)
+        traj_list = [path.parent for path in camera_files]
+        for stale_camera in target.glob("render_results/*/traj*/camera.json"):
+            if stale_camera in selected_camera_set:
+                continue
+            for filename in ("render.mp4", "render_mask.mp4", "traj_caption.json"):
+                stale_output = stale_camera.with_name(filename)
+                if stale_output.exists():
+                    stale_output.unlink()
         global_pcd = trimesh.load(target / "render_results/global_pcd.ply")
         to_pil = transforms.ToPILImage()
         render_timings: list[dict[str, Any]] = []
 
-        for traj_path_str in traj_list:
-            traj_path = Path(traj_path_str)
+        for traj_path in traj_list:
             camera_path = traj_path / "camera.json"
             if not camera_path.is_file():
                 continue
@@ -413,7 +426,7 @@ class WorldNavRenderer:
                 }
             )
 
-        total_render_list = sorted(glob(f"{scene}/render_results/*/traj*/render.mp4"))
+        total_render_list = [str(path) for path in _trajectory_outputs(camera_files, "render.mp4")]
         caption_inputs = [
             path
             for path in total_render_list
@@ -441,25 +454,24 @@ class WorldNavRenderer:
                     if not success:
                         raise RuntimeError(f"Stage 2 caption failed for {render_path}: {error}")
 
-        for render_path in glob(f"{scene}/render_results/reconstruct_*/traj1/render.mp4"):
-            render = Path(render_path)
+        for render in _trajectory_outputs(camera_files, "render.mp4"):
+            if not (render.parent.parent.name.startswith("reconstruct_") and render.parent.name == "traj1"):
+                continue
             source_caption = render.parent.parent / "traj0/traj_caption.json"
             shutil.copy2(source_caption, render.with_name("traj_caption.json"))
         caption_s = time.perf_counter() - caption_started
         elapsed = time.perf_counter() - started
 
-        renders = sorted(target.glob("render_results/*/traj*/render.mp4"))
-        masks = sorted(target.glob("render_results/*/traj*/render_mask.mp4"))
-        captions = sorted(target.glob("render_results/*/traj*/traj_caption.json"))
-        if (
-            len(renders) != len(camera_files)
-            or len(masks) != len(camera_files)
-            or len(captions) != len(camera_files)
-        ):
-            raise RuntimeError(
-                "Stage 2 output count mismatch: "
-                f"cameras={len(camera_files)} renders={len(renders)} masks={len(masks)} captions={len(captions)}"
-            )
+        renders = _trajectory_outputs(camera_files, "render.mp4")
+        masks = _trajectory_outputs(camera_files, "render_mask.mp4")
+        captions = _trajectory_outputs(camera_files, "traj_caption.json")
+        missing_outputs = [
+            str(path.relative_to(target))
+            for path in (*renders, *masks, *captions)
+            if not path.is_file()
+        ]
+        if missing_outputs:
+            raise RuntimeError(f"Stage 2 missing outputs: {missing_outputs}")
 
         timing = {
             "stage2_s": round(elapsed, 3),
@@ -469,6 +481,9 @@ class WorldNavRenderer:
             "worker_call_index": call_index,
             "peak_allocated_gb": round(torch.cuda.max_memory_allocated() / 1024**3, 3),
             "trajectory_timings": render_timings,
+            "camera_frame_budget": None if job_id == "case000" else NON_REFERENCE_CAMERA_FRAME_BUDGET,
+            "selected_trajectory_count": len(camera_files),
+            "selected_camera_frames": sum(camera_frame_count(path) for path in camera_files),
         }
         (target / "stage2_timing.json").write_text(json.dumps(timing, indent=2) + "\n")
         write_stage_manifest(target, "stage2", manifest)

@@ -191,7 +191,7 @@ class HYWorld2Backend(WorldBackend):
         }
         roles = {
             "render_results/global_mesh.ply": "world-mesh",
-            "camera_trajectory/target_camera.json": "world-semantics",
+            "objects.json": "world-semantics",
         }
         found: list[Artifact] = []
         for path in sorted(root.rglob("*")):

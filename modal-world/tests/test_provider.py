@@ -90,7 +90,7 @@ def result():
                 "mime": "model/ply",
                 "bytes": 3,
                 "sha256": "a" * 64,
-                "path": "jobs/world/render_results/global_mesh.ply",
+                "path": "jobs/world/runtime/environment.ply",
             },
             {
                 "id": "sem",
@@ -98,7 +98,7 @@ def result():
                 "mime": "application/json",
                 "bytes": 2,
                 "sha256": "b" * 64,
-                "path": "jobs/world/camera_trajectory/target_camera.json",
+                "path": "jobs/world/objects.json",
             },
             {
                 "id": "spz",

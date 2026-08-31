@@ -43,5 +43,12 @@ def deployment_manifest() -> dict[str, object]:
                 "revision": revision,
                 "models": ["hyworld2"],
             },
+            {
+                "app": "modal-world-runtime-compile",
+                "module": "modal_world.runtime_compile_app",
+                "kind": "compiler",
+                "revision": revision,
+                "models": ["hyworld2"],
+            },
         ],
     }

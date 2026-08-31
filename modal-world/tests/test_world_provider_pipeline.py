@@ -8,6 +8,10 @@ def test_pipeline_uses_existing_stage_chain_and_runtime_artifact_roles():
     for stage in range(1, 6):
         assert f"worldgen_case000_stage{stage}.remote" in section
     assert "worldgen_garden_stage0.remote" in section
+    assert 'modal.Function.from_name(' in section
+    assert '"modal-world-runtime-compile", "compile_world_runtime"' in section
+    assert 'target / "runtime/environment.ply"' in section
+    assert 'target / "objects.json"' in section
     assert 'role="world-mesh"' in section
     assert 'role="world-semantics"' in section
     assert 'role="world-visual"' in section
