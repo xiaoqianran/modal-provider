@@ -39,6 +39,7 @@ class DeploymentTarget:
     models: tuple[str, ...] = ()
     required: bool = False
     weights: tuple[WeightSpec, ...] = ()
+    secrets: tuple[str, ...] = ()
 
 
 def _now() -> str:
@@ -149,6 +150,14 @@ class DeploymentService:
                     if isinstance(raw_models, list)
                     else ()
                 )
+                raw_secrets = item.get("secrets", [])
+                if not isinstance(raw_secrets, list) or any(
+                    not isinstance(value, str) or not value.strip() for value in raw_secrets
+                ):
+                    raise ConnectorError(
+                        "DEPLOYMENT_MANIFEST_INVALID", "Runtime secrets 必须是非空字符串数组", 500
+                    )
+                secrets = tuple(dict.fromkeys(value.strip() for value in raw_secrets))
                 raw_weights = item.get("weights", [])
                 if not isinstance(raw_weights, list):
                     raise ConnectorError(
@@ -170,6 +179,7 @@ class DeploymentService:
                         models=models,
                         required=item.get("required") is True,
                         weights=weights,
+                        secrets=secrets,
                     )
                 )
                 seen.add(key)
@@ -360,6 +370,23 @@ class DeploymentService:
             providers.append({"id": provider, "status": "disconnected", "apps": apps})
         return {"connected": False, "providers": providers}
 
+
+    @staticmethod
+    def _ensure_target_secrets(
+        targets: tuple[DeploymentTarget, ...], client: modal.Client
+    ) -> None:
+        required = tuple(dict.fromkeys(secret for target in targets for secret in target.secrets))
+        if not required:
+            return
+        existing = _modal_secret_names(client)
+        missing = [name for name in required if name not in existing]
+        if missing:
+            raise ConnectorError(
+                "DEPLOYMENT_SECRETS_REQUIRED",
+                "部署前请先配置 Modal Secrets: " + ", ".join(missing),
+                409,
+            )
+
     def deploy(
         self,
         provider: str | None = None,
@@ -385,6 +412,7 @@ class DeploymentService:
                 for target in targets
             }
             targets = tuple(target for target in targets if statuses[target.app_name] == "missing")
+        self._ensure_target_secrets(targets, client)
 
         rows: list[dict[str, object]] = []
         for target in targets:
@@ -564,7 +592,15 @@ class DeploymentService:
                 "force 与 missingOnly 不能同时启用",
                 422,
             )
-        self._select_targets(provider, app_name)
+        targets = self._select_targets(provider, app_name)
+        client = self._require_client()
+        if missing_only:
+            targets = tuple(
+                target
+                for target in targets
+                if self._target_status(target, client, environment_name)["status"] == "missing"
+            )
+        self._ensure_target_secrets(targets, client)
         self._invalidate_readiness_cache()
         request_key = (provider, app_name, strategy, environment_name, missing_only, force)
         with self._lock:
@@ -594,7 +630,6 @@ class DeploymentService:
             self._jobs[job_id] = job
             self._active_requests[request_key] = job_id
             self._job_request_keys[job_id] = request_key
-        client = self._require_client()
         thread = threading.Thread(
             target=self._run_deployment_job,
             args=(

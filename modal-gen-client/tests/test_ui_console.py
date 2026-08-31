@@ -661,3 +661,9 @@ def test_live_gateway_rebuilds_session_when_capability_hash_changes(monkeypatch)
 
     assert calls == [True]
     assert gateway.token == "new-token"
+
+
+def test_runtime_deploy_requires_huggingface_secret_in_ui():
+    source = Path("modal_gen/ui/assets/views/view_connect.js").read_text(encoding="utf-8")
+    assert 'apiGet("secrets/huggingface")' in source
+    assert "请先保存 Hugging Face Token" in source

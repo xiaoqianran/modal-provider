@@ -603,3 +603,44 @@ def test_submission_status_checks_required_and_selected_model_only(monkeypatch):
 
     assert seen == ["prep", "worker-b"]
     assert result["providers"][0]["status"] == "current"
+
+
+def test_deploy_rejects_missing_declared_secrets(monkeypatch):
+    target = DeploymentTarget(
+        "modal-3d",
+        "worker",
+        "runtime.worker",
+        secrets=("huggingface",),
+    )
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+    monkeypatch.setattr("modal_gen.deployments._modal_secret_names", lambda _client: set())
+
+    try:
+        service.start_deploy("modal-3d")
+    except Exception as exc:
+        assert getattr(exc, "code", None) == "DEPLOYMENT_SECRETS_REQUIRED"
+        assert "huggingface" in str(exc)
+    else:
+        raise AssertionError("missing deployment secret must block the job before it starts")
+
+    assert service.deployment_jobs()["jobs"] == []
+
+
+def test_deploy_accepts_declared_secrets(monkeypatch):
+    target = DeploymentTarget(
+        "modal-3d",
+        "worker",
+        "runtime.worker",
+        secrets=("huggingface",),
+    )
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+    monkeypatch.setattr(
+        "modal_gen.deployments._modal_secret_names", lambda _client: {"huggingface"}
+    )
+    monkeypatch.setattr(service, "_run_deployment_job", lambda *_args, **_kwargs: None)
+
+    job = service.start_deploy("modal-3d")
+
+    assert job["status"] == "queued"

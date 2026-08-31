@@ -48,6 +48,7 @@ def deployment_manifest() -> dict[str, object]:
             },
             {
                 "app": "modal-3d-fastsam3d",
+                "secrets": ["huggingface"],
                 "module": "modal_3d.fastsam3d_plus_plus",
                 "kind": "worker",
                 "models": ["fastsam3d-plus-plus"],
@@ -59,6 +60,7 @@ def deployment_manifest() -> dict[str, object]:
             },
             {
                 "app": "modal-3d-hunyuan",
+                "secrets": ["huggingface"],
                 "module": "modal_3d.hunyuan2_1_plus_plus",
                 "kind": "worker",
                 "models": ["hunyuan2.1-plus-plus"],
@@ -70,6 +72,7 @@ def deployment_manifest() -> dict[str, object]:
             },
             {
                 "app": "modal-3d-hermit-trellis2-plus-plus",
+                "secrets": ["huggingface"],
                 "module": "modal_3d.hermit_trellis2_plus_plus",
                 "kind": "worker",
                 "models": ["hermit-trellis2-plus-plus"],
@@ -81,6 +84,7 @@ def deployment_manifest() -> dict[str, object]:
             },
             {
                 "app": "modal-3d-pixal3d",
+                "secrets": ["huggingface"],
                 "module": "modal_3d.pixal3d",
                 "kind": "worker",
                 "models": ["pixal3d"],

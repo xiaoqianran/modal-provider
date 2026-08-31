@@ -289,6 +289,10 @@ function connectionPanel(connections, hfSecret) {
     status.className = "connect-hint";
     status.textContent = "正在部署全部 Runtime；首次部署可能需要构建镜像。";
     try {
+      const secretState = await apiGet("secrets/huggingface");
+      if (!secretState.configured) {
+        throw new Error("请先保存 Hugging Face Token；3D / World Runtime 依赖 huggingface + hyworld2-hf Secrets。");
+      }
       const result = await apiPost("deployments/deploy", {
         provider: "all",
         force: true,

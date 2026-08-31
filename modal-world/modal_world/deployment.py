@@ -24,6 +24,7 @@ def deployment_manifest() -> dict[str, object]:
         "targets": [
             {
                 "app": "modal-world",
+                "secrets": ["hyworld2-hf"],
                 "module": "modal_world.app",
                 "kind": "pipeline",
                 "revision": revision,
@@ -31,6 +32,7 @@ def deployment_manifest() -> dict[str, object]:
             },
             {
                 "app": "modal-world-stage2",
+                "secrets": ["hyworld2-hf"],
                 "module": "modal_world.stage2_app",
                 "kind": "worker",
                 "revision": revision,
@@ -38,6 +40,7 @@ def deployment_manifest() -> dict[str, object]:
             },
             {
                 "app": "modal-world-stage3",
+                "secrets": ["hyworld2-hf"],
                 "module": "modal_world.stage3_app",
                 "kind": "worker",
                 "revision": revision,
@@ -45,6 +48,7 @@ def deployment_manifest() -> dict[str, object]:
             },
             {
                 "app": "modal-world-runtime-compile",
+                "secrets": ["hyworld2-hf"],
                 "module": "modal_world.runtime_compile_app",
                 "kind": "compiler",
                 "revision": revision,
