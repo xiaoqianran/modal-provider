@@ -4,14 +4,21 @@ from typing import Any
 
 import modal
 
+from .artifact_bundles import (
+    ARTIFACT_VOLUME_NAME,
+    HYWORLD2_ARTIFACT_BUNDLES,
+    HYWORLD2_STAGE2_H100_ARTIFACT_BUNDLES,
+    HYWORLD2_STAGE3_H100_ARTIFACT_BUNDLES,
+    HYWORLD2_STAGE5_H100_ARTIFACT_BUNDLES,
+)
 from .stage1_patch import patch_stage1_worldnav
 from .stage2_patch import patch_stage2_single_gpu
 from .stage3_patch import patch_stage3_runtime
 from .stage4_patch import patch_stage4_single_gpu
 from .stage5_patch import patch_stage5_single_gpu
 
-ARTIFACT_VOLUME_NAME = "modal-build-artifacts"
 GPU = "RTX-PRO-6000"
+H100_GPU = "H100"
 PYTHON = "3.11"
 CUDA = "12.8.1"
 TORCH = "2.7.1"
@@ -19,33 +26,12 @@ TORCHVISION = "0.22.1"
 
 # Exact bundle hashes are produced and smoke-tested by xiaoqianran/modal-build.
 # They are kwargs to Image.run_function, so changing a hash invalidates Modal's image cache.
-HYWORLD2_ARTIFACT_BUNDLES: tuple[dict[str, Any], ...] = (
-    {
-        "tag": "hyworld2-hy-native-py311-cu128-torch271-sm120-v1",
-        "archive_sha256": "094e611679e02135e7f4e746d63554145d960aa52c3392ab5db8e1a6bc69f87a",
-        "public_release": False,
-    },
-    {
-        "tag": "hyworld2-oss-native-py311-cu128-torch271-sm120-v1",
-        "archive_sha256": "2c6b787925dbbbd7df389d77d548db2639f18113705686586bf85ca63902a746",
-        "public_release": True,
-    },
-    {
-        "tag": "hyworld2-oss-source-py311-v1",
-        "archive_sha256": "c294c84b2645a5105fe911e519927f016956c73058c5e8a97acea375a4ac94b6",
-        "public_release": False,
-    },
-    {
-        "tag": "hyworld2-flash-attn-py311-cu128-torch271-sm120-v1",
-        "archive_sha256": "7653177eb13c6056066f72cd27c1e3f540ada13d9d6dbf65e5657930e7522952",
-        "public_release": True,
-    },
-)
-
 artifacts_volume = modal.Volume.from_name(ARTIFACT_VOLUME_NAME, create_if_missing=False)
 
 
-def install_artifact_bundles(bundles: tuple[dict[str, Any], ...]) -> None:
+def install_artifact_bundles(
+    bundles: tuple[dict[str, Any], ...], *, force_reinstall: bool = False
+) -> None:
     """Install prebuilt HYWorld2 wheels from modal-build into a captured Image layer."""
     import hashlib
     import json
@@ -83,10 +69,10 @@ def install_artifact_bundles(bundles: tuple[dict[str, Any], ...]) -> None:
             wheels = sorted((temp_path / "wheels").glob("*.whl"))
             if not wheels:
                 raise RuntimeError(f"no wheels found in {tag}")
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--no-deps", *map(str, wheels)],
-                check=True,
-            )
+            command = [sys.executable, "-m", "pip", "install", "--no-deps"]
+            if force_reinstall:
+                command.append("--force-reinstall")
+            subprocess.run([*command, *map(str, wheels)], check=True)
 
     # Avoid capturing extracted temporary build state.
     shutil.rmtree("/root/.cache/pip", ignore_errors=True)
@@ -192,10 +178,31 @@ hyworld2_worldgen_stage1_image = (
 )
 
 
+# Stage2 H100 profile overlays every architecture-specific native bundle, including FlashAttention.
+hyworld2_worldgen_stage2_h100_image = hyworld2_worldgen_stage1_image.run_function(
+    install_artifact_bundles,
+    volumes={"/build-artifacts": artifacts_volume},
+    kwargs={
+        "bundles": HYWORLD2_STAGE2_H100_ARTIFACT_BUNDLES,
+        "force_reinstall": True,
+    },
+    timeout=30 * 60,
+)
+
+
 hyworld2_worldgen_stage3_image = (
     hyworld2_worldgen_stage1_image.run_function(patch_stage3_runtime, args=(HYWORLD2_SOURCE,))
     .apt_install("build-essential", "ninja-build")
     .pip_install("imagesize==1.4.1")
+)
+
+# Stage3 H100 profile overlays its smoke-tested sm90 native wheels, including
+# FlashAttention required by the nested WorldMirror subprocess.
+hyworld2_worldgen_stage3_h100_image = hyworld2_worldgen_stage3_image.run_function(
+    install_artifact_bundles,
+    volumes={"/build-artifacts": artifacts_volume},
+    kwargs={"bundles": HYWORLD2_STAGE3_H100_ARTIFACT_BUNDLES, "force_reinstall": True},
+    timeout=30 * 60,
 )
 
 hyworld2_worldgen_stage5_image = (
@@ -214,4 +221,19 @@ hyworld2_worldgen_stage5_image = (
         "ml-dtypes==0.5.4",
         "ninja>=1.11,<2",
     )
+)
+
+# Stage5 H100 profile: preserve the proven RTX PRO 6000 image and overwrite only
+# architecture-specific native wheels with the separately smoke-tested sm90 bundles.
+hyworld2_worldgen_stage5_h100_image = (
+    hyworld2_worldgen_stage5_image.run_function(
+        install_artifact_bundles,
+        volumes={"/build-artifacts": artifacts_volume},
+        kwargs={
+            "bundles": HYWORLD2_STAGE5_H100_ARTIFACT_BUNDLES,
+            "force_reinstall": True,
+        },
+        timeout=30 * 60,
+    )
+    .run_commands("python -m pip uninstall -y flash-attn")
 )

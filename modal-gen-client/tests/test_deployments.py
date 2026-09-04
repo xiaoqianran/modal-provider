@@ -644,3 +644,136 @@ def test_deploy_accepts_declared_secrets(monkeypatch):
     job = service.start_deploy("modal-3d")
 
     assert job["status"] == "queued"
+
+
+def test_manifest_declares_deployment_prerequisites():
+    class Adapter:
+        id = "modal-x"
+
+        def deployment_manifest(self):
+            return {
+                "provider": self.id,
+                "targets": [
+                    {
+                        "app": "worker",
+                        "module": "runtime.worker",
+                        "prerequisites": [
+                            {
+                                "volume": "build-artifacts",
+                                "requiredPaths": ["bundle.zip"],
+                                "prepare": [
+                                    {
+                                        "module": "build.restore",
+                                        "function": "restore",
+                                        "arguments": ["bundle"],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+
+    target = DeploymentService([Adapter()])._targets("modal-x")[0]
+    assert target.prerequisites == (
+        WeightSpec(
+            volume="build-artifacts",
+            required_paths=("bundle.zip",),
+            prepare=(PrepareCall("build.restore", "restore", ("bundle",)),),
+        ),
+    )
+
+
+def test_prerequisites_are_prepared_before_runtime_module_import(monkeypatch):
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        prerequisites=(
+            WeightSpec(
+                "build-artifacts",
+                ("bundle.zip",),
+                (PrepareCall("build.restore", "restore"),),
+            ),
+        ),
+    )
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+    calls = []
+    monkeypatch.setattr(
+        service._prerequisites,
+        "ensure",
+        lambda *_args, **_kwargs: calls.append("prerequisites") or {"status": "ready"},
+    )
+
+    class App:
+        def deploy(self, **_kwargs):
+            calls.append("deploy")
+            return self
+
+    def import_module(_name):
+        calls.append("import")
+        return SimpleNamespace(app=App())
+
+    monkeypatch.setattr("modal_gen.deployments.importlib.import_module", import_module)
+    result = service.deploy("modal-x")
+    assert result["providers"][0]["status"] == "current"
+    assert calls == ["prerequisites", "import", "deploy"]
+
+
+def test_prerequisite_failure_prevents_runtime_import(monkeypatch):
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        prerequisites=(
+            WeightSpec("build-artifacts", ("bundle.zip",), (PrepareCall("m", "restore"),)),
+        ),
+    )
+    service = DeploymentService(targets=(target,), max_attempts=1)
+    service._client = SimpleNamespace()
+    monkeypatch.setattr(
+        service._prerequisites,
+        "ensure",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("artifact restore failed")),
+    )
+    imported = []
+    monkeypatch.setattr(
+        "modal_gen.deployments.importlib.import_module",
+        lambda name: imported.append(name),
+    )
+    app = service.deploy("modal-x")["providers"][0]["apps"][0]
+    assert app["status"] == "failed"
+    assert app["error"] == "artifact restore failed"
+    assert imported == []
+
+
+def test_runtime_status_reports_missing_prerequisites(monkeypatch):
+    class RemoteApp:
+        def get_tags(self, **_kwargs):
+            return {"modal-gen-revision": "sha256-current"}
+
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        revision="sha256-current",
+        models=("model-x",),
+        prerequisites=(
+            WeightSpec("build-artifacts", ("bundle.zip",), (PrepareCall("m", "restore"),)),
+        ),
+    )
+    service = DeploymentService(targets=(target,))
+    monkeypatch.setattr(
+        "modal_gen.deployments.modal.App.lookup", lambda *_args, **_kwargs: RemoteApp()
+    )
+    monkeypatch.setattr(
+        service._prerequisites,
+        "status",
+        lambda *_args, **_kwargs: {"status": "missing", "volumes": []},
+    )
+    row = service._target_status(target, SimpleNamespace())
+    assert row["status"] == "current"
+    assert row["runnable"] is False
+    assert row["prerequisites"]["status"] == "missing"
+    assert row["prerequisiteError"] == "required deployment prerequisites are missing"

@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from .artifact_bundles import deployment_prerequisites
+
 
 def runtime_revision() -> str:
     root = Path(__file__).resolve().parent
@@ -19,6 +21,7 @@ def runtime_revision() -> str:
 
 def deployment_manifest() -> dict[str, object]:
     revision = runtime_revision()
+    prerequisites = deployment_prerequisites()
     return {
         "provider": "modal-world",
         "targets": [
@@ -29,6 +32,8 @@ def deployment_manifest() -> dict[str, object]:
                 "kind": "pipeline",
                 "revision": revision,
                 "models": ["hyworld2"],
+                "required": True,
+                "prerequisites": prerequisites,
             },
             {
                 "app": "modal-world-stage2",
@@ -37,6 +42,8 @@ def deployment_manifest() -> dict[str, object]:
                 "kind": "worker",
                 "revision": revision,
                 "models": ["hyworld2"],
+                "required": True,
+                "prerequisites": prerequisites,
             },
             {
                 "app": "modal-world-stage3",
@@ -45,6 +52,8 @@ def deployment_manifest() -> dict[str, object]:
                 "kind": "worker",
                 "revision": revision,
                 "models": ["hyworld2"],
+                "required": True,
+                "prerequisites": prerequisites,
             },
             {
                 "app": "modal-world-runtime-compile",
@@ -53,6 +62,8 @@ def deployment_manifest() -> dict[str, object]:
                 "kind": "compiler",
                 "revision": revision,
                 "models": ["hyworld2"],
+                "required": True,
+                "prerequisites": prerequisites,
             },
         ],
     }

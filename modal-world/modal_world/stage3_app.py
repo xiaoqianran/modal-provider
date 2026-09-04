@@ -11,10 +11,10 @@ from typing import Any
 import modal
 
 from .hyworld2_runtime import (
-    GPU,
+    H100_GPU,
     HYWORLD2_REVISION,
     HYWORLD2_SOURCE,
-    hyworld2_worldgen_stage3_image,
+    hyworld2_worldgen_stage3_h100_image,
 )
 from .worldgen_job import (
     build_stage_manifest,
@@ -38,7 +38,7 @@ _MODEL_TYPE = "worldstereo-memory-dmd"
 
 
 @app.function(
-    image=hyworld2_worldgen_stage3_image,
+    image=hyworld2_worldgen_stage3_h100_image,
     cpu=1.0,
     memory=2048,
     timeout=5 * 60,
@@ -65,8 +65,8 @@ def verify_stage3_module_paths() -> dict[str, Any]:
 
 
 @app.cls(
-    image=hyworld2_worldgen_stage3_image,
-    gpu=GPU,
+    image=hyworld2_worldgen_stage3_h100_image,
+    gpu=H100_GPU,
     cpu=16.0,
     memory=(98304, 131072),
     volumes={
@@ -119,7 +119,6 @@ class WorldStereoWorker:
 
         import torch
         import torch.distributed as dist
-        from models.worldstereo_wrapper import WorldStereo
         from moge.model.v2 import MoGeModel
         from src.sp_utils.parallel_states import initialize_parallel_state
         from torch.distributed.device_mesh import init_device_mesh
@@ -152,15 +151,8 @@ class WorldStereoWorker:
         self.sam3_processor = Sam3VideoProcessor.from_pretrained(
             "facebook/sam3", local_files_only=True
         )
-        self.worldstereo = WorldStereo.from_pretrained(
-            "hanshanxue/WorldStereo",
-            subfolder=_MODEL_TYPE,
-            local_files_only=True,
-            sp_world_size=1,
-            fsdp=False,
-            device_mesh=self.device_mesh,
-            device=self.device,
-        )
+        self.worldstereo = None
+        self._load_worldstereo()
         torch.set_default_dtype(torch.float)
         if torch.cuda.is_bf16_supported():
             self.autocast_dtype = torch.bfloat16
@@ -171,6 +163,29 @@ class WorldStereoWorker:
         torch.cuda.synchronize()
         self.load_s = time.perf_counter() - started
         self.call_count = 0
+
+    def _load_worldstereo(self) -> None:
+        if self.worldstereo is not None:
+            return
+        from models.worldstereo_wrapper import WorldStereo
+
+        self.worldstereo = WorldStereo.from_pretrained(
+            "hanshanxue/WorldStereo",
+            subfolder=_MODEL_TYPE,
+            local_files_only=True,
+            sp_world_size=1,
+            fsdp=False,
+            device_mesh=self.device_mesh,
+            device=self.device,
+        )
+
+    def _release_worldstereo(self) -> None:
+        if self.worldstereo is None:
+            return
+        self.worldstereo = None
+        gc.collect()
+        self.torch.cuda.empty_cache()
+        self.torch.cuda.synchronize()
 
     @modal.method()
     def probe(self) -> dict[str, Any]:
@@ -237,6 +252,8 @@ class WorldStereoWorker:
         from src.retrieval_wm import PanoramaMemoryBank
 
         torch = self.torch
+        if self.worldstereo is None:
+            self._load_worldstereo()
         target = resolve_worldgen_job_root(job_id)
         manifest = self._stage3_manifest(job_id=job_id, target=target)
         aligned_pcd = target / f"render_results/generation_bank_{_MODEL_TYPE}/aligned_pcd.ply"
@@ -413,6 +430,10 @@ class WorldStereoWorker:
                 worldgen_outputs.commit()
                 checkpoint_commits += 1
                 generated_since_commit = 0
+            # WorldStereo is no longer needed once all trajectory videos exist.
+            # Release it before spawning WorldMirror so the subprocess gets a
+            # mostly-empty H100 instead of competing with the ~60 GiB parent model.
+            self._release_worldstereo()
             with timer.track("Run World Mirror"):
                 memory_bank.apply_worldmirror(skip_exist=True)
             # WorldMirror is itself reusable (`skip_exist=True`), so make its

@@ -98,7 +98,7 @@ def result():
                 "mime": "application/json",
                 "bytes": 2,
                 "sha256": "b" * 64,
-                "path": "jobs/world/objects.json",
+                "path": "jobs/world/runtime/semantics.json",
             },
             {
                 "id": "spz",
@@ -107,6 +107,22 @@ def result():
                 "bytes": 4,
                 "sha256": "c" * 64,
                 "path": "jobs/world/gs_result/ply/point_cloud_7999.spz",
+            },
+            {
+                "id": "nav",
+                "role": "world-navigation",
+                "mime": "model/ply",
+                "bytes": 5,
+                "sha256": "e" * 64,
+                "path": "jobs/world/runtime/navigation.ply",
+            },
+            {
+                "id": "manifest",
+                "role": "world-manifest",
+                "mime": "application/json",
+                "bytes": 6,
+                "sha256": "f" * 64,
+                "path": "jobs/world/runtime/world.json",
             },
         ],
     }
@@ -136,7 +152,10 @@ def test_descriptor_exposes_one_image_to_world_capability(tmp_path: Path):
     capability = descriptor["capabilities"][0]
     assert descriptor["id"] == "modal-world"
     assert capability["operation"] == OPERATION
-    assert capability["output"]["required"] == ["world-mesh", "world-semantics", "world-visual"]
+    assert capability["output"]["required"] == [
+        "world-mesh", "world-semantics", "world-visual", "world-manifest"
+    ]
+    assert capability["output"]["optional"] == ["world-navigation"]
 
 
 def test_submit_uploads_source_then_spawns_durable_pipeline(tmp_path: Path):
@@ -173,6 +192,8 @@ def test_get_and_artifact_stream_use_pipeline_result(tmp_path: Path):
         "world-mesh",
         "world-semantics",
         "world-visual",
+        "world-navigation",
+        "world-manifest",
     ]
     volume.reads[result()["artifacts"][0]["path"]] = b"ply"
     assert b"".join(p.iter_artifact("fc_world_01", "mesh")) == b"ply"

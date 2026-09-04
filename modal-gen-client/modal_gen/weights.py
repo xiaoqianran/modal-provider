@@ -56,7 +56,18 @@ class WeightProvisioner:
         client: modal.Client,
         environment_name: str | None = None,
     ) -> dict[str, object]:
-        volumes = [self._volume_status(spec, client, environment_name) for spec in specs]
+        snapshots: dict[str, frozenset[str]] = {}
+        for volume_name in dict.fromkeys(spec.volume for spec in specs):
+            snapshots[volume_name] = self._volume_files(volume_name, client, environment_name)
+        volumes = [
+            self._volume_row(
+                spec,
+                "ready"
+                if _required_paths_ready(spec.required_paths, snapshots[spec.volume])
+                else "missing",
+            )
+            for spec in specs
+        ]
         return {
             "status": "ready" if all(item["status"] == "ready" for item in volumes) else "missing",
             "volumes": volumes,
@@ -109,6 +120,7 @@ class WeightProvisioner:
                 downloaded = True
                 _notify(on_phase, "downloading_weights")
                 self._prepare(runtime_name, spec, client, environment_name)
+                self._invalidate_volume_cache(spec.volume, environment_name)
                 _notify(on_phase, "verifying_weights")
                 if not self._ready(spec, client, environment_name):
                     missing = ", ".join(spec.required_paths)
@@ -162,6 +174,44 @@ class WeightProvisioner:
             return True
         except NotFoundError:
             return False
+
+    def _volume_files(
+        self,
+        volume_name: str,
+        client: modal.Client,
+        environment_name: str | None,
+    ) -> frozenset[str]:
+        key = (volume_name, environment_name)
+        now = time.monotonic()
+        with self._guard:
+            cached = self._status_cache.get(key)
+            if cached is not None and cached[0] > now:
+                return cached[1]
+        try:
+            volume = modal.Volume.from_name(
+                volume_name, environment_name=environment_name, client=client
+            )
+            entries = volume.listdir("/", recursive=True)
+            files = frozenset(
+                str(getattr(entry, "path", "") or "").lstrip("/")
+                for entry in entries
+                if int(getattr(entry, "size", 0) or 0) > 0
+            )
+        except NotFoundError:
+            files = frozenset()
+        except Exception as exc:
+            with self._guard:
+                stale = self._status_cache.get(key)
+            if stale is not None and _is_volume_rate_limit(exc):
+                return stale[1]
+            raise
+        with self._guard:
+            self._status_cache[key] = (now + self._status_cache_ttl_s, files)
+        return files
+
+    def _invalidate_volume_cache(self, volume_name: str, environment_name: str | None) -> None:
+        with self._guard:
+            self._status_cache.pop((volume_name, environment_name), None)
 
     async def _volume_files_async(
         self,

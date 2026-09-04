@@ -12,10 +12,10 @@ from typing import Any
 import modal
 
 from .hyworld2_runtime import (
-    GPU,
+    H100_GPU,
     HYWORLD2_REVISION,
     HYWORLD2_SOURCE,
-    hyworld2_worldgen_stage1_image,
+    hyworld2_worldgen_stage2_h100_image,
 )
 from .worldgen_job import (
     build_stage_manifest,
@@ -47,8 +47,8 @@ def _trajectory_outputs(camera_files: list[Path], filename: str) -> list[Path]:
 
 
 @app.cls(
-    image=hyworld2_worldgen_stage1_image,
-    gpu=GPU,
+    image=hyworld2_worldgen_stage2_h100_image,
+    gpu=H100_GPU,
     cpu=8.0,
     memory=65536,
     volumes={

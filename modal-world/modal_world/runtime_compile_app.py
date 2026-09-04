@@ -5,7 +5,12 @@ import json
 import modal
 
 from .hyworld2_runtime import HYWORLD2_REVISION, hyworld2_worldgen_stage1_image
-from .runtime_compile import build_runtime_world_manifest
+from .runtime_compile import (
+    build_runtime_world_manifest,
+    load_navigation_paths,
+    navigation_corridor_mesh,
+)
+from .semantic_compile import compile_hyworld_semantics
 from .worldgen_job import (
     build_stage_manifest,
     fingerprint_files,
@@ -48,21 +53,45 @@ def compile_world_runtime(
     runtime_dir = target / "runtime"
     runtime_mesh = runtime_dir / "environment.ply"
     runtime_manifest = runtime_dir / "world.json"
+    runtime_semantics = runtime_dir / "semantics.json"
+    runtime_navigation = runtime_dir / "navigation.ply"
+    visual_path = target / "gs_result/ply/point_cloud_7999.spz"
+    semantics_path = target / "objects.json"
+    semantic_targets_path = target / "camera_trajectory/target_camera.json"
+    navmesh_metadata_path = target / "navmesh/metadata.json"
+    navigation_path_files = [
+        target / "navmesh" / name / "paths.json"
+        for name in ("exploration", "target", "surround", "reconstruct")
+        if (target / "navmesh" / name / "paths.json").is_file()
+    ]
+    navigation_paths = load_navigation_paths(target)
+    has_dedicated_navigation = bool(navigation_paths)
+    fingerprint_inputs = [source_mesh, *navigation_path_files]
+    for optional_input in (semantics_path, semantic_targets_path, visual_path, navmesh_metadata_path):
+        if optional_input.is_file():
+            fingerprint_inputs.append(optional_input)
     compile_manifest = build_stage_manifest(
         job_id=job_id,
         stage="runtime-compile",
         hyworld_revision=HYWORLD2_REVISION,
-        input_fingerprint=fingerprint_files([source_mesh], root=target),
+        input_fingerprint=fingerprint_files(fingerprint_inputs, root=target),
         config={
             "profile": "agentscape-environment-v1",
             "target_triangles": int(target_triangles),
             "coordinate_system": "z-up",
+            "navigation_half_width": 0.45,
+            "has_semantics": semantics_path.is_file(),
+            "has_semantic_instances": semantic_targets_path.is_file(),
+            "has_visual": visual_path.is_file(),
+            "has_dedicated_navigation": has_dedicated_navigation,
         },
     )
     if (
         not force
         and runtime_mesh.is_file()
         and runtime_manifest.is_file()
+        and (semantics_path.is_file() == runtime_semantics.is_file())
+        and (has_dedicated_navigation == runtime_navigation.is_file())
         and manifest_matches(target, "runtime-compile", compile_manifest)
     ):
         payload = json.loads(runtime_manifest.read_text())
@@ -100,9 +129,27 @@ def compile_world_runtime(
     if not o3d.io.write_triangle_mesh(str(runtime_mesh), mesh, write_ascii=False):
         raise RuntimeError(f"failed to write runtime mesh: {runtime_mesh}")
 
-    visual_path = target / "gs_result/ply/point_cloud_7999.spz"
-    semantics_path = target / "objects.json"
-    navmesh_metadata_path = target / "navmesh/metadata.json"
+    nav_triangles: list[list[int]] = []
+    if has_dedicated_navigation:
+        nav_vertices, nav_triangles = navigation_corridor_mesh(navigation_paths)
+        nav_mesh = o3d.geometry.TriangleMesh()
+        nav_mesh.vertices = o3d.utility.Vector3dVector(np.asarray(nav_vertices, dtype=np.float64))
+        nav_mesh.triangles = o3d.utility.Vector3iVector(np.asarray(nav_triangles, dtype=np.int32))
+        nav_mesh.compute_vertex_normals()
+        if not o3d.io.write_triangle_mesh(str(runtime_navigation), nav_mesh, write_ascii=False):
+            raise RuntimeError(f"failed to write runtime navigation mesh: {runtime_navigation}")
+    elif runtime_navigation.exists():
+        runtime_navigation.unlink()
+
+    if semantics_path.is_file():
+        semantic_targets = json.loads(semantic_targets_path.read_text()) if semantic_targets_path.is_file() else None
+        semantics_payload = compile_hyworld_semantics(
+            json.loads(semantics_path.read_text()),
+            semantic_targets,
+        )
+        runtime_semantics.write_text(json.dumps(semantics_payload, indent=2, sort_keys=True) + "\n")
+    elif runtime_semantics.exists():
+        runtime_semantics.unlink()
     payload = build_runtime_world_manifest(
         job_id=job_id,
         source_mesh="../render_results/global_mesh.ply",
@@ -114,7 +161,8 @@ def compile_world_runtime(
         source_min_bound=source_min.tolist(),
         source_max_bound=source_max.tolist(),
         visual="../gs_result/ply/point_cloud_7999.spz" if visual_path.is_file() else None,
-        semantics="../objects.json" if semantics_path.is_file() else None,
+        navigation="navigation.ply" if has_dedicated_navigation else None,
+        semantics="semantics.json" if semantics_path.is_file() else None,
         navmesh_metadata=("../navmesh/metadata.json" if navmesh_metadata_path.is_file() else None),
     )
     payload["compiler"] = {
@@ -132,6 +180,11 @@ def compile_world_runtime(
         "runtime_mesh": str(runtime_mesh),
         "runtime_manifest": str(runtime_manifest),
         "runtime_mesh_bytes": runtime_mesh.stat().st_size,
+        "runtime_navigation": str(runtime_navigation) if has_dedicated_navigation else None,
+        "runtime_semantics": str(runtime_semantics) if semantics_path.is_file() else None,
+        "runtime_navigation_bytes": runtime_navigation.stat().st_size if has_dedicated_navigation else 0,
+        "navigation_paths": len(navigation_paths),
+        "navigation_triangles": len(nav_triangles),
         **payload["mesh"],
         **payload["compiler"],
     }

@@ -234,3 +234,62 @@ def test_deployment_api_forwards_explicit_force_redeploy(tmp_path, monkeypatch):
             },
         )
     ]
+
+
+def test_final_pairing_forces_live_capability_readiness(tmp_path, monkeypatch):
+    class PairAdapter:
+        id = "modal-x"
+
+        def descriptor(self):
+            return {"id": self.id, "status": "available", "health": "healthy", "capabilities": []}
+
+        def unavailable_descriptor(self):
+            return {
+                "id": self.id,
+                "status": "disabled",
+                "health": "unavailable",
+                "capabilities": [],
+            }
+
+    runtime = build_runtime(Store(tmp_path / "db.sqlite3"), adapters=[PairAdapter()])
+    calls = []
+    original = runtime.capabilities.snapshot_async
+
+    async def tracked_snapshot(*, now=None, force_runtime=False):
+        calls.append(force_runtime)
+        return await original(now=now, force_runtime=force_runtime)
+
+    monkeypatch.setattr(runtime.capabilities, "snapshot_async", tracked_snapshot)
+    app = create_app(runtime)
+    body = {
+        "clientIdentity": "agentscape",
+        "contractVersion": "1",
+        "origin": "http://localhost:5173",
+        "scopes": [
+            "capabilities.read",
+            "jobs.submit",
+            "jobs.read",
+            "jobs.cancel",
+            "artifacts.read",
+        ],
+    }
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:48123"
+        ) as client:
+            first = await client.post(
+                "/connector/v1/session", json=body, headers={"Origin": body["origin"]}
+            )
+            pairing_id = first.json()["pairingId"]
+            runtime.sessions.approve(pairing_id)
+            second = await client.post(
+                "/connector/v1/session",
+                json={**body, "pairingId": pairing_id},
+                headers={"Origin": body["origin"]},
+            )
+            assert second.status_code == 200
+            assert second.json()["status"] == "paired"
+
+    asyncio.run(scenario())
+    assert calls == [True]

@@ -11,7 +11,8 @@ def test_pipeline_uses_existing_stage_chain_and_runtime_artifact_roles():
     assert 'modal.Function.from_name(' in section
     assert '"modal-world-runtime-compile", "compile_world_runtime"' in section
     assert 'target / "runtime/environment.ply"' in section
-    assert 'target / "objects.json"' in section
+    assert 'target / "runtime/semantics.json"' in section
+    assert 'navigation_path.is_file()' in section
     assert 'role="world-mesh"' in section
     assert 'role="world-semantics"' in section
     assert 'role="world-visual"' in section

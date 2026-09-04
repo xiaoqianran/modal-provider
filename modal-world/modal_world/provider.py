@@ -15,7 +15,8 @@ from .worldgen_job import resolve_worldgen_job_root
 OPERATION = "modal-world.world.image_to_world.v1"
 MODEL = "hyworld2"
 SOURCE_ROLE = "primary-image"
-OUTPUT_ROLES = ("world-mesh", "world-semantics", "world-visual")
+OUTPUT_ROLES = ("world-mesh", "world-semantics", "world-visual", "world-manifest")
+OPTIONAL_OUTPUT_ROLES = ("world-navigation",)
 MAX_PROMPT_CHARS = 4000
 OUTPUT_VOLUME = "hyworld2-worldgen-output"
 
@@ -246,9 +247,9 @@ def _descriptor(*, status: str, health: str) -> dict[str, object]:
                     },
                 },
                 "output": {
-                    "roles": list(OUTPUT_ROLES),
+                    "roles": [*OUTPUT_ROLES, *OPTIONAL_OUTPUT_ROLES],
                     "required": list(OUTPUT_ROLES),
-                    "optional": [],
+                    "optional": list(OPTIONAL_OUTPUT_ROLES),
                 },
                 "profiles": {"recommended": {}},
                 "optionsSchema": {

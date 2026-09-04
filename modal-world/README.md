@@ -20,7 +20,7 @@ WorldBackend                       future backends
   v
 HYWorld2Backend
   |-- reconstruct -> hyworld2.worldrecon.pipeline
-  `-- generate    -> reserved until full chain is validated
+  `-- generate    -> HYWorld2 five-stage WorldGen pipeline
 ```
 
 The core rule is **provider contract != model implementation**. ComfyUI is not a runtime dependency.
@@ -60,10 +60,25 @@ Full generation follows Tencent's official five-stage `hyworld2/worldgen` pipeli
 
 The runtime uses pinned HYWorld2/native artifacts and persistent Modal model/output Volumes. See `VERIFIED_RUN.md` for the validated revision, caches, timings and resumable artifacts.
 
+### Current model / precision profile
+
+The production WorldGen path is deliberately heavier than the separate ComfyUI experiment because it runs the complete generation chain rather than only a convenient reconstruction workflow.
+
+| Stage | Main model/runtime | Current precision |
+| --- | --- | --- |
+| WorldNav / caption | `Qwen/Qwen3-VL-8B-Instruct` | BF16 + FlashAttention 2 |
+| WorldStereo | `hanshanxue/WorldStereo` / `worldstereo-memory-dmd` | BF16 autocast when supported, otherwise FP16 |
+| Geometry prior | `Ruicheng/moge-2-vitl-normal` | upstream/default runtime precision |
+| Video segmentation | `facebook/sam3` | BF16 |
+| GS preparation / training | HYWorld2 native GS pipeline | training/runtime precision defined by upstream stage |
+
+The canonical production profile does **not** currently apply INT4/INT8 weight quantization to Qwen3-VL or the Stage 3 WorldStereo worker. A separate ComfyUI integration has exercised an INT4-attention WorldStereo path, but that experimental optimization must not be confused with the precision profile of `modal-world`.
+
 ## Modal packaging direction
 
-Keep HYWorld2/CUDA/Torch/gsplat/model weights in a HYWorld2-specific Modal image/volume. The generic provider
-package should remain lightweight. `modal-provider/modal-world/` is the sole source of truth. The former standalone repository is retired from the development and sync workflow.
+Keep HYWorld2/CUDA/Torch/gsplat/model weights in a HYWorld2-specific Modal image/volume. The generic provider package should remain lightweight. `modal-provider/modal-world/` is the canonical source of truth for production World execution. The standalone `modal-world` repository may remain a CI/release/distribution mirror under the monorepo synchronization rules; it is not an independent source of product truth.
+
+The sibling top-level repository `modal-comfyui-hyworld2` is intentionally outside this production boundary. It is retained as a visual/manual HYWorld2 experiment and debugging path; it may use ComfyUI-specific nodes, precision choices and quantized variants without changing the AgentScape-facing World Provider contract.
 
 ## Development
 

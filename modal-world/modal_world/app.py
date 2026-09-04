@@ -8,12 +8,15 @@ import modal
 
 from .hyworld2_runtime import (
     GPU,
+    H100_GPU,
     HYWORLD2_REVISION,
     HYWORLD2_SOURCE,
     hyworld2_artifact_image,
     hyworld2_panogen_image,
     hyworld2_worldgen_stage1_image,
+    hyworld2_worldgen_stage2_h100_image,
     hyworld2_worldgen_stage3_image,
+    hyworld2_worldgen_stage5_h100_image,
     hyworld2_worldgen_stage5_image,
     hyworld2_worldmirror_image,
 )
@@ -818,8 +821,8 @@ def worldgen_case000_stage3(job_id: str = "case000") -> dict:
 
 
 @app.function(
-    image=hyworld2_worldgen_stage1_image,
-    gpu=GPU,
+    image=hyworld2_worldgen_stage2_h100_image,
+    gpu=H100_GPU,
     cpu=8.0,
     memory=32768,
     volumes={
@@ -831,7 +834,7 @@ def worldgen_case000_stage3(job_id: str = "case000") -> dict:
     timeout=60 * 60,
 )
 def worldgen_case000_stage4(job_id: str = "case000") -> dict:
-    """Prepare official HYWorld2 3DGS training data on one RTX PRO 6000."""
+    """Prepare official HYWorld2 3DGS training data on one H100/sm90 worker."""
     import json
     import os
     import subprocess
@@ -1551,6 +1554,180 @@ def worldgen_case000_stage5_smoke(job_id: str = "case000") -> dict:
     }
 
 
+
+@app.function(
+    image=hyworld2_worldgen_stage5_h100_image,
+    gpu=H100_GPU,
+    cpu=16.0,
+    memory=65536,
+    volumes={
+        "/models": model_cache.with_mount_options(read_only=True),
+        "/runtime-cache": runtime_cache,
+        "/worldgen": worldgen_outputs,
+    },
+    timeout=20 * 60,
+)
+def worldgen_case000_stage5_h100_smoke(job_id: str = "case000") -> dict:
+    """Run the real Stage5 short profile on H100/sm90 without changing the RTX PRO path."""
+    import json
+    import os
+    import shutil
+    import subprocess
+    import sys
+    import threading
+    import time
+    from pathlib import Path
+
+    os.environ["TORCH_HOME"] = "/models/torch"
+    os.environ["XDG_CACHE_HOME"] = "/models/cache"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+    os.environ["PYTHONFAULTHANDLER"] = "1"
+    os.environ["CUDA_CACHE_PATH"] = "/runtime-cache/cuda-cache"
+    os.environ["CUDA_CACHE_MAXSIZE"] = str(4 * 1024**3)
+    os.environ["TORCH_EXTENSIONS_DIR"] = "/runtime-cache/torch-extensions"
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/runtime-cache/torchinductor"
+    os.environ["TRITON_CACHE_DIR"] = "/runtime-cache/triton"
+
+    target = resolve_worldgen_job_root(job_id)
+    data_dir = target / "gs_data"
+    result_dir = target / "gs_h100_smoke_result"
+    if result_dir.exists():
+        shutil.rmtree(result_dir)
+    required = [
+        data_dir / "cameras.json",
+        data_dir / "points.ply",
+        data_dir / "images",
+        data_dir / "normals",
+    ]
+    missing = [str(path) for path in required if not path.exists()]
+    if missing:
+        raise RuntimeError(f"Stage 5 smoke missing GS data: {missing}")
+    vgg_cache = Path("/models/torch/hub/checkpoints/vgg16-397923af.pth")
+    if not vgg_cache.is_file():
+        raise RuntimeError(
+            "Stage 5 VGG16 cache missing; run preflight_worldgen_case000_stage5 first"
+        )
+
+    worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
+    log_path = target / "stage5_h100_smoke.log"
+    timing_path = target / "stage5_h100_smoke_timing.json"
+    steps = 100
+    command = [
+        sys.executable,
+        "-X",
+        "faulthandler",
+        "-u",
+        "-m",
+        "world_gs_trainer",
+        "default",
+        "--data_dir",
+        str(data_dir),
+        "--result_dir",
+        str(result_dir),
+        "--max_steps",
+        str(steps),
+        "--save_steps",
+        str(steps),
+        "--ply_steps",
+        str(steps),
+        "--save_ply",
+        "--convert_to_spz",
+        "--disable_video",
+        "--disable_viewer",
+        "--use_scale_regularization",
+        "--antialiased",
+        "--depth_loss",
+        "--normal_loss",
+        "--sky_depth_from_pcd",
+        "--use_mask_gaussian",
+        "--mask_export_stochastic",
+        "--no-mask-export-anchor-protection",
+        "--use_anchor_protection",
+        "--strategy.refine-start-iter",
+        "10",
+        "--strategy.refine-stop-iter",
+        "50",
+        "--strategy.refine-every",
+        "7",
+        "--strategy.refine-scale2d-stop-iter",
+        "50",
+        "--strategy.reset-every",
+        "99990",
+        "--strategy.grow-grad2d",
+        "0.0001",
+        "--strategy.prune-scale3d",
+        "0.1",
+    ]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{worldgen_root}:{HYWORLD2_SOURCE}"
+
+    stop_monitor = threading.Event()
+    gpu_peak_mib = 0
+
+    def monitor_gpu() -> None:
+        nonlocal gpu_peak_mib
+        while not stop_monitor.wait(1.0):
+            try:
+                raw = subprocess.check_output(
+                    ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                    text=True,
+                    timeout=5,
+                ).splitlines()[0]
+                gpu_peak_mib = max(gpu_peak_mib, int(raw.strip()))
+            except (subprocess.SubprocessError, ValueError, IndexError):
+                pass
+
+    monitor = threading.Thread(target=monitor_gpu, daemon=True)
+    monitor.start()
+    started = time.perf_counter()
+    try:
+        with log_path.open("w") as log:
+            completed = subprocess.run(
+                command,
+                cwd=worldgen_root,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+                timeout=15 * 60,
+            )
+    finally:
+        stop_monitor.set()
+        monitor.join(timeout=5)
+
+    elapsed = time.perf_counter() - started
+    checkpoints = sorted(result_dir.rglob("*.pt"))
+    plys = sorted(result_dir.rglob("*.ply"))
+    spzs = sorted(result_dir.rglob("*.spz"))
+    timing = {
+        "steps": steps,
+        "stage5_h100_smoke_s": round(elapsed, 3),
+        "gpu_peak_used_mib": gpu_peak_mib,
+        "returncode": completed.returncode,
+        "checkpoint_count": len(checkpoints),
+        "ply_count": len(plys),
+        "spz_count": len(spzs),
+    }
+    timing_path.write_text(json.dumps(timing, indent=2) + "\n")
+    runtime_cache.commit()
+    worldgen_outputs.commit()
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"Stage 5 H100 smoke failed with exit {completed.returncode}:\n"
+            f"{log_path.read_text(errors='replace')[-30000:]}"
+        )
+    if not checkpoints or not plys:
+        raise RuntimeError(f"Stage 5 H100 smoke completed without checkpoint/PLY: {timing}")
+    return {
+        **timing,
+        "checkpoint_bytes": sum(path.stat().st_size for path in checkpoints),
+        "ply_bytes": sum(path.stat().st_size for path in plys),
+        "spz_bytes": sum(path.stat().st_size for path in spzs),
+        "log_tail": log_path.read_text(errors="replace")[-8000:],
+    }
+
+
 def _runtime_world_artifact(path, *, job_id: str, role: str, mime: str) -> dict:
     import hashlib
 
@@ -1622,7 +1799,7 @@ def worldgen_pipeline(
             mime="model/ply",
         ),
         _runtime_world_artifact(
-            target / "objects.json",
+            target / "runtime/semantics.json",
             job_id=job_id,
             role="world-semantics",
             mime="application/json",
@@ -1633,7 +1810,23 @@ def worldgen_pipeline(
             role="world-visual",
             mime="model/spz",
         ),
+        _runtime_world_artifact(
+            target / "runtime/world.json",
+            job_id=job_id,
+            role="world-manifest",
+            mime="application/json",
+        ),
     ]
+    navigation_path = target / "runtime/navigation.ply"
+    if navigation_path.is_file():
+        artifacts.append(
+            _runtime_world_artifact(
+                navigation_path,
+                job_id=job_id,
+                role="world-navigation",
+                mime="model/ply",
+            )
+        )
     return {
         "model": "hyworld2",
         "job_id": job_id,

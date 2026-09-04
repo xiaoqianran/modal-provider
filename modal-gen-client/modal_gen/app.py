@@ -246,7 +246,14 @@ def create_app(state: Runtime | None = None) -> FastAPI:
     @app.post(SESSION_PATH)
     async def pair_session(request: Request):
         payload = await _json_body(request)
-        return current().sessions.pair(payload, request_origin=request.headers.get("origin"))
+        capability_snapshot = None
+        if payload.get("pairingId"):
+            capability_snapshot = await current().capabilities.snapshot_async(force_runtime=True)
+        return current().sessions.pair(
+            payload,
+            request_origin=request.headers.get("origin"),
+            capability_snapshot=capability_snapshot,
+        )
 
     @app.delete(SESSION_PATH)
     def revoke_session(request: Request):

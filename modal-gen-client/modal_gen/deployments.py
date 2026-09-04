@@ -39,6 +39,7 @@ class DeploymentTarget:
     models: tuple[str, ...] = ()
     required: bool = False
     weights: tuple[WeightSpec, ...] = ()
+    prerequisites: tuple[WeightSpec, ...] = ()
     secrets: tuple[str, ...] = ()
 
 
@@ -107,6 +108,7 @@ class DeploymentService:
             (target.provider, target.app_name): threading.Lock() for target in self._targets_all
         }
         self._weights = WeightProvisioner()
+        self._prerequisites = WeightProvisioner()
         self._jobs: dict[str, dict[str, object]] = {}
         self._active_requests: dict[tuple[object, ...], str] = {}
         self._job_request_keys: dict[str, tuple[object, ...]] = {}
@@ -170,6 +172,18 @@ class DeploymentService:
                     )
                 except ValueError as exc:
                     raise ConnectorError("DEPLOYMENT_MANIFEST_INVALID", str(exc), 500) from exc
+                raw_prerequisites = item.get("prerequisites", [])
+                if not isinstance(raw_prerequisites, list):
+                    raise ConnectorError(
+                        "DEPLOYMENT_MANIFEST_INVALID", "Runtime prerequisites 必须是数组", 500
+                    )
+                try:
+                    prerequisites = tuple(
+                        WeightSpec.from_manifest(value, default_module=module)
+                        for value in raw_prerequisites
+                    )
+                except ValueError as exc:
+                    raise ConnectorError("DEPLOYMENT_MANIFEST_INVALID", str(exc), 500) from exc
                 rows.append(
                     DeploymentTarget(
                         provider=provider,
@@ -179,6 +193,7 @@ class DeploymentService:
                         models=models,
                         required=item.get("required") is True,
                         weights=weights,
+                        prerequisites=prerequisites,
                         secrets=secrets,
                     )
                 )
@@ -438,6 +453,23 @@ class DeploymentService:
         on_phase=None,
     ) -> dict[str, object]:
         try:
+            prerequisites = self._prerequisites.ensure(
+                target.app_name,
+                target.prerequisites,
+                client,
+                environment_name,
+                on_phase=(
+                    (lambda phase: on_phase(
+                        {
+                            "checking_weights": "checking_prerequisites",
+                            "downloading_weights": "preparing_prerequisites",
+                            "verifying_weights": "verifying_prerequisites",
+                        }.get(phase, phase)
+                    ))
+                    if on_phase is not None
+                    else None
+                ),
+            )
             weights = self._weights.ensure(
                 target.app_name,
                 target.weights,
@@ -469,6 +501,7 @@ class DeploymentService:
                 "deployedRevision": target.revision,
                 "models": list(target.models),
                 "required": target.required,
+                "prerequisites": prerequisites,
                 "weights": weights,
             }
         except Exception as exc:
@@ -829,6 +862,22 @@ class DeploymentService:
             status, error = "missing", str(exc)
         except Exception as exc:
             status, error = "error", str(exc)
+
+        prerequisites = None
+        prerequisite_error = None
+        if target.prerequisites:
+            try:
+                prerequisites = await self._prerequisites.status_async(
+                    target.prerequisites, client, environment_name
+                )
+                if prerequisites["status"] != "ready":
+                    prerequisite_error = "required deployment prerequisites are missing"
+            except Exception as exc:
+                prerequisite_error = str(exc)
+        prerequisites_ready = not target.prerequisites or (
+            isinstance(prerequisites, dict) and prerequisites.get("status") == "ready"
+        )
+
         weights = None
         weight_error = None
         if status in {"current", "stale"} and target.weights:
@@ -850,8 +899,12 @@ class DeploymentService:
             "deployedRevision": actual_revision,
             "models": list(target.models),
             "required": target.required,
-            "runnable": status == "current" and weights_ready,
+            "runnable": status == "current" and prerequisites_ready and weights_ready,
         }
+        if prerequisites is not None:
+            row["prerequisites"] = prerequisites
+        if prerequisite_error:
+            row["prerequisiteError"] = prerequisite_error
         if weights is not None:
             row["weights"] = weights
         if weight_error:
@@ -885,6 +938,22 @@ class DeploymentService:
             status, error = "missing", str(exc)
         except Exception as exc:
             status, error = "error", str(exc)
+
+        prerequisites = None
+        prerequisite_error = None
+        if target.prerequisites:
+            try:
+                prerequisites = self._prerequisites.status(
+                    target.prerequisites, client, environment_name
+                )
+                if prerequisites["status"] != "ready":
+                    prerequisite_error = "required deployment prerequisites are missing"
+            except Exception as exc:
+                prerequisite_error = str(exc)
+        prerequisites_ready = not target.prerequisites or (
+            isinstance(prerequisites, dict) and prerequisites.get("status") == "ready"
+        )
+
         weights = None
         weight_error = None
         if status in {"current", "stale"} and target.weights:
@@ -906,8 +975,12 @@ class DeploymentService:
             "deployedRevision": actual_revision,
             "models": list(target.models),
             "required": target.required,
-            "runnable": status == "current" and weights_ready,
+            "runnable": status == "current" and prerequisites_ready and weights_ready,
         }
+        if prerequisites is not None:
+            row["prerequisites"] = prerequisites
+        if prerequisite_error:
+            row["prerequisiteError"] = prerequisite_error
         if weights is not None:
             row["weights"] = weights
         if weight_error:

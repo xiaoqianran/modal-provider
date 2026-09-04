@@ -19,7 +19,7 @@ modal-provider
 └─ modal-build/           通用 CUDA/PyTorch 可复现构建与 release artifacts
 ```
 
-这些目录是 **monorepo 内部 package / integration / build boundary**。其中 `modal-2D-client`、`modal-3D-client`、`modal-gen-client` 同时维护独立 Git 仓库，用于单独查看、CI、发布和分发；代码真值仍以本 monorepo 为准。
+这些目录是 **monorepo 内部 package / integration / build boundary**。其中 `modal-world` 是正式、canonical 的生产 World Provider；仓库根目录之外的 `modal-comfyui-hyworld2` 仅用于 HY-World 2.0 的 ComfyUI 可视化、手工调试和实验验证，不承担 AgentScape 生产 World contract。`modal-2D-client`、`modal-3D-client`、`modal-gen-client` 等 package 可同时维护独立 Git 仓库用于单独查看、CI、发布和分发；代码真值仍以本 monorepo 为准。
 
 ## 部署前置条件：必须创建 Hugging Face Secret
 
@@ -91,6 +91,16 @@ HF_TOKEN=<具备目标模型访问权限的 Hugging Face Token>
 - 独立 failure/retry owner。
 
 原则是：**repository consolidation, runtime boundary preservation**。
+
+### Python lock source policy
+
+仓库中所有 `uv.lock` 必须使用官方 PyPI registry：
+
+```text
+https://pypi.org/simple
+```
+
+锁文件中的 wheel / sdist artifact URL 必须保持为官方 `files.pythonhosted.org` 地址。不要把本机 `uv`、pip 或系统级镜像配置（例如腾讯云、阿里云等）写回 lockfile；这类本地镜像会造成无意义的大规模 diff，并可能使 GitHub CI / release 校验失败。需要本机加速时，只通过本地环境配置使用镜像，不改变已提交的 lockfile source。
 
 ## EmbodiedGen
 

@@ -35,7 +35,7 @@ class RuntimeAppState:
             required=item.get("required") is True,
             models=tuple(model for model in item.get("models", []) if isinstance(model, str)),
             weights_status=weights_status,
-            error=item.get("error") or item.get("weightError"),
+            error=item.get("error") or item.get("prerequisiteError") or item.get("weightError"),
             runnable=runnable,
         )
 

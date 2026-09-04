@@ -11,6 +11,7 @@ dependencies = [
     "modal-2d",
     "modal-3d",
     "modal-world",
+    "modal-build",
     "uvicorn>=0.35,<1",
 ]
 
@@ -42,6 +43,7 @@ modal-3d-client = { path = "../modal-3D-client", editable = true }
 modal-2d = { path = "../modal-2D", editable = true }
 modal-3d = { path = "../modal-3D", editable = true }
 modal-world = { path = "../modal-world", editable = true }
+modal-build = { path = "../modal-build", editable = true }
 
 [tool.setuptools.packages.find]
 include = ["modal_gen*"]

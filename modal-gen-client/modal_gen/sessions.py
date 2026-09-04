@@ -29,6 +29,7 @@ class SessionService:
         *,
         request_origin: str | None = None,
         now: datetime | None = None,
+        capability_snapshot: dict[str, object] | None = None,
     ) -> dict[str, object]:
         current = now or datetime.now(UTC)
         client_identity = str(payload.get("clientIdentity") or "").strip()
@@ -80,7 +81,7 @@ class SessionService:
         if pairing["status"] != "approved":
             raise ConnectorError("CONNECTOR_PAIRING_INVALID", "Pairing 已失效", 409)
 
-        snapshot = self.capabilities.snapshot(now=current)
+        snapshot = capability_snapshot or self.capabilities.snapshot(now=current)
         token = secrets.token_urlsafe(32)
         token_id = f"session_{uuid.uuid4().hex}"
         expires = current + timedelta(minutes=15)

@@ -606,6 +606,17 @@ dev = [
 ]
 
 [[package]]
+name = "modal-build"
+version = "0.1.0"
+source = { editable = "../modal-build" }
+dependencies = [
+    { name = "modal" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "modal", specifier = ">=1.5,<2" }]
+
+[[package]]
 name = "modal-gen-client"
 version = "0.1.0"
 source = { editable = "." }
@@ -616,6 +627,7 @@ dependencies = [
     { name = "modal-2d-client-agent" },
     { name = "modal-3d" },
     { name = "modal-3d-client" },
+    { name = "modal-build" },
     { name = "modal-world" },
     { name = "uvicorn" },
 ]
@@ -634,6 +646,7 @@ requires-dist = [
     { name = "modal-2d-client-agent", editable = "../modal-2D-client" },
     { name = "modal-3d", editable = "../modal-3D" },
     { name = "modal-3d-client", editable = "../modal-3D-client" },
+    { name = "modal-build", editable = "../modal-build" },
     { name = "modal-world", editable = "../modal-world" },
     { name = "uvicorn", specifier = ">=0.35,<1" },
 ]

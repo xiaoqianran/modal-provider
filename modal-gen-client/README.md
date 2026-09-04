@@ -11,8 +11,9 @@ AgentScape
 modal-gen-client
     ├── modal-2D-client
     ├── modal-3D-client
-    ├── EmbodiedGen      (next)
-    └── World / ...      (future)
+    ├── modal-world      current World Provider
+    ├── EmbodiedGen      integration boundary
+    └── future providers
 ```
 
 ## 边界
@@ -38,13 +39,14 @@ Provider 自己拥有：
 
 ## Provider 加载
 
-2D / 3D 作为 Python package 直接加载，不经过 localhost HTTP：
+2D / 3D / World 作为 Python package 直接加载，不经过 localhost HTTP：
 
 ```text
 modal-gen-client
     │ Python entry point
     ├── modal_2d_client.provider:create_provider
-    └── modal_3d_client.provider:create_provider
+    ├── modal_3d_client.provider:create_provider
+    └── modal_world.provider:create_provider
 ```
 
 entry-point group：
@@ -102,6 +104,11 @@ modal-3d
   operation: modal-3d.asset.image_to_3d.v1
   input:     Connector sourceArtifact
   output:    primary-glb / model/gltf-binary
+
+modal-world
+  operations: world reconstruction / world generation
+  backend:    HY-World 2.0 first, provider contract model-agnostic
+  output:     provider-neutral world artifact bundle
 ```
 
 跨 Provider：
@@ -141,7 +148,7 @@ uv run ruff check modal_gen tests
 uv run pytest -q
 ```
 
-当前 2D / 3D 已通过 package entry point 直接接入。下一步按同一 SPI 接入 EmbodiedGen。
+当前 2D / 3D / World 已通过 package entry point 直接接入；EmbodiedGen 按同一 SPI 独立演进。
 
 ## Runtime topology
 
