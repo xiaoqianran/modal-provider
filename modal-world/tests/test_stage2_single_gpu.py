@@ -3,15 +3,14 @@ from pathlib import Path
 from modal_world.stage2_patch import patch_stage2_single_gpu
 
 
-def test_stage2_uses_persistent_worker_and_runtime_cache():
+def test_stage2_pipeline_uses_persistent_worker_and_runtime_cache_without_cpu_proxy():
     app_source = Path("modal_world/app.py").read_text()
-    start = app_source.index('def worldgen_case000_stage2(job_id: str = "case000")')
-    end = app_source.index("\n\n@app.function(", start)
-    proxy = app_source[start:end]
-    assert 'modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")' in proxy
-    assert '"torch.distributed.run"' not in proxy
-    assert '"traj_render.py"' not in proxy
-    assert "_spawn_worker_call(worker_cls().render" in proxy
+    pipeline = app_source[app_source.index("def worldgen_pipeline("):]
+    assert 'def worldgen_case000_stage2(' not in app_source
+    assert 'modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")' in app_source
+    assert '"torch.distributed.run"' not in pipeline
+    assert '"traj_render.py"' not in pipeline
+    assert "_spawn_worker_call(\n        worldnav_worker.render" in pipeline
 
     worker = Path("modal_world/stage2_app.py").read_text()
     assert 'app = modal.App("modal-world-stage2")' in worker

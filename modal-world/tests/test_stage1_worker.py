@@ -3,15 +3,15 @@ from pathlib import Path
 from modal_world.stage1_patch import patch_stage1_worldnav
 
 
-def test_stage1_dispatches_to_persistent_worldnav_worker():
+def test_stage1_pipeline_dispatches_directly_to_persistent_worldnav_worker():
     app = Path("modal_world/app.py").read_text()
-    start = app.index('def worldgen_case000_stage1(job_id: str = "case000")')
-    end = app.index("\n\n@app.function", start)
-    proxy = app[start:end]
-    assert 'modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")' in proxy
-    assert "_spawn_worker_call(worker_cls().generate_nav" in proxy
-    assert "Qwen3VLEngine(" not in proxy
-    assert "panorama_utils.write_text" not in proxy
+    pipeline = app[app.index("def worldgen_pipeline("):]
+    assert 'def worldgen_case000_stage1(' not in app
+    assert 'modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")' in app
+    assert "worldnav_worker = _worldnav_worker()" in pipeline
+    assert "_spawn_worker_call(\n        worldnav_worker.generate_nav" in pipeline
+    assert "Qwen3VLEngine(" not in pipeline
+    assert "panorama_utils.write_text" not in pipeline
 
     worker = Path("modal_world/stage2_app.py").read_text()
     assert "def generate_nav" in worker

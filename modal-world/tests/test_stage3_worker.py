@@ -50,12 +50,11 @@ def test_stage3_patch_is_image_build_time_and_legacy_hot_patch_removed():
     runtime = Path("modal_world/hyworld2_runtime.py").read_text()
     app = Path("modal_world/app.py").read_text()
     assert ".run_function(patch_stage3_runtime" in runtime
-    start = app.index('def worldgen_case000_stage3(job_id: str = "case000")')
-    end = app.index("\n\n@app.function(", start)
-    section = app[start:end]
+    section = app[app.index("def worldgen_pipeline("):]
     assert "patch_worldstereo_wrapper" not in section
     assert "retrieval_source.replace" not in section
-    assert 'modal.Cls.from_name("modal-world-stage3", "WorldStereoWorker")' in section
+    assert 'modal.Cls.from_name("modal-world-stage3", "WorldStereoWorker")' in app
+    assert "_worldstereo_worker().generate" in section
 
 
 def test_stage3_worker_preserves_upstream_worldgen_cwd():

@@ -5,8 +5,14 @@ def test_pipeline_uses_existing_stage_chain_and_runtime_artifact_roles():
     source = Path("modal_world/app.py").read_text()
     start = source.index("def worldgen_pipeline(")
     section = source[start:]
-    for stage in range(1, 6):
-        assert f"worldgen_case000_stage{stage}.remote" in section
+    assert "worldnav_worker = _worldnav_worker()" in section
+    assert "worldnav_worker.generate_nav" in section
+    assert "worldnav_worker.render" in section
+    assert "_worldstereo_worker().generate" in section
+    assert "worldgen_case000_stage4.remote" in section
+    assert "worldgen_case000_stage5.remote" in section
+    for stage in (1, 2, 3):
+        assert f"def worldgen_case000_stage{stage}(" not in source
     assert "worldgen_garden_stage0.remote" in section
     assert 'modal.Function.from_name(' in section
     assert '"modal-world-runtime-compile", "compile_world_runtime"' in section

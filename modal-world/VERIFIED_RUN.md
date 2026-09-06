@@ -97,15 +97,16 @@ uv run modal run -m modal_world.app::verify_worldstereo_stage3_cache
 uv run modal run -m modal_world.app::preflight_worldgen_case000_stage5
 ```
 
-The validated stages are exposed as:
+The validated chain is now entered through `worldgen_pipeline`. Stage 1/2/3 no longer use CPU forwarding Functions; the pipeline calls the deployed persistent GPU workers directly:
 
 ```text
 worldmirror_office_inference
-worldgen_case000_stage1
-worldgen_case000_stage2
+worldgen_pipeline
+modal-world-stage2 / WorldNavRenderer.generate_nav
+modal-world-stage2 / WorldNavRenderer.render
 preload_worldstereo_stage3_weights
 verify_worldstereo_stage3_cache
-worldgen_case000_stage3
+modal-world-stage3 / WorldStereoWorker.generate
 worldgen_case000_stage4
 preflight_worldgen_case000_stage5
 worldgen_case000_stage5_smoke

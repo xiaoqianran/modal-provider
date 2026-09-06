@@ -392,11 +392,9 @@ def _spawn_worker_call(method, *, job_id: str, wait_timeout_s: float) -> dict:
     return {"result": result, "function_call_id": call.object_id}
 
 
-@app.function(image=base_image, timeout=2 * 60 * 60)
-def worldgen_case000_stage1(job_id: str = "case000") -> dict:
-    """Dispatch Stage 1 to the persistent WorldNav/Qwen worker."""
-    worker_cls = modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")
-    return _spawn_worker_call(worker_cls().generate_nav, job_id=job_id, wait_timeout_s=30 * 60)
+def _worldnav_worker():
+    """Resolve the deployed persistent WorldNav worker without a CPU proxy Function."""
+    return modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")()
 
 
 @app.function(
@@ -524,13 +522,6 @@ def verify_worldnav_stage1_cache() -> dict:
         "other_snapshots": snapshots,
         "elapsed_s": round(time.perf_counter() - started, 3),
     }
-
-
-@app.function(image=base_image, timeout=2 * 60 * 60)
-def worldgen_case000_stage2(job_id: str = "case000") -> dict:
-    """Dispatch Stage 2 to the deployed persistent WorldNav renderer worker."""
-    worker_cls = modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")
-    return _spawn_worker_call(worker_cls().render, job_id=job_id, wait_timeout_s=30 * 60)
 
 
 @app.function(
@@ -813,11 +804,9 @@ def verify_worldstereo_stage3_cache() -> dict:
     return report
 
 
-@app.function(image=base_image, timeout=4 * 60 * 60)
-def worldgen_case000_stage3(job_id: str = "case000") -> dict:
-    """Dispatch Stage 3 to the deployed persistent WorldStereo worker."""
-    worker_cls = modal.Cls.from_name("modal-world-stage3", "WorldStereoWorker")
-    return _spawn_worker_call(worker_cls().generate, job_id=job_id, wait_timeout_s=45 * 60)
+def _worldstereo_worker():
+    """Resolve the deployed persistent WorldStereo worker without a CPU proxy Function."""
+    return modal.Cls.from_name("modal-world-stage3", "WorldStereoWorker")()
 
 
 @app.function(
@@ -1768,10 +1757,15 @@ def worldgen_pipeline(
         raise ValueError("worldgen prompt must not be empty")
 
     stages = {}
+    worldnav_worker = _worldnav_worker()
     stages["stage0"] = worldgen_garden_stage0.remote(
         job_id=job_id, source_name=source_name, seed=int(seed), prompt=prompt
     )
-    stages["stage1"] = worldgen_case000_stage1.remote(job_id=job_id)
+    stages["stage1"] = _spawn_worker_call(
+        worldnav_worker.generate_nav,
+        job_id=job_id,
+        wait_timeout_s=30 * 60,
+    )
 
     worldgen_outputs.reload()
     target = resolve_worldgen_job_root(job_id)
@@ -1779,8 +1773,16 @@ def worldgen_pipeline(
         stages["semantic_sanitize"] = _sanitize_garden_semantics(target)
         worldgen_outputs.commit()
 
-    stages["stage2"] = worldgen_case000_stage2.remote(job_id=job_id)
-    stages["stage3"] = worldgen_case000_stage3.remote(job_id=job_id)
+    stages["stage2"] = _spawn_worker_call(
+        worldnav_worker.render,
+        job_id=job_id,
+        wait_timeout_s=30 * 60,
+    )
+    stages["stage3"] = _spawn_worker_call(
+        _worldstereo_worker().generate,
+        job_id=job_id,
+        wait_timeout_s=45 * 60,
+    )
     stages["stage4"] = worldgen_case000_stage4.remote(job_id=job_id)
     stages["stage5"] = worldgen_case000_stage5.remote(job_id=job_id, force=bool(force))
 
