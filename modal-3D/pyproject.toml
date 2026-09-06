@@ -7,6 +7,9 @@ dependencies = ["modal[api-proxy-support]>=1.5,<2"]
 [tool.ruff]
 line-length = 100
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [dependency-groups]
 dev = ["numpy==2.3.5", "Pillow==12.1.0", "scipy==1.16.3"]
 
