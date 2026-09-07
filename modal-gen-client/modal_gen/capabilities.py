@@ -263,6 +263,31 @@ class CapabilityRegistry:
         await self.snapshot_async()
         return rows
 
+    async def connect_all_default_async(self) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+        connected: list[ProviderAdapter] = []
+        try:
+            for adapter in self.adapters.values():
+                connect_default_async = getattr(adapter, "connect_default_async", None)
+                connect_default = getattr(adapter, "connect_default", None)
+                if callable(connect_default_async):
+                    rows.append(await connect_default_async())
+                elif callable(connect_default):
+                    rows.append(connect_default())
+                else:
+                    rows.append({"id": adapter.id, "connected": True, "managed": False})
+                    continue
+                connected.append(adapter)
+        except Exception:
+            for adapter in reversed(connected):
+                try:
+                    adapter.disconnect()
+                except Exception:
+                    pass
+            raise
+        await self.snapshot_async()
+        return rows
+
     def disconnect_all(self) -> list[dict[str, object]]:
         rows: list[dict[str, object]] = []
         for adapter in self.adapters.values():

@@ -20,9 +20,25 @@ def connect(token_id: str, token_secret: str) -> None:
         _client = candidate
 
 
+def connect_default() -> None:
+    global _client
+    candidate = modal.Client.from_env()
+    candidate.hello()
+    with _lock:
+        _client = candidate
+
+
 async def connect_async(token_id: str, token_secret: str) -> None:
     global _client
     candidate = await modal.Client.from_credentials.aio(token_id.strip(), token_secret.strip())
+    await candidate.hello.aio()
+    with _lock:
+        _client = candidate
+
+
+async def connect_default_async() -> None:
+    global _client
+    candidate = await modal.Client.from_env.aio()
     await candidate.hello.aio()
     with _lock:
         _client = candidate

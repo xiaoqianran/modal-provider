@@ -59,8 +59,16 @@ class Modal2DProvider:
         modal_session.connect(token_id, token_secret)
         return self.connection_status()
 
+    def connect_default(self) -> dict[str, object]:
+        modal_session.connect_default()
+        return self.connection_status()
+
     async def connect_async(self, token_id: str, token_secret: str) -> dict[str, object]:
         await modal_session.connect_async(token_id, token_secret)
+        return self.connection_status()
+
+    async def connect_default_async(self) -> dict[str, object]:
+        await modal_session.connect_default_async()
         return self.connection_status()
 
     def disconnect(self) -> dict[str, object]:

@@ -157,6 +157,13 @@ def create_app(state: Runtime | None = None) -> FastAPI:
             credentials.save(token_id, token_secret)
         return {"providers": rows}
 
+    @app.post("/v1/providers/connect-local-profile")
+    async def connect_providers_local_profile():
+        await stop_credential_restore()
+        await current().deployments.connect_default_async()
+        rows = await current().capabilities.connect_all_default_async()
+        return {"providers": rows, "credentialSource": "modal-profile"}
+
     @app.post("/v1/providers/disconnect")
     async def disconnect_providers():
         await stop_credential_restore()

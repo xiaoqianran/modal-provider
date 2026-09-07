@@ -143,3 +143,41 @@ def test_manual_login_cancels_background_credential_restore(monkeypatch, tmp_pat
     asyncio.run(scenario())
     assert deployment_connects == [("ak_old", "as_old"), ("ak_new", "as_new")]
     assert provider_connects == [("ak_new", "as_new")]
+
+
+def test_local_profile_connect_uses_modal_profile_without_persisting_tokens(monkeypatch, tmp_path: Path):
+    path = tmp_path / ".secrets" / "modal.json"
+    monkeypatch.setenv("MODAL_GEN_CREDENTIALS_FILE", str(path))
+    calls: list[str] = []
+
+    class Deployments:
+        async def connect_default_async(self):
+            calls.append("deployments")
+
+        def disconnect(self):
+            return None
+
+    class Capabilities:
+        async def connect_all_default_async(self):
+            calls.append("capabilities")
+            return [{"id": "modal-2d", "connected": True}]
+
+        def disconnect_all(self):
+            return []
+
+    fake_runtime = SimpleNamespace(deployments=Deployments(), capabilities=Capabilities())
+    monkeypatch.setattr(app_module, "runtime", lambda: fake_runtime)
+
+    with TestClient(app_module.create_app()) as client:
+        response = client.post(
+            "/v1/providers/connect-local-profile",
+            headers={"X-Modal-Gen-Session": "wangran"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "providers": [{"id": "modal-2d", "connected": True}],
+        "credentialSource": "modal-profile",
+    }
+    assert calls == ["deployments", "capabilities"]
+    assert CredentialStore(path).load() is None

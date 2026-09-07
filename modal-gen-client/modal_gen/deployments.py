@@ -215,6 +215,13 @@ class DeploymentService:
             self._client = client
             self._readiness_cache.clear()
 
+    async def connect_default_async(self) -> None:
+        client = await modal.Client.from_env.aio()
+        await client.hello.aio()
+        with self._lock:
+            self._client = client
+            self._readiness_cache.clear()
+
     def disconnect(self) -> None:
         with self._lock:
             self._client = None

@@ -72,8 +72,20 @@ class Modal3DProvider:
             self.jobs.start_reconciler()
         return self.connection_status()
 
+    def connect_default(self) -> dict[str, object]:
+        modal_session.connect_default()
+        if not self._jobs_injected:
+            self.jobs.start_reconciler()
+        return self.connection_status()
+
     async def connect_async(self, token_id: str, token_secret: str) -> dict[str, object]:
         await modal_session.connect_async(token_id, token_secret)
+        if not self._jobs_injected:
+            self.jobs.start_reconciler()
+        return self.connection_status()
+
+    async def connect_default_async(self) -> dict[str, object]:
+        await modal_session.connect_default_async()
         if not self._jobs_injected:
             self.jobs.start_reconciler()
         return self.connection_status()

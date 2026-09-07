@@ -63,6 +63,18 @@ class LibraryProviderAdapter:
             ) from exc
         return {"id": self.id, **value}
 
+    def connect_default(self) -> dict[str, object]:
+        try:
+            value = dict(self.provider.connect_default())
+        except Exception as exc:
+            detail = type(exc).__name__
+            raise ProviderError(
+                "PROVIDER_CONNECTION_FAILED",
+                f"{self.id} 使用本机 Modal profile 连接失败 ({detail})",
+                502,
+            ) from exc
+        return {"id": self.id, **value}
+
     async def connect_async(self, token_id: str, token_secret: str) -> dict[str, object]:
         try:
             connect_async = getattr(self.provider, "connect_async", None)
@@ -75,6 +87,22 @@ class LibraryProviderAdapter:
             raise ProviderError(
                 "PROVIDER_CONNECTION_FAILED",
                 f"{self.id} 连接 Modal 失败 ({detail})",
+                502,
+            ) from exc
+        return {"id": self.id, **value}
+
+    async def connect_default_async(self) -> dict[str, object]:
+        try:
+            connect_default_async = getattr(self.provider, "connect_default_async", None)
+            if callable(connect_default_async):
+                value = dict(await connect_default_async())
+            else:
+                value = dict(self.provider.connect_default())
+        except Exception as exc:
+            detail = type(exc).__name__
+            raise ProviderError(
+                "PROVIDER_CONNECTION_FAILED",
+                f"{self.id} 使用本机 Modal profile 连接失败 ({detail})",
                 502,
             ) from exc
         return {"id": self.id, **value}
