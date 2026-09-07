@@ -18,8 +18,8 @@ Current 3D workers:
 
 - FastSAM3D++
 - Hunyuan2.1++
-- Hermite-TRELLIS2++
 - Pixal3D
+- Hermite-TRELLIS2++
 
 Optional preprocessing worker:
 

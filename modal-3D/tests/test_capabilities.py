@@ -63,9 +63,9 @@ class CapabilityContractTests(unittest.TestCase):
             [model["id"] for model in document["models"]],
             [
                 "fastsam3d-plus-plus",
-                "hermit-trellis2-plus-plus",
                 "hunyuan2.1-plus-plus",
                 "pixal3d",
+                "hermit-trellis2-plus-plus",
             ],
         )
         self.assertTrue(all(model["status"] == "enabled" for model in document["models"]))
@@ -170,8 +170,9 @@ class CapabilityContractTests(unittest.TestCase):
         self.assertEqual(options["history"]["maximum"], 32)
         self.assertEqual(options["num_inference_steps"]["maximum"], 100)
         self.assertEqual(HUNYUAN["profiles"][0]["quality"]["verification"]["status"], "verified")
-        self.assertEqual(HUNYUAN["reference"]["status"], "stale")
-        self.assertGreater(HUNYUAN["reference"]["warm_seconds"], 500)
+        self.assertEqual(HUNYUAN["reference"]["status"], "verified")
+        self.assertEqual(HUNYUAN["reference"]["benchmark"], "benchmarks/station-canonical-cold-e2e-2026-09-08.json")
+        self.assertLess(HUNYUAN["reference"]["warm_seconds"], 100)
 
     def test_worker_lookup_is_part_of_same_contract(self) -> None:
         self.assertEqual(worker_app("fastsam3d-plus-plus", self.models), "modal-3d-fastsam3d")

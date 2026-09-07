@@ -5,6 +5,7 @@ import json
 import unittest
 from pathlib import Path
 
+from modal_3d.capabilities import capabilities_document
 from modal_3d.common import validate_canonical_png
 from modal_3d.fastsam3d_plus_plus import CAPABILITY as FASTSAM
 from modal_3d.hermit_trellis2_plus_plus import CAPABILITY as HERMIT
@@ -16,6 +17,7 @@ from scripts.benchmark_runner import load_manifest
 ROOT = Path(__file__).resolve().parents[1]
 SCENES_PATH = ROOT / "benchmarks/full-quality-scenes-2026-08-28.json"
 SMOKE_PATH = ROOT / "benchmarks/full-quality-smoke-2026-08-28.json"
+STATION_COLD_PATH = ROOT / "benchmarks/station-canonical-cold-e2e-2026-09-08.json"
 CAPABILITIES = {item["id"]: item for item in (FASTSAM, HUNYUAN, HERMIT, PIXAL)}
 
 
@@ -47,6 +49,17 @@ class BenchmarkRecordTests(unittest.TestCase):
             "scene-teapot",
         ])
         self.assertTrue(all(scene.canonical.is_file() for scene in scenes))
+
+    def test_station_cold_e2e_record_drives_default_priority_order(self) -> None:
+        record = json.loads(STATION_COLD_PATH.read_text())
+        self.assertEqual(record["schema"], "modal-3d.canonical-cold-e2e.v1")
+        ranked = sorted(record["results"], key=lambda model: record["results"][model]["local_artifact_e2e_s"])
+        self.assertEqual(ranked, record["order"])
+        advertised = [model["id"] for model in capabilities_document([FASTSAM, HUNYUAN, PIXAL, HERMIT])["models"]]
+        self.assertEqual(advertised, record["order"])
+        for capability in CAPABILITIES.values():
+            self.assertEqual(capability["reference"]["benchmark"], "benchmarks/station-canonical-cold-e2e-2026-09-08.json")
+            self.assertEqual(capability["reference"]["metric"], "local_artifact_e2e_s")
 
     def test_smoke_record_matches_current_quality_profiles(self) -> None:
         smoke = json.loads(SMOKE_PATH.read_text())

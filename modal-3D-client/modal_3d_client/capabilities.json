@@ -85,11 +85,12 @@
       },
       "priority": 10,
       "reference": {
-        "warm_seconds": 6.06,
-        "cold_start_seconds": 60.0,
-        "status": "legacy",
-        "benchmark": "benchmarks/fastsam3d-plus-plus-l40s-2026-08-23.json",
-        "metric": "adapter_wall_s",
+        "warm_seconds": 3.8,
+        "cold_start_seconds": 62.46,
+        "status": "verified",
+        "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
+        "metric": "local_artifact_e2e_s",
+        "e2e_seconds": 66.26,
         "profile_id": "recommended"
       },
       "generation_entrypoint": {
@@ -103,99 +104,6 @@
         "sam_revision": "2e73555018d2741ccd486e56c24fac41155a1dc6",
         "pytorch3d_revision": "75ebeeaea0908c5527e7b1e305fbc7681382db47",
         "build_artifact": "fastsam3d-pytorch3d-py311-cu121-torch251-sm89-v1",
-        "adapter_revision": "modal-3d.worker-adapter.v5"
-      }
-    },
-    {
-      "id": "hermit-trellis2-plus-plus",
-      "name": "Hermite-TRELLIS2++",
-      "description": "PBR 纹理 GLB；官方 remesh/to_glb；质量模式禁用近似采样",
-      "status": "enabled",
-      "worker_app": "modal-3d-hermit-trellis2-plus-plus",
-      "output": "textured",
-      "artifact": {
-        "mime": "model/gltf-binary",
-        "extension": ".glb"
-      },
-      "input": {
-        "role": "canonical_rgba",
-        "mime": "image/png",
-        "mode": "RGBA",
-        "width": 1024,
-        "height": 1024,
-        "bit_depth": 8,
-        "layout": "letterbox",
-        "alpha": "channel_required"
-      },
-      "profiles": [
-        {
-          "id": "recommended",
-          "name": "推荐 · 官方高质量",
-          "options": {
-            "pipeline_type": "1536_cascade",
-            "acceleration": "base",
-            "texture_size": 4096
-          },
-          "quality": {
-            "tier": "full_quality",
-            "basis": "microsoft/TRELLIS.2 1536 cascade + stock sampler + 4096 PBR export",
-            "verification": {
-              "status": "verified",
-              "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json"
-            }
-          }
-        }
-      ],
-      "options": {
-        "seed": {
-          "type": "integer",
-          "default": 42
-        },
-        "pipeline_type": {
-          "type": "string",
-          "default": "1536_cascade",
-          "enum": [
-            "1024_cascade",
-            "1536_cascade"
-          ]
-        },
-        "acceleration": {
-          "type": "string",
-          "default": "base",
-          "enum": [
-            "base",
-            "dmd"
-          ]
-        },
-        "texture_size": {
-          "type": "integer",
-          "default": 4096,
-          "enum": [
-            2048,
-            4096
-          ]
-        }
-      },
-      "priority": 20,
-      "reference": {
-        "warm_seconds": 297.25,
-        "cold_start_seconds": 108.32,
-        "status": "verified",
-        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
-        "metric": "worker_inference_s",
-        "profile_id": "recommended"
-      },
-      "generation_entrypoint": {
-        "kind": "class_method",
-        "class_name": "Model",
-        "method_name": "generate_job"
-      },
-      "deployment": {
-        "source": "Archerkattri/hermit-trellis2-plus-plus",
-        "source_revision": "2c8402a92ea97c510c09e278fae557771aad774d",
-        "build_artifact": "hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v2",
-        "base_model": "microsoft/TRELLIS.2-4B",
-        "base_model_revision": "af44b45f2e35a493886929c6d786e563ec68364d",
         "adapter_revision": "modal-3d.worker-adapter.v5"
       }
     },
@@ -277,15 +185,15 @@
           "default": true
         }
       },
-      "priority": 30,
+      "priority": 20,
       "reference": {
-        "warm_seconds": 557.26,
-        "cold_start_seconds": 52.88,
-        "status": "stale",
-        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
-        "metric": "worker_inference_s",
+        "warm_seconds": 83.26,
+        "cold_start_seconds": 61.55,
+        "status": "verified",
+        "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
+        "metric": "local_artifact_e2e_s",
         "profile_id": "recommended",
-        "note": "557.26s reference used paint_remesh=false; re-smoke required for remesh=true"
+        "e2e_seconds": 144.81
       },
       "generation_entrypoint": {
         "kind": "class_method",
@@ -375,13 +283,14 @@
           ]
         }
       },
-      "priority": 40,
+      "priority": 30,
       "reference": {
-        "warm_seconds": 197.18,
-        "cold_start_seconds": 99.08,
+        "warm_seconds": 241.34,
+        "cold_start_seconds": 105.49,
         "status": "verified",
-        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
-        "metric": "worker_inference_s",
+        "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
+        "metric": "local_artifact_e2e_s",
+        "e2e_seconds": 346.83,
         "profile_id": "recommended"
       },
       "generation_entrypoint": {
@@ -395,6 +304,100 @@
         "build_artifact": "pixal3d-py310-cu124-torch260-sm89-v1",
         "base_model": "TencentARC/Pixal3D",
         "base_model_revision": "0b31f9160aa400719af409098bff7936a932f726",
+        "adapter_revision": "modal-3d.worker-adapter.v5"
+      }
+    },
+    {
+      "id": "hermit-trellis2-plus-plus",
+      "name": "Hermite-TRELLIS2++",
+      "description": "PBR 纹理 GLB；官方 remesh/to_glb；质量模式禁用近似采样",
+      "status": "enabled",
+      "worker_app": "modal-3d-hermit-trellis2-plus-plus",
+      "output": "textured",
+      "artifact": {
+        "mime": "model/gltf-binary",
+        "extension": ".glb"
+      },
+      "input": {
+        "role": "canonical_rgba",
+        "mime": "image/png",
+        "mode": "RGBA",
+        "width": 1024,
+        "height": 1024,
+        "bit_depth": 8,
+        "layout": "letterbox",
+        "alpha": "channel_required"
+      },
+      "profiles": [
+        {
+          "id": "recommended",
+          "name": "推荐 · 官方高质量",
+          "options": {
+            "pipeline_type": "1536_cascade",
+            "acceleration": "base",
+            "texture_size": 4096
+          },
+          "quality": {
+            "tier": "full_quality",
+            "basis": "microsoft/TRELLIS.2 1536 cascade + stock sampler + 4096 PBR export",
+            "verification": {
+              "status": "verified",
+              "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json"
+            }
+          }
+        }
+      ],
+      "options": {
+        "seed": {
+          "type": "integer",
+          "default": 42
+        },
+        "pipeline_type": {
+          "type": "string",
+          "default": "1536_cascade",
+          "enum": [
+            "1024_cascade",
+            "1536_cascade"
+          ]
+        },
+        "acceleration": {
+          "type": "string",
+          "default": "base",
+          "enum": [
+            "base",
+            "dmd"
+          ]
+        },
+        "texture_size": {
+          "type": "integer",
+          "default": 4096,
+          "enum": [
+            2048,
+            4096
+          ]
+        }
+      },
+      "priority": 40,
+      "reference": {
+        "warm_seconds": 338.78,
+        "cold_start_seconds": 115.23,
+        "status": "verified",
+        "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
+        "metric": "local_artifact_e2e_s",
+        "e2e_seconds": 454.01,
+        "profile_id": "recommended"
+      },
+      "generation_entrypoint": {
+        "kind": "class_method",
+        "class_name": "Model",
+        "method_name": "generate_job"
+      },
+      "deployment": {
+        "source": "Archerkattri/hermit-trellis2-plus-plus",
+        "source_revision": "2c8402a92ea97c510c09e278fae557771aad774d",
+        "build_artifact": "hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v2",
+        "base_model": "microsoft/TRELLIS.2-4B",
+        "base_model_revision": "af44b45f2e35a493886929c6d786e563ec68364d",
         "adapter_revision": "modal-3d.worker-adapter.v5"
       }
     }

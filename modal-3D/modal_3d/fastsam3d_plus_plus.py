@@ -67,9 +67,10 @@ CAPABILITY = worker_capability(
         }
     },
     reference_metadata={
-        "status": "legacy",
-        "benchmark": "benchmarks/fastsam3d-plus-plus-l40s-2026-08-23.json",
-        "metric": "adapter_wall_s",
+        "status": "verified",
+        "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
+        "metric": "local_artifact_e2e_s",
+        "e2e_seconds": 66.26,
         "profile_id": "recommended",
     },
     output="textured",
@@ -80,8 +81,8 @@ CAPABILITY = worker_capability(
         "pytorch3d_revision": PYTORCH3D_COMMIT,
         "build_artifact": BUILD_TAG,
     },
-    warm_seconds=6.06,
-    cold_start_seconds=60.0,
+    warm_seconds=3.80,
+    cold_start_seconds=62.46,
     generation_entrypoint={
         "kind": "class_method",
         "class_name": "Model",

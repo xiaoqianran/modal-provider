@@ -68,11 +68,11 @@ CAPABILITY = worker_capability(
         }
     },
     reference_metadata={
-        "status": "stale",
-        "benchmark": "benchmarks/pages-pinterest-a1-quality-2026-08-24.json",
-        "metric": "worker_inference_s",
+        "status": "verified",
+        "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
+        "metric": "local_artifact_e2e_s",
         "profile_id": "recommended",
-        "note": "557.26s reference used paint_remesh=false; re-smoke required for remesh=true",
+        "e2e_seconds": 144.81,
     },
     output="textured",
     deployment={
@@ -82,9 +82,9 @@ CAPABILITY = worker_capability(
         "base_model_revision": MODEL_REVISION,
         "build_artifact": PAINT_TAG,
     },
-    warm_seconds=557.26,
-    cold_start_seconds=52.88,
-    priority=30,
+    warm_seconds=83.26,
+    cold_start_seconds=61.55,
+    priority=20,
     generation_entrypoint={
         "kind": "class_method",
         "class_name": "Model",

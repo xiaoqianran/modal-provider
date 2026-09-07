@@ -1,0 +1,65 @@
+{
+  "schema": "modal-3d.canonical-cold-e2e.v1",
+  "recorded_at": "2026-09-08",
+  "purpose": "default provider ordering by same-input cold end-to-end latency",
+  "input": {
+    "source_name": "station-asset-reference.jpg",
+    "source_sha256": "05f1c450bb19fa629659c338b59525d1f2f2492e4a222d684188b9d107745cff",
+    "canonical_path": "client-inputs/975c69fb112a3ea3048d1b56238e4f0ce2528830a328157f8dc5882a04da232d.png",
+    "canonical_sha256": "975c69fb112a3ea3048d1b56238e4f0ce2528830a328157f8dc5882a04da232d",
+    "canonical_size": [
+      1024,
+      1024
+    ],
+    "profile": "recommended",
+    "seed": 42
+  },
+  "method": {
+    "gpu": "NVIDIA L40S",
+    "ranking_metric": "local_artifact_e2e_s",
+    "cold_start": true,
+    "shared_preprocessing_excluded": true,
+    "artifact_fetch_and_glb_validation_included": true,
+    "note": "FastSAM3D++ was cold-run separately after all 3D containers stopped; Hunyuan2.1++, Pixal3D and Hermite-TRELLIS2++ were launched concurrently from cold state against the same canonical RGBA input."
+  },
+  "order": [
+    "fastsam3d-plus-plus",
+    "hunyuan2.1-plus-plus",
+    "pixal3d",
+    "hermit-trellis2-plus-plus"
+  ],
+  "results": {
+    "fastsam3d-plus-plus": {
+      "remote_e2e_s": 63.509857199998805,
+      "local_artifact_e2e_s": 66.2551289999974,
+      "load_s": 21.932868549000002,
+      "inference_s": 3.7959000090000004,
+      "artifact_bytes": 405632,
+      "artifact_sha256": "e4ea96ca06405482f96bcea8bae1be9828104966d69d8f61969209da463bd94f"
+    },
+    "hunyuan2.1-plus-plus": {
+      "remote_e2e_s": 144.7199756000191,
+      "local_artifact_e2e_s": 144.8121409000014,
+      "load_s": 49.787884116,
+      "inference_s": 83.264682465,
+      "artifact_bytes": 4583584,
+      "artifact_sha256": "4e88c51371b59433ae84ad1a0de94fbb70ae39a7a94198b58e8a2f18700bbdc3"
+    },
+    "pixal3d": {
+      "remote_e2e_s": 333.0407454999804,
+      "local_artifact_e2e_s": 346.8302313000022,
+      "load_s": 76.62912279,
+      "inference_s": 241.343442788,
+      "artifact_bytes": 37487580,
+      "artifact_sha256": "3e914a550faccc01355fea780e0474dd84ec2a72dd2811384ea536b77497ed05"
+    },
+    "hermit-trellis2-plus-plus": {
+      "remote_e2e_s": 440.60450670000864,
+      "local_artifact_e2e_s": 454.0100678000017,
+      "load_s": 89.005177512,
+      "inference_s": 338.775488066,
+      "artifact_bytes": 39589316,
+      "artifact_sha256": "3a14c149e5069427ff46413c02db4dd9a2db15821f385a19dcba71a6504aa683"
+    }
+  }
+}
