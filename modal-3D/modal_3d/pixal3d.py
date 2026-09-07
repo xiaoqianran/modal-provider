@@ -13,6 +13,7 @@ import modal
 
 from .common import ARTIFACT_VOLUME, pinned_hf_snapshot, run_generation_job, worker_capability
 from .gpu_telemetry import GpuStageProfiler
+from .pixal3d_patch import STAGE_CACHE_ENV, patch_pixal3d_stage_cache_guard
 
 APP_NAME = "modal-3d-pixal3d"
 GPU = "L40S"
@@ -108,11 +109,30 @@ runtime_image = (
         "git clone https://github.com/valeoai/NAF.git /opt/NAF && git -C /opt/NAF checkout 37f2dfc180f2de53d98bd601109c0da0dd6b0f43",
         f"curl -fL '{WHEELS_URL}' -o /tmp/wheels.zip && mkdir -p /tmp/wheels && unzip -q /tmp/wheels.zip -d /tmp/wheels && uv pip install --system --no-deps /tmp/wheels/*.whl",
         "git clone https://github.com/TencentARC/Pixal3D.git /opt/Pixal3D && git -C /opt/Pixal3D checkout cdbb2bbffbf4e6f298b5f2af3d1d76a8d823d2af",
-        "python - <<'PY'\np='/opt/Pixal3D/inference.py'\ns=open(p).read()\nold_cache='os.environ[\"FLEX_GEMM_AUTOTUNE_CACHE_PATH\"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), \'autotune_cache.json\')'\nold_verbose='os.environ[\"FLEX_GEMM_AUTOTUNER_VERBOSE\"] = \'1\''\nassert old_cache in s, 'Pixal3D inference.py cache assignment changed upstream'\nassert old_verbose in s, 'Pixal3D inference.py verbose assignment changed upstream'\ns=s.replace(old_cache, 'os.environ.setdefault(\"FLEX_GEMM_AUTOTUNE_CACHE_PATH\", os.path.join(os.path.dirname(os.path.abspath(__file__)), \'autotune_cache.json\'))')\ns=s.replace(old_verbose, 'os.environ.setdefault(\"FLEX_GEMM_AUTOTUNER_VERBOSE\", \'1\')')\nopen(p,'w').write(s)\nPY",
-        "python - <<'PY'\np='/opt/Pixal3D/pixal3d/trainers/flow_matching/mixins/image_conditioned_proj.py'\ns=open(p).read().replace('torch.hub.load(\\n                \"valeoai/NAF\", \"naf\", pretrained=True, device=device, trust_repo=True\\n            )','torch.hub.load(\\n                \"/opt/NAF\", \"naf\", pretrained=True, device=device, source=\"local\"\\n            )')\nopen(p,'w').write(s)\nPY",
+        "python - <<'PY'\
+p='/opt/Pixal3D/inference.py'\
+s=open(p).read()\
+old_cache='os.environ[\"FLEX_GEMM_AUTOTUNE_CACHE_PATH\"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), \'autotune_cache.json\')'\
+old_verbose='os.environ[\"FLEX_GEMM_AUTOTUNER_VERBOSE\"] = \'1\''\
+assert old_cache in s, 'Pixal3D inference.py cache assignment changed upstream'\
+assert old_verbose in s, 'Pixal3D inference.py verbose assignment changed upstream'\
+s=s.replace(old_cache, 'os.environ.setdefault(\"FLEX_GEMM_AUTOTUNE_CACHE_PATH\", os.path.join(os.path.dirname(os.path.abspath(__file__)), \'autotune_cache.json\'))')\
+s=s.replace(old_verbose, 'os.environ.setdefault(\"FLEX_GEMM_AUTOTUNER_VERBOSE\", \'1\')')\
+open(p,'w').write(s)\
+PY",
+        "python - <<'PY'\
+p='/opt/Pixal3D/pixal3d/trainers/flow_matching/mixins/image_conditioned_proj.py'\
+s=open(p).read().replace('torch.hub.load(\\\
+                \"valeoai/NAF\", \"naf\", pretrained=True, device=device, trust_repo=True\\\
+            )','torch.hub.load(\\\
+                \"/opt/NAF\", \"naf\", pretrained=True, device=device, source=\"local\"\\\
+            )')\
+open(p,'w').write(s)\
+PY",
         "uv pip install --system 'huggingface_hub>=0.34,<1'",
         "python -c \"import einops, huggingface_hub, transformers; assert huggingface_hub.__version__.startswith('0.'), (huggingface_hub.__version__, transformers.__version__)\"",
     )
+    .run_function(patch_pixal3d_stage_cache_guard, args=(SRC,))
     .env(
         {
             "PYTHONPATH": SRC,
@@ -132,6 +152,7 @@ runtime_image = (
             "PIXAL3D_PROFILE": "1",
             "PIXAL3D_TELEMETRY_INTERVAL_S": "0.5",
             "PIXAL3D_KEEP_MOGE_ON_GPU": "0",
+            STAGE_CACHE_ENV: "0",
             "CC": "/usr/bin/gcc",
         }
     )
@@ -281,6 +302,7 @@ class Model:
             "attention_backend": os.environ.get("ATTN_BACKEND"),
             "flex_gemm_cache": FLEX_GEMM_CACHE_PATH,
             "moge_resident_gpu": self.keep_moge_on_gpu,
+            "stage_empty_cache_suppressed": os.environ.get(STAGE_CACHE_ENV, "0") == "1",
         }
 
     def _commit_flex_cache_if_changed(self) -> float:
@@ -422,6 +444,7 @@ class Model:
             "peak_vram_gb": gpu_telemetry.get("peak_vram_gb"),
             "attention_backend": os.environ.get("ATTN_BACKEND"),
             "moge_resident_gpu": self.keep_moge_on_gpu,
+            "stage_empty_cache_suppressed": os.environ.get(STAGE_CACHE_ENV, "0") == "1",
             "flex_gemm_cache_path": FLEX_GEMM_CACHE_PATH,
             "timings": profiler.timings,
             "gpu_telemetry": gpu_telemetry,
