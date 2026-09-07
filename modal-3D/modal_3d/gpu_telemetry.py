@@ -43,13 +43,17 @@ def _summary(samples: list[dict]) -> dict:
     }
 
 
-class GpuStageProfiler:
-    """Low-overhead stage timings plus board-level NVIDIA telemetry.
+def _gib(value: int) -> float:
+    return round(value / (1024**3), 3)
 
-    PIXAL3D_PROFILE=1 enables sampling. Timings remain available even when
-    telemetry is disabled. CUDA synchronization is done only at stage
-    boundaries so timings reflect actual GPU completion rather than enqueue
-    latency.
+
+class GpuStageProfiler:
+    """Stage timings, PyTorch allocator stats, and board-level NVIDIA telemetry.
+
+    PIXAL3D_PROFILE=1 enables nvidia-smi sampling. Timings and allocator
+    snapshots remain available even when sampling is disabled. CUDA
+    synchronization is done only at stage boundaries so timings reflect actual
+    GPU completion rather than enqueue latency.
     """
 
     FIELDS = (
@@ -69,6 +73,7 @@ class GpuStageProfiler:
             interval = 0.5
         self.interval_s = max(0.25, interval)
         self.timings: dict[str, float] = {}
+        self.stage_cuda_memory: dict[str, dict[str, float]] = {}
         self.samples: list[dict] = []
         self.stage_name = "idle"
         self.stop_event = threading.Event()
@@ -128,15 +133,32 @@ class GpuStageProfiler:
     @contextmanager
     def stage(self, name: str, *, cuda_sync: bool = True):
         self.stage_name = name
-        if cuda_sync and self.torch.cuda.is_available():
-            self.torch.cuda.synchronize()
+        cuda = self.torch.cuda
+        cuda_available = cuda.is_available()
+        if cuda_sync and cuda_available:
+            cuda.synchronize()
+        if cuda_available:
+            allocated_before = cuda.memory_allocated()
+            reserved_before = cuda.memory_reserved()
+            cuda.reset_peak_memory_stats()
+        else:
+            allocated_before = reserved_before = 0
         t0 = time.perf_counter()
         try:
             yield
         finally:
-            if cuda_sync and self.torch.cuda.is_available():
-                self.torch.cuda.synchronize()
+            if cuda_sync and cuda_available:
+                cuda.synchronize()
             self.timings[f"{name}_s"] = time.perf_counter() - t0
+            if cuda_available:
+                self.stage_cuda_memory[name] = {
+                    "allocated_before_gb": _gib(allocated_before),
+                    "allocated_after_gb": _gib(cuda.memory_allocated()),
+                    "peak_allocated_gb": _gib(cuda.max_memory_allocated()),
+                    "reserved_before_gb": _gib(reserved_before),
+                    "reserved_after_gb": _gib(cuda.memory_reserved()),
+                    "peak_reserved_gb": _gib(cuda.max_memory_reserved()),
+                }
 
     def stop(self) -> dict:
         if self.enabled:
@@ -152,6 +174,7 @@ class GpuStageProfiler:
                 "enabled": self.enabled,
                 "interval_s": self.interval_s,
                 "stages": {name: _summary(items) for name, items in stages.items()},
+                "stage_cuda_memory": self.stage_cuda_memory,
             }
         )
         return result
