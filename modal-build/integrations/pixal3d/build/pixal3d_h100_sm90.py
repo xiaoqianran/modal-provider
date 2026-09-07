@@ -24,11 +24,13 @@ COMMITS = {
 }
 
 # This is the FA3 wheel pinned by Pixal3D's own requirements-hfdemo.txt for
-# the same torch==2.6.0 / CUDA 12.4 environment.
+# the same torch==2.6.0 / CUDA 12.4 environment. The digest comes from the
+# GitHub Release asset metadata for JeffreyXiang/Storages:Space_Wheels_251210.
 FLASH_ATTN_3_URL = (
     "https://github.com/JeffreyXiang/Storages/releases/download/Space_Wheels_251210/"
     "flash_attn_3-3.0.0b1-cp39-abi3-linux_x86_64.whl"
 )
+FLASH_ATTN_3_SHA256 = "fa9b08af0b264bb297a8a9a1f3c84417e21c2b9c81c1002a2bf980f511ff524a"
 
 app = modal.App("modal-build-pixal3d-h100-sm90")
 image = (
@@ -96,6 +98,12 @@ def build_and_release() -> dict:
 
     fa3 = WHEELS / "flash_attn_3-3.0.0b1-cp39-abi3-linux_x86_64.whl"
     urllib.request.urlretrieve(FLASH_ATTN_3_URL, fa3)
+    actual_fa3_sha = sha256(fa3)
+    if actual_fa3_sha != FLASH_ATTN_3_SHA256:
+        raise RuntimeError(
+            f"FlashAttention-3 wheel sha256 mismatch: {actual_fa3_sha} != "
+            f"{FLASH_ATTN_3_SHA256}"
+        )
 
     wheels = []
     for path in sorted(WHEELS.glob("*.whl")):
@@ -139,7 +147,10 @@ def build_and_release() -> dict:
         "cuda_arch": "9.0",
         "target_gpu": "H100",
         "attention_backend": "flash_attn_3",
-        "flash_attn_3_source": FLASH_ATTN_3_URL,
+        "flash_attn_3": {
+            "source": FLASH_ATTN_3_URL,
+            "sha256": FLASH_ATTN_3_SHA256,
+        },
         "commits": COMMITS,
         "wheels": wheels,
         "archive_bytes": archive.stat().st_size,
