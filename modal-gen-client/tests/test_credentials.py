@@ -145,7 +145,9 @@ def test_manual_login_cancels_background_credential_restore(monkeypatch, tmp_pat
     assert provider_connects == [("ak_new", "as_new")]
 
 
-def test_local_profile_connect_uses_modal_profile_without_persisting_tokens(monkeypatch, tmp_path: Path):
+def test_local_profile_connect_uses_modal_profile_without_persisting_tokens(
+    monkeypatch, tmp_path: Path
+):
     path = tmp_path / ".secrets" / "modal.json"
     monkeypatch.setenv("MODAL_GEN_CREDENTIALS_FILE", str(path))
     calls: list[str] = []
