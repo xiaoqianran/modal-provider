@@ -170,4 +170,3 @@ def build() -> dict:
     })
     artifacts.commit()
     return manifest
-
