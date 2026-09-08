@@ -1,6 +1,8 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-windows/
+.venv-linux/
 .env
 .DS_Store
 outputs/

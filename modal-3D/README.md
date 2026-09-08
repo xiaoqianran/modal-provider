@@ -91,7 +91,30 @@ downloads the selected worker's weights first; a failed download aborts the
 deployment. Deployments started through `modal-gen-client` use the same
 check-download-verify gate.
 
-Deploy modules directly; there is no registration step:
+### Windows + Linux shared checkout
+
+A Python virtual environment is platform-specific. When the same checkout is opened from both
+Windows and Linux/WSL, do not share the default `.venv`. Use the project wrappers instead:
+
+```powershell
+# Windows -> modal-3D/.venv-windows
+./scripts/uv.ps1 sync --frozen
+./scripts/uv.ps1 run python -c "import sys; print(sys.platform)"
+```
+
+```bash
+# Linux/WSL -> modal-3D/.venv-linux
+bash ./scripts/uv.sh sync --frozen
+bash ./scripts/uv.sh run python -c 'import sys; print(sys.platform)'
+```
+
+`uv.lock` remains shared and cross-platform; only the local virtual environments are separated.
+The deploy helpers use `uv run --isolated --frozen`, so deployment does not depend on either local
+virtual environment.
+
+Deploy modules directly; there is no registration step.
+
+Windows PowerShell:
 
 ```powershell
 ./scripts/deploy-worker.ps1 modal_3d/rembg_worker.py
@@ -99,6 +122,16 @@ Deploy modules directly; there is no registration step:
 ./scripts/deploy-worker.ps1 modal_3d/hunyuan2_1_plus_plus.py
 ./scripts/deploy-worker.ps1 modal_3d/hermit_trellis2_plus_plus.py
 ./scripts/deploy-worker.ps1 modal_3d/pixal3d.py
+```
+
+Linux/WSL:
+
+```bash
+bash ./scripts/deploy-worker.sh modal_3d/rembg_worker.py
+bash ./scripts/deploy-worker.sh modal_3d/fastsam3d_plus_plus.py
+bash ./scripts/deploy-worker.sh modal_3d/hunyuan2_1_plus_plus.py
+bash ./scripts/deploy-worker.sh modal_3d/hermit_trellis2_plus_plus.py
+bash ./scripts/deploy-worker.sh modal_3d/pixal3d.py
 ```
 
 ## 验收记录
