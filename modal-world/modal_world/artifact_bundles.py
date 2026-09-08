@@ -13,7 +13,7 @@ HYWORLD2_ARTIFACT_BUNDLES: tuple[dict[str, Any], ...] = (
 
 HYWORLD2_STAGE2_H100_ARTIFACT_BUNDLES: tuple[dict[str, Any], ...] = (
     {"tag": "hyworld2-hy-native-py311-cu128-torch271-sm90-v1", "archive_sha256": "e6f8459e025e51f9e6e7b4796a2d92d46dd33396c868d1b039423de31025f2f1", "public_release": False},
-    {"tag": "hyworld2-oss-native-py311-cu128-torch271-sm90-v1", "archive_sha256": "3fe4262b29c3d0833b1cd9ada29925f7a54fccd856e879888b849c29f650bad5", "public_release": True},
+    {"tag": "hyworld2-oss-native-py311-cu128-torch271-sm90-v1", "archive_sha256": "c14fc3e2c349e287c989ca697ecefeb994b99871c8aa25abb0f86a25bb616fc8", "public_release": True},
     {"tag": "hyworld2-flash-attn-py311-cu128-torch271-sm90-v1", "archive_sha256": "fe0aa7c0c08df04b472b9557170272f9f8aed2c23f162b6d6ecd50cfab9ef5ab", "public_release": True},
 )
 
@@ -24,7 +24,7 @@ HYWORLD2_STAGE3_H100_ARTIFACT_BUNDLES: tuple[dict[str, Any], ...] = (
 
 HYWORLD2_STAGE5_H100_ARTIFACT_BUNDLES: tuple[dict[str, Any], ...] = (
     {"tag": "hyworld2-hy-native-py311-cu128-torch271-sm90-v1", "archive_sha256": "e6f8459e025e51f9e6e7b4796a2d92d46dd33396c868d1b039423de31025f2f1", "public_release": False},
-    {"tag": "hyworld2-oss-native-py311-cu128-torch271-sm90-v1", "archive_sha256": "3fe4262b29c3d0833b1cd9ada29925f7a54fccd856e879888b849c29f650bad5", "public_release": True},
+    {"tag": "hyworld2-oss-native-py311-cu128-torch271-sm90-v1", "archive_sha256": "c14fc3e2c349e287c989ca697ecefeb994b99871c8aa25abb0f86a25bb616fc8", "public_release": True},
 )
 
 _RECOVERY_MODULE = {
