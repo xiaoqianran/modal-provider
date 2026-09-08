@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 
 import modal
 from modal.exception import NotFoundError
+from modal_3d.common import validate_canonical_png_bytes
 from PIL import Image
 
 from . import background
@@ -152,6 +153,12 @@ def upload_source(data: bytes, *, mask: bytes | None = None) -> dict[str, object
             conditioned["engine"] = prediction.get("engine")
             conditioned["mask_elapsed_ms"] = prediction.get("elapsed_ms")
     canonical = bytes(conditioned["canonical_bytes"])
+    try:
+        canonical_metadata = validate_canonical_png_bytes(canonical)
+    except ValueError as exc:
+        raise ContractError("conditioned canonical input failed validation") from exc
+    if canonical_metadata["sha256"] != conditioned["canonical_sha256"]:
+        raise ContractError("conditioned canonical SHA-256 mismatch")
     path = f"{CLIENT_INPUT_PREFIX}{conditioned['canonical_sha256']}.png"
     with _volume().batch_upload(force=True) as batch:
         batch.put_file(io.BytesIO(canonical), path)

@@ -5,7 +5,9 @@ import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
+from unittest.mock import patch
 
+from modal_3d.common import worker_identity
 from modal_3d.fastsam3d_plus_plus import CAPABILITY as FASTSAM
 from modal_3d.hermit_trellis2_plus_plus import CAPABILITY as HERMIT
 from modal_3d.hunyuan2_1_plus_plus import CAPABILITY as HUNYUAN
@@ -77,6 +79,31 @@ class BenchmarkGuardrailTests(unittest.TestCase):
         deployed["options"]["num_inference_steps"]["maximum"] = 1000
         with self.assertRaisesRegex(ValueError, "options"):
             assert_deployed_matches(HUNYUAN, deployed)
+
+
+class RemoteWorkerIdentityTests(unittest.TestCase):
+    def test_remote_identity_match_passes_before_gpu_submission(self) -> None:
+        from scripts.run_pages_benchmark import _verify_remote_worker_identities
+
+        expected = worker_identity(HUNYUAN)
+        with patch("modal.Function.from_name") as lookup:
+            lookup.return_value.spawn.return_value.get.return_value = expected
+            result = _verify_remote_worker_identities({HUNYUAN["id"]: HUNYUAN}, [HUNYUAN["id"]])
+        self.assertEqual(result[HUNYUAN["id"]], expected)
+        lookup.assert_called_once_with(HUNYUAN["worker_app"], "worker_info")
+
+    def test_remote_identity_drift_blocks_benchmark(self) -> None:
+        from scripts.run_pages_benchmark import _verify_remote_worker_identities
+
+        stale = worker_identity(HUNYUAN)
+        stale["deployment"]["adapter_revision"] = "modal-3d.worker-adapter.old"
+        with (
+            patch("modal.Function.from_name") as lookup,
+            self.assertRaisesRegex(RuntimeError, "does not match local code"),
+        ):
+            lookup.return_value.spawn.return_value.get.return_value = stale
+            _verify_remote_worker_identities({HUNYUAN["id"]: HUNYUAN}, [HUNYUAN["id"]])
+
 
 class InterruptedSubmissionTests(unittest.TestCase):
     """A spawned-but-unpersisted call can no longer be re-found in the cloud."""

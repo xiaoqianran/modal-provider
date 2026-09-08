@@ -10,7 +10,14 @@ from pathlib import Path
 
 import modal
 
-from .common import ARTIFACT_VOLUME, pinned_hf_snapshot, run_generation_job, worker_capability
+from .common import (
+    ARTIFACT_VOLUME,
+    pinned_hf_snapshot,
+    run_generation_job,
+    worker_capability,
+    worker_identity,
+)
+from .o_voxel_contract import validate_o_voxel_pbr_intermediate
 
 APP_NAME = "modal-3d-hermit-trellis2-plus-plus"
 MODEL_ID = "microsoft/TRELLIS.2-4B"
@@ -67,7 +74,7 @@ CAPABILITY = worker_capability(
         }
     },
     reference_metadata={
-        "status": "verified",
+        "status": "stale",
         "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
         "metric": "local_artifact_e2e_s",
         "e2e_seconds": 454.01,
@@ -100,7 +107,7 @@ gpu_image = (
     modal.Image.from_registry("nvidia/cuda:12.4.1-devel-ubuntu22.04", add_python="3.11")
     .apt_install("git", "curl", "unzip", "libjpeg-dev", "libgl1", "libglib2.0-0")
     .run_commands(
-        "python -m pip install --upgrade uv",
+        "python -m pip install uv==0.12.5",
         "uv pip install --system torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124",
         "uv pip install --system imageio imageio-ffmpeg tqdm einops easydict opencv-python-headless trimesh transformers huggingface_hub safetensors pandas lpips zstandard kornia timm plyfile",
         "uv pip install --system git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8",
@@ -185,6 +192,11 @@ def sync_weights() -> dict:
     return {"elapsed_s": time.perf_counter() - t0, "bytes": total}
 
 
+@app.function(timeout=60)
+def worker_info() -> dict:
+    return worker_identity(CAPABILITY)
+
+
 @app.cls(
     image=gpu_image,
     gpu=GPU,
@@ -248,6 +260,8 @@ class Model:
         import torch
         from PIL import Image
 
+        wall_t0 = time.perf_counter()
+
         if pipeline_type not in {"1024_cascade", "1536_cascade"}:
             raise ValueError("pipeline_type must be 1024_cascade or 1536_cascade")
         if acceleration not in {"base", "dmd"}:
@@ -263,7 +277,10 @@ class Model:
             self.pipe.enable_faster()
             self.pipe.sparse_structure_sampler.hicache_backend = "dmd"
 
+        decode_t0 = time.perf_counter()
         image = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+        image.load()
+        decode_s = time.perf_counter() - decode_t0
         torch.cuda.reset_peak_memory_stats()
         torch.cuda.synchronize()
         t0 = time.perf_counter()
@@ -277,7 +294,16 @@ class Model:
         generation_s = time.perf_counter() - t0
 
         mesh = out[0]
-        post_t0 = time.perf_counter()
+        voxel_size = float(mesh.voxel_size)
+        o_voxel_intermediate = validate_o_voxel_pbr_intermediate(
+            vertices=mesh.vertices,
+            faces=mesh.faces,
+            attrs=mesh.attrs,
+            coords=mesh.coords,
+            attr_layout=mesh.layout,
+            voxel_size=voxel_size,
+        )
+        to_glb_t0 = time.perf_counter()
         glb_scene = o_voxel.postprocess.to_glb(
             vertices=mesh.vertices,
             faces=mesh.faces,
@@ -293,19 +319,24 @@ class Model:
             remesh_project=0,
             verbose=False,
         )
+        torch.cuda.synchronize()
+        to_glb_s = time.perf_counter() - to_glb_t0
         with tempfile.TemporaryDirectory(prefix="hermit-trellis2-") as temp_dir:
             tmp_glb = Path(temp_dir) / "output.glb"
+            export_t0 = time.perf_counter()
             glb_scene.export(tmp_glb, extension_webp=True)
-            postprocess_s = time.perf_counter() - post_t0
+            export_s = time.perf_counter() - export_t0
+            postprocess_s = to_glb_s + export_s
 
+            artifact_t0 = time.perf_counter()
             name = f"trellis2/{uuid.uuid4().hex}.glb"
             path = Path("/artifacts") / name
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(tmp_glb, path)
-            artifacts.commit()
+            artifact_s = time.perf_counter() - artifact_t0
 
-        voxel_size = float(mesh.voxel_size)
         resolution = round(1.0 / voxel_size) if voxel_size > 0 else None
+        total_s = time.perf_counter() - wall_t0
         return {
             "model": "hermit-trellis2-plus-plus",
             "artifact": name,
@@ -314,6 +345,15 @@ class Model:
             "inference_s": generation_s + postprocess_s,
             "generation_s": generation_s,
             "postprocess_s": postprocess_s,
+            "o_voxel_intermediate": o_voxel_intermediate,
+            "timings": {
+                "decode_s": decode_s,
+                "generation_s": generation_s,
+                "to_glb_s": to_glb_s,
+                "glb_export_s": export_s,
+                "artifact_write_s": artifact_s,
+                "total_s": total_s,
+            },
             "peak_vram_allocated_gb": torch.cuda.max_memory_allocated() / 2**30,
             "peak_vram_reserved_gb": torch.cuda.max_memory_reserved() / 2**30,
             "source_vertices": len(mesh.vertices),
@@ -332,4 +372,11 @@ class Model:
         Input reading, canonical validation, GLB validation and result
         normalization all happen here so no CPU adapter function is needed.
         """
-        return run_generation_job(CAPABILITY["id"], artifacts, self._generate, input_path, options)
+        return run_generation_job(
+            CAPABILITY["id"],
+            artifacts,
+            self._generate,
+            input_path,
+            options,
+            quality_profile="pbr_textured",
+        )

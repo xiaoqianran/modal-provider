@@ -94,8 +94,16 @@ def decode_rgba8(data: bytes, width: int, height: int) -> list[bytes]:
     return rows
 
 
+def validate_rgba8_payload(data: bytes, width: int, height: int) -> None:
+    """Validate PNG chunk CRCs/zlib payload without reconstructing scanlines."""
+    raw = _idat_payload(data)
+    stride = width * 4
+    if len(raw) != height * (stride + 1):
+        raise ValueError("PNG decoded data length does not match dimensions")
+
+
 def alpha_range(data: bytes, width: int, height: int) -> tuple[int, int]:
-    """Fast alpha-only decode for the production canonical contract."""
+    """Dependency-free alpha-only decode for the canonical contract."""
     raw = _idat_payload(data)
     stride = width * 4
     if len(raw) != height * (stride + 1):

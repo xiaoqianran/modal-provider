@@ -31,6 +31,13 @@ WORKERS = [
     ("pixal3d", pixal3d),
 ]
 
+QUALITY_PROFILES = {
+    "fastsam3d-plus-plus": "vertex_color",
+    "hunyuan2.1-plus-plus": "pbr_textured",
+    "hermit-trellis2-plus-plus": "pbr_textured",
+    "pixal3d": "pbr_textured",
+}
+
 EXPECTED_ENTRYPOINT = {
     "kind": "class_method",
     "class_name": "Model",
@@ -59,7 +66,10 @@ class DirectEntrypointContractTests(unittest.TestCase):
                 self.assertIn("@modal.method()", source)
                 self.assertIn("def generate_job(self, input_path: str", source)
                 self.assertIn("run_generation_job(", source)
-                self.assertIn("self._generate, input_path, options", source)
+                self.assertIn("self._generate,", source)
+                self.assertIn("input_path,", source)
+                self.assertIn("options,", source)
+                self.assertIn(f'quality_profile="{QUALITY_PROFILES[model_id]}"', source)
                 self.assertNotIn("self.generate, input_path, options", source)
                 self.assertNotIn("def generate(\n", source)
 
@@ -174,6 +184,9 @@ class GenerationJobRunnerTests(unittest.TestCase):
                 def reload(self):
                     return None
 
+                def commit(self):
+                    return None
+
             with patch("modal_3d.common.ARTIFACT_ROOT", str(root)):
                 return run_generation_job(
                     "test-model",
@@ -192,6 +205,7 @@ class GenerationJobRunnerTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["echo"], {"seed": 5})
         self.assertIn("job_input_validation_s", result["metrics"]["timings"])
         self.assertIn("job_artifact_validation_s", result["metrics"]["timings"])
+        self.assertIn("job_artifact_commit_s", result["metrics"]["timings"])
         self.assertIn("job_total_s", result["metrics"]["timings"])
 
     def test_missing_input_is_reported_before_the_model_runs(self) -> None:
@@ -215,6 +229,50 @@ class GenerationJobRunnerTests(unittest.TestCase):
                     "client-inputs/absent.png",
                     None,
                 )
+
+    def test_quality_failure_deletes_artifact_before_volume_commit(self) -> None:
+        payload = rgba_png()
+        glb = glb_bytes()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "client-inputs").mkdir()
+            (root / "client-inputs" / "canonical.png").write_bytes(payload)
+            output = root / "generated" / "out.glb"
+            output.parent.mkdir()
+            output.write_bytes(glb)
+
+            class FakeVolume:
+                def __init__(self):
+                    self.commits = 0
+
+                def reload(self):
+                    return None
+
+                def commit(self):
+                    self.commits += 1
+
+            volume = FakeVolume()
+
+            def generate_image(_image_bytes: bytes, **_options):
+                return {"artifact": "generated/out.glb", "glb_bytes": len(glb)}
+
+            with (
+                patch("modal_3d.common.ARTIFACT_ROOT", str(root)),
+                patch(
+                    "modal_3d.common.validate_glb_quality",
+                    side_effect=ValueError("quality failed"),
+                ),
+                self.assertRaisesRegex(ValueError, "quality failed"),
+            ):
+                run_generation_job(
+                    "test-model",
+                    volume,
+                    generate_image,
+                    "client-inputs/canonical.png",
+                    quality_profile="vertex_color",
+                )
+            self.assertEqual(volume.commits, 0)
+            self.assertFalse(output.exists())
 
     def test_artifact_size_mismatch_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "GLB"):

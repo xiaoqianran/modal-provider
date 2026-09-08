@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import unittest
 from copy import deepcopy
+from pathlib import Path
 from unittest.mock import patch
 
-from modal_3d import router
+from modal_3d import hermit_trellis2_plus_plus, hunyuan2_1_plus_plus, pixal3d, router
 from modal_3d.capabilities import (
     CONTRACT,
     assert_routable,
@@ -170,9 +171,30 @@ class CapabilityContractTests(unittest.TestCase):
         self.assertEqual(options["history"]["maximum"], 32)
         self.assertEqual(options["num_inference_steps"]["maximum"], 100)
         self.assertEqual(HUNYUAN["profiles"][0]["quality"]["verification"]["status"], "verified")
-        self.assertEqual(HUNYUAN["reference"]["status"], "verified")
+        self.assertEqual(HUNYUAN["reference"]["status"], "stale")
         self.assertEqual(HUNYUAN["reference"]["benchmark"], "benchmarks/station-canonical-cold-e2e-2026-09-08.json")
         self.assertLess(HUNYUAN["reference"]["warm_seconds"], 100)
+
+    def test_full_quality_implementation_parameters_remain_unchanged(self) -> None:
+        """Performance work must not silently trade away geometry or texture quality."""
+        hunyuan_source = Path(hunyuan2_1_plus_plus.__file__).read_text(encoding="utf-8")
+        trellis_source = Path(hermit_trellis2_plus_plus.__file__).read_text(encoding="utf-8")
+        pixal_source = Path(pixal3d.__file__).read_text(encoding="utf-8")
+
+        self.assertIn("Hunyuan3DPaintConfig(max_num_view=6, resolution=512)", hunyuan_source)
+        self.assertIn('"num_inference_steps": 50', hunyuan_source)
+        self.assertIn('"paint_remesh": True', hunyuan_source)
+
+        for source in (trellis_source, pixal_source):
+            self.assertIn("decimation_target=1_000_000", source)
+            self.assertIn("texture_size=texture_size", source)
+            self.assertIn("remesh=True", source)
+        self.assertIn('"pipeline_type": "1536_cascade"', trellis_source)
+        self.assertIn('"acceleration": "base"', trellis_source)
+        self.assertIn('"texture_size": 4096', trellis_source)
+        self.assertIn('"pipeline_type": "1536_cascade"', pixal_source)
+        self.assertIn('"max_num_tokens": 49152', pixal_source)
+        self.assertIn('"texture_size": 4096', pixal_source)
 
     def test_worker_lookup_is_part_of_same_contract(self) -> None:
         self.assertEqual(worker_app("fastsam3d-plus-plus", self.models), "modal-3d-fastsam3d")

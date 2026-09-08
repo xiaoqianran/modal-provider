@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import io
-import tempfile
 import time
 import uuid
 from pathlib import Path, PurePosixPath
 
 import modal
 
-from .common import ARTIFACT_VOLUME, run_generation_job, worker_capability
+from .common import ARTIFACT_VOLUME, run_generation_job, worker_capability, worker_identity
 
 APP_NAME = "modal-3d-fastsam3d"
 GPU = "L40S"
@@ -35,6 +34,62 @@ PIPELINE = MODEL_DIR / "checkpoints/pipeline.fast.yaml"
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-fastsam3d-weights", create_if_missing=True)
 artifacts = modal.Volume.from_name(ARTIFACT_VOLUME, create_if_missing=True)
+
+
+def _calculate_hfer_rgba(image, radius_ratio: float = 0.15) -> float:
+    """In-memory equivalent of the pinned fork's ``calculate_hfer_robust``.
+
+    The upstream helper writes/reads a lossless PNG only to obtain the same
+    BGRA ndarray it already had. Reproduce its preprocessing and FFT exactly in
+    memory so the HFER value -- and therefore Fast-SAM3D's mesh policy -- stays
+    unchanged while avoiding filesystem I/O inside the GPU request.
+    """
+    import cv2
+    import numpy as np
+
+    bgra = cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)
+    bgr = bgra[:, :, :3]
+    alpha = bgra[:, :, 3]
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+
+    coords = cv2.findNonZero(alpha)
+    if coords is not None:
+        x, y, width, height = cv2.boundingRect(coords)
+        pad = 2
+        x = max(0, x - pad)
+        y = max(0, y - pad)
+        width = min(gray.shape[1] - x, width + 2 * pad)
+        height = min(gray.shape[0] - y, height + 2 * pad)
+        crop_gray = gray[y : y + height, x : x + width]
+        crop_alpha = alpha[y : y + height, x : x + width]
+    else:
+        crop_gray = gray
+        crop_alpha = np.ones_like(gray) * 255
+
+    target_size = 256
+    resized_gray = cv2.resize(
+        crop_gray, (target_size, target_size), interpolation=cv2.INTER_AREA
+    )
+    resized_alpha = cv2.resize(
+        crop_alpha, (target_size, target_size), interpolation=cv2.INTER_AREA
+    )
+    object_pixels = resized_gray[resized_alpha > 0]
+    mean_val = float(np.mean(object_pixels)) if object_pixels.size > 0 else 128.0
+    img_filled = np.ones_like(resized_gray, dtype=np.float32) * mean_val
+    np.copyto(img_filled, resized_gray.astype(np.float32), where=(resized_alpha > 0))
+    window2d = np.outer(np.hanning(target_size), np.hanning(target_size))
+    processed = img_filled * window2d
+
+    rows, cols = processed.shape
+    crow, ccol = rows // 2, cols // 2
+    magnitude = np.abs(np.fft.fftshift(np.fft.fft2(processed)))
+    magnitude[crow, ccol] = 0
+    total_energy = np.sum(magnitude) + 1e-8
+    radius = int(min(rows, cols) * radius_ratio)
+    yy, xx = np.ogrid[:rows, :cols]
+    mask_area = (xx - ccol) ** 2 + (yy - crow) ** 2
+    high_freq_energy = np.sum(magnitude[mask_area > radius * radius])
+    return float(high_freq_energy / total_energy)
 
 CAPABILITY = worker_capability(
     "fastsam3d-plus-plus",
@@ -67,7 +122,7 @@ CAPABILITY = worker_capability(
         }
     },
     reference_metadata={
-        "status": "verified",
+        "status": "stale",
         "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
         "metric": "local_artifact_e2e_s",
         "e2e_seconds": 66.26,
@@ -266,6 +321,11 @@ def sync_weights() -> dict:
     }
 
 
+@app.function(timeout=60)
+def worker_info() -> dict:
+    return worker_identity(CAPABILITY)
+
+
 @app.cls(
     image=runtime_image,
     gpu=GPU,
@@ -349,10 +409,8 @@ class Model:
         dmd_interval: int = 1,
         dmd_history: int = 5,
     ) -> dict:
-        import cv2
         import numpy as np
         import torch
-        from fft.fft2d import calculate_hfer_robust
         from PIL import Image
 
         if not 0 <= seed <= 4294967295:
@@ -372,11 +430,7 @@ class Model:
 
         # Fast-SAM3D's spectral mesh policy uses the object crop HFER.
         hfer_t0 = time.perf_counter()
-        with tempfile.TemporaryDirectory(prefix="fastsam3d-hfer-") as temp_dir:
-            tmp = Path(temp_dir) / "input.png"
-            if not cv2.imwrite(str(tmp), cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)):
-                raise RuntimeError("failed to write FastSAM3D HFER input")
-            self.pipe.hfer_2d = float(calculate_hfer_robust(str(tmp)))
+        self.pipe.hfer_2d = _calculate_hfer_rgba(image)
         hfer_s = time.perf_counter() - hfer_t0
 
         fm = self.pipe.models["slat_generator"]
@@ -418,7 +472,6 @@ class Model:
         path = Path("/artifacts") / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(glb)
-        artifacts.commit()
         artifact_s = time.perf_counter() - artifact_t0
         total_s = time.perf_counter() - wall_t0
 
@@ -446,7 +499,7 @@ class Model:
                 "hfer_s": hfer_s,
                 "inference_s": inference_s,
                 "glb_export_s": export_s,
-                "artifact_write_commit_s": artifact_s,
+                "artifact_write_s": artifact_s,
                 "total_s": total_s,
             },
             "peak_vram_allocated_gb": torch.cuda.max_memory_allocated() / 2**30,
@@ -460,4 +513,11 @@ class Model:
         Input reading, canonical validation, GLB validation and result
         normalization all happen here so no CPU adapter function is needed.
         """
-        return run_generation_job(CAPABILITY["id"], artifacts, self._generate, input_path, options)
+        return run_generation_job(
+            CAPABILITY["id"],
+            artifacts,
+            self._generate,
+            input_path,
+            options,
+            quality_profile="vertex_color",
+        )

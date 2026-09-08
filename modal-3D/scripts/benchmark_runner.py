@@ -23,8 +23,10 @@ class Scene:
 def recommended_profile(capability: dict) -> dict:
     profiles = capability.get("profiles") or []
     profile = next((item for item in profiles if item.get("id") == "recommended"), None)
-    if not isinstance(profile, dict):
+    if profile is None:
         raise ValueError(f"{capability.get('id', '?')} has no recommended profile")
+    if not isinstance(profile, dict):
+        raise TypeError("recommended profile must be an object")
     return profile
 
 
@@ -63,8 +65,10 @@ def load_manifest(path: Path, *, min_rgb_nonzero_fraction: float = 0.01) -> list
         else:
             canonical_path = canonical_value
             modal_path = row.get("modal_path")
-        if not isinstance(canonical_path, str) or not isinstance(modal_path, str):
+        if canonical_path is None or modal_path is None:
             raise ValueError(f"{scene_id}: canonical path and modal_path are required")
+        if not isinstance(canonical_path, str) or not isinstance(modal_path, str):
+            raise TypeError(f"{scene_id}: canonical path and modal_path must be strings")
         candidate = Path(canonical_path)
         canonical = (
             (path.parent / candidate).resolve()

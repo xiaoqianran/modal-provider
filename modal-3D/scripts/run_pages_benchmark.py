@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
-import sys
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from modal_3d.capabilities import assert_routable
+from modal_3d.common import worker_identity
 from modal_3d.router import resolve, spawn_generation
 from scripts.benchmark_runner import (
-    assert_deployed_matches,
     build_plan,
     load_manifest,
     recommended_profile,
@@ -66,6 +66,7 @@ def _new_smoke_state(plan: dict) -> dict:
 
 def _verify_remote_inputs(scenes) -> None:
     import hashlib
+
     import modal
 
     volume = modal.Volume.from_name("modal-3d-artifacts")
@@ -82,22 +83,48 @@ def _verify_remote_inputs(scenes) -> None:
             raise ValueError(f"{scene.id}: Modal Volume input SHA256 does not match local canonical")
 
 
-def _verified_capabilities(local_capabilities: list[dict], model_ids: list[str]) -> dict[str, dict]:
-    """Validate local worker manifests before any paid GPU job is submitted.
+def _verify_remote_worker_identities(
+    local_by_id: dict[str, dict], model_ids: list[str]
+) -> dict[str, dict]:
+    """Compare deployed CPU worker identities before any paid GPU method is spawned."""
+    import modal
 
-    There is no gateway and no remote registry to diff against. Drift is caught
-    the only way it can be: locally, by checking that every manifest agrees with
-    `router.WORKERS` (the table `spawn_generation` actually uses) and that the
-    benchmark plan profiles are the ones declared here.
-    """
+    calls = {}
+    for model_id in model_ids:
+        capability = local_by_id[model_id]
+        try:
+            function = modal.Function.from_name(capability["worker_app"], "worker_info")
+            calls[model_id] = function.spawn()
+        except Exception as exc:
+            raise RuntimeError(
+                f"{model_id}: deployed worker_info is unavailable; redeploy before benchmarking"
+            ) from exc
+
+    deployed = {}
+    for model_id, call in calls.items():
+        try:
+            remote = call.get()
+        except Exception as exc:
+            raise RuntimeError(f"{model_id}: worker identity preflight failed") from exc
+        expected = worker_identity(local_by_id[model_id])
+        if remote != expected:
+            raise RuntimeError(
+                f"{model_id}: deployed worker identity does not match local code; redeploy before benchmarking"
+            )
+        deployed[model_id] = remote
+    return deployed
+
+
+def _verified_capabilities(local_capabilities: list[dict], model_ids: list[str]) -> dict[str, dict]:
+    """Validate manifests and deployed CPU identities before paid GPU submission."""
     assert_routable(local_capabilities)
     local_by_id = {item["id"]: item for item in local_capabilities}
     for model_id in model_ids:
         capability = local_by_id.get(model_id)
         if capability is None:
             raise RuntimeError(f"{model_id}: no local worker manifest")
-        assert_deployed_matches(capability, capability)
         recommended_profile(capability)
+    _verify_remote_worker_identities(local_by_id, model_ids)
     return local_by_id
 
 
@@ -188,7 +215,7 @@ def _poll_task(model_state: dict) -> None:
         result = modal.functions.FunctionCall.from_id(task_id).get(timeout=0)
     except TimeoutError:
         model_state["status"] = "running"
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - remote FunctionCall errors are heterogeneous.
         model_state.update(
             {
                 "status": "failed",

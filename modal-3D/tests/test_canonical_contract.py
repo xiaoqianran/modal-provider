@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import binascii
+import hashlib
 import tempfile
 import unittest
 import zlib
 from pathlib import Path
 
-from modal_3d.common import validate_canonical_png
+from modal_3d.common import validate_canonical_integrity, validate_canonical_png
 from modal_3d.png import foreground_stats
 
 
@@ -87,6 +88,29 @@ class CanonicalContractTests(unittest.TestCase):
     def test_rejects_non_png(self) -> None:
         with self.assertRaisesRegex(ValueError, "valid PNG"):
             validate_canonical_png(self._write(b"not a png"))
+
+    def test_content_addressed_integrity_keeps_alpha_contract(self) -> None:
+        data = rgba_png()
+        digest = hashlib.sha256(data).hexdigest()
+        path = self._write(data)
+        result = validate_canonical_integrity(path, f"client-inputs/{digest}.png")
+        self.assertEqual(result["sha256"], digest)
+        self.assertEqual(result["alpha_min"], 0)
+        self.assertEqual(result["alpha_max"], 255)
+        self.assertEqual(result["validation"], "content-addressed-integrity")
+
+    def test_content_addressed_integrity_rejects_hash_mismatch(self) -> None:
+        data = rgba_png()
+        path = self._write(data)
+        with self.assertRaisesRegex(ValueError, "SHA256"):
+            validate_canonical_integrity(path, f"client-inputs/{'0' * 64}.png")
+
+    def test_content_addressed_integrity_rejects_opaque_background(self) -> None:
+        data = rgba_png(background_alpha=255, foreground_alpha=255)
+        digest = hashlib.sha256(data).hexdigest()
+        path = self._write(data)
+        with self.assertRaisesRegex(ValueError, "transparent background"):
+            validate_canonical_integrity(path, f"client-inputs/{digest}.png")
 
     def test_pinned_hf_snapshot_requires_declared_files(self):
         from modal_3d.common import pinned_hf_snapshot

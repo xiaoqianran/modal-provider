@@ -13,7 +13,14 @@ from pathlib import Path
 
 import modal
 
-from .common import ARTIFACT_VOLUME, pinned_hf_snapshot, run_generation_job, worker_capability
+from .common import (
+    ARTIFACT_VOLUME,
+    pinned_hf_snapshot,
+    run_generation_job,
+    worker_capability,
+    worker_identity,
+)
+from .o_voxel_contract import validate_o_voxel_pbr_intermediate
 
 APP_NAME = "modal-3d-pixal3d"
 GPU = "L40S"
@@ -29,10 +36,14 @@ TORCH_HOME = "/models/torch"
 SRC = "/opt/Pixal3D"
 TAG = "pixal3d-py310-cu124-torch260-sm89-v1"
 WHEELS_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{TAG}/{TAG}.wheels.zip"
+FLEX_GEMM_CACHE_PATH = (
+    "/pixal-cache/sm89-cu124-torch260-pixal-cdbb2bbffbf4/autotune_cache.json"
+)
 
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-pixal3d-weights", create_if_missing=True)
 artifacts = modal.Volume.from_name(ARTIFACT_VOLUME, create_if_missing=True)
+autotune_cache = modal.Volume.from_name("modal-3d-pixal3d-autotune", create_if_missing=True)
 
 CAPABILITY = worker_capability(
     "pixal3d",
@@ -68,7 +79,7 @@ CAPABILITY = worker_capability(
         }
     },
     reference_metadata={
-        "status": "verified",
+        "status": "stale",
         "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
         "metric": "local_artifact_e2e_s",
         "e2e_seconds": 346.83,
@@ -100,13 +111,13 @@ runtime_image = (
     modal.Image.from_registry("nvidia/cuda:12.4.1-runtime-ubuntu22.04", add_python="3.10")
     .apt_install("git", "curl", "unzip", "libgl1", "libglib2.0-0", "ffmpeg", "libgomp1", "gcc")
     .run_commands(
-        "python -m pip install --upgrade uv",
+        "python -m pip install uv==0.12.5",
         "uv pip install --system torch==2.6.0 torchvision==0.21.0 triton==3.2.0 --index-url https://download.pytorch.org/whl/cu124",
         "uv pip install --system pillow==12.0.0 imageio==2.37.2 imageio-ffmpeg==0.6.0 tqdm==4.67.1 easydict==1.13 opencv-python-headless==4.12.0.88 trimesh==4.10.1 transformers==4.57.3 zstandard==0.25.0 kornia==0.8.2 timm==1.0.22 diffusers==0.37.1 accelerate==1.13.0 plyfile==1.1.3 safetensors numpy scipy einops 'huggingface_hub>=0.34,<1'",
         "uv pip install --system https://github.com/LDYang694/Storages/releases/download/20260430/utils3d-0.0.2-py3-none-any.whl",
         "git clone https://github.com/microsoft/MoGe.git /opt/MoGe && git -C /opt/MoGe checkout 74fbce054ebed49800de42d0ad0e83495065719a && uv pip install --system /opt/MoGe",
         "git clone https://github.com/valeoai/NAF.git /opt/NAF && git -C /opt/NAF checkout 37f2dfc180f2de53d98bd601109c0da0dd6b0f43",
-        f"curl -fL '{WHEELS_URL}' -o /tmp/wheels.zip && mkdir -p /tmp/wheels && unzip -q /tmp/wheels.zip -d /tmp/wheels && uv pip install --system --no-deps /tmp/wheels/*.whl",
+        f"curl -fL --retry 5 --retry-all-errors --retry-delay 2 '{WHEELS_URL}' -o /tmp/wheels.zip && mkdir -p /tmp/wheels && unzip -q /tmp/wheels.zip -d /tmp/wheels && uv pip install --system --no-deps /tmp/wheels/*.whl",
         "git clone https://github.com/TencentARC/Pixal3D.git /opt/Pixal3D && git -C /opt/Pixal3D checkout cdbb2bbffbf4e6f298b5f2af3d1d76a8d823d2af",
         "python - <<'PY'\np='/opt/Pixal3D/pixal3d/trainers/flow_matching/mixins/image_conditioned_proj.py'\ns=open(p).read().replace('torch.hub.load(\\n                \"valeoai/NAF\", \"naf\", pretrained=True, device=device, trust_repo=True\\n            )','torch.hub.load(\\n                \"/opt/NAF\", \"naf\", pretrained=True, device=device, source=\"local\"\\n            )')\nopen(p,'w').write(s)\nPY",
         "uv pip install --system 'huggingface_hub>=0.34,<1'",
@@ -124,6 +135,7 @@ runtime_image = (
             "TORCH_CUDA_ARCH_LIST": "8.9",
             "NATTEN_CUDA_ARCH": "8.9",
             "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+            "FLEX_GEMM_AUTOTUNE_CACHE_PATH": FLEX_GEMM_CACHE_PATH,
             "FLEX_GEMM_AUTOTUNER_VERBOSE": "0",
             "CC": "/usr/bin/gcc",
         }
@@ -205,10 +217,62 @@ class _Vram:
         return self.peak_mib / 1024
 
 
+def _camera_params_wild_moge_image(
+    image,
+    moge_model,
+    *,
+    device: str = "cuda",
+    mesh_scale: float = 1.0,
+    extend_pixel: int = 0,
+    image_resolution: int = 512,
+) -> dict:
+    """In-memory equivalent of Pixal3D's pinned path-based MoGe helper."""
+    import math
+
+    import torch
+    from inference import distance_from_fov
+
+    pil_image = image.convert("RGB")
+    width, _height = pil_image.size
+    image_np = _moge_rgb_float32(pil_image)
+    image_tensor = torch.from_numpy(image_np).permute(2, 0, 1).to(device)
+    with torch.no_grad():
+        output = moge_model.infer(image_tensor)
+    intrinsics = output["intrinsics"].squeeze().cpu().numpy()
+    fx_normalized = intrinsics[0, 0]
+    fx = fx_normalized * width
+    camera_angle_x = 2 * math.atan(width / (2 * fx))
+
+    distance = distance_from_fov(
+        camera_angle_x,
+        torch.tensor([-1.0, 0.0, 0.0]),
+        torch.tensor([0 - extend_pixel, image_resolution - 1 + extend_pixel]),
+        mesh_scale,
+        image_resolution,
+    )["distance_from_x"]
+    return {
+        "camera_angle_x": camera_angle_x,
+        "distance": distance,
+        "mesh_scale": mesh_scale,
+    }
+
+
+def _moge_rgb_float32(image):
+    """Return the exact float32 RGB array consumed by pinned Pixal MoGe."""
+    import numpy as np
+
+    return np.array(image.convert("RGB")).astype(np.float32) / 255.0
+
+
+@app.function(timeout=60)
+def worker_info() -> dict:
+    return worker_identity(CAPABILITY)
+
+
 @app.cls(
     image=runtime_image,
     gpu=GPU,
-    volumes={"/models": weights, "/artifacts": artifacts},
+    volumes={"/models": weights, "/artifacts": artifacts, "/pixal-cache": autotune_cache},
     min_containers=0,
     max_containers=1,
     scaledown_window=120,
@@ -219,6 +283,7 @@ class Model:
     @modal.enter()
     def load(self):
         import sys
+        from unittest.mock import patch
 
         sys.path.insert(0, SRC)
         os.chdir(SRC)
@@ -228,6 +293,7 @@ class Model:
         import torch
         from inference import IMAGE_COND_CONFIGS, build_image_cond_model, load_moge_model
         from pixal3d.pipelines import Pixal3DImageTo3DPipeline, rembg
+        from pixal3d.trainers.flow_matching.mixins import image_conditioned_proj
 
         class _NoopRemBg:
             def __init__(self, **_):
@@ -260,34 +326,81 @@ class Model:
             for name, config in IMAGE_COND_CONFIGS.items()
         }
 
+        Path(FLEX_GEMM_CACHE_PATH).parent.mkdir(parents=True, exist_ok=True)
+
+        def cache_signature():
+            cache = Path(FLEX_GEMM_CACHE_PATH)
+            if not cache.is_file():
+                return None
+            stat = cache.stat()
+            return (stat.st_size, stat.st_mtime_ns)
+
         t0 = time.perf_counter()
         self.pipe = Pixal3DImageTo3DPipeline.from_pretrained(MODEL_DIR)
+        model_names = {config["model_name"] for config in image_cond_configs.values()}
+        if len(model_names) != 1:
+            raise RuntimeError(f"Pixal3D image conditioners no longer share one DINO: {model_names}")
+
+        # All four extractors use the exact same frozen DINOv3 checkpoint. Build
+        # it once, then let the remaining extractor constructors reuse that same
+        # nn.Module. Their ProjGrid/image-size/NAF settings remain independent.
         self.pipe.image_cond_model_ss = build_image_cond_model(image_cond_configs["ss"])
-        self.pipe.image_cond_model_shape_512 = build_image_cond_model(
-            image_cond_configs["shape_512"]
-        )
-        self.pipe.image_cond_model_shape_1024 = build_image_cond_model(
-            image_cond_configs["shape_1024"]
-        )
-        self.pipe.image_cond_model_tex_1024 = build_image_cond_model(image_cond_configs["tex_1024"])
-        self.pipe.low_vram = False
-        self.pipe.cuda()
-        for name in (
+        shared_dino = self.pipe.image_cond_model_ss.model
+        with patch.object(
+            image_conditioned_proj.DINOv3ViTModel,
+            "from_pretrained",
+            return_value=shared_dino,
+        ):
+            self.pipe.image_cond_model_shape_512 = build_image_cond_model(
+                image_cond_configs["shape_512"]
+            )
+            self.pipe.image_cond_model_shape_1024 = build_image_cond_model(
+                image_cond_configs["shape_1024"]
+            )
+            self.pipe.image_cond_model_tex_1024 = build_image_cond_model(
+                image_cond_configs["tex_1024"]
+            )
+
+        image_cond_names = (
             "image_cond_model_ss",
             "image_cond_model_shape_512",
             "image_cond_model_shape_1024",
             "image_cond_model_tex_1024",
-        ):
-            model = getattr(self.pipe, name).cuda()
-            if getattr(model, "use_naf_upsample", False):
-                model._load_naf()
+        )
+        if any(getattr(self.pipe, name).model is not shared_dino for name in image_cond_names):
+            raise RuntimeError("Pixal3D DINO sharing invariant failed")
+
+        self.pipe.low_vram = False
+        self.pipe.cuda()
+        image_cond_models = [getattr(self.pipe, name).cuda() for name in image_cond_names]
+
+        # The three NAF-enabled branches also use the same frozen NAF weights;
+        # only target resolution / ProjGrid differ and stay on each extractor.
+        naf_models = [model for model in image_cond_models if model.use_naf_upsample]
+        if not naf_models:
+            raise RuntimeError("Pixal3D expected NAF-enabled conditioners")
+        naf_models[0]._load_naf()
+        shared_naf = naf_models[0].naf_model
+        for model in naf_models[1:]:
+            model.naf_model = shared_naf
+        if any(model.naf_model is not shared_naf for model in naf_models):
+            raise RuntimeError("Pixal3D NAF sharing invariant failed")
+
+        self.image_cond_backbone_instances = len({id(model.model) for model in image_cond_models})
+        self.naf_backbone_instances = len({id(model.naf_model) for model in naf_models})
         self.moge = load_moge_model(device="cpu", model_name=str(moge_dir / "model.pt"))
         torch.cuda.synchronize()
         self.load_s = time.perf_counter() - t0
+        self.flex_cache_signature = cache_signature()
 
     @modal.method()
     def warmup(self) -> dict:
-        return {"model": CAPABILITY["id"], "load_s": self.load_s}
+        return {
+            "model": CAPABILITY["id"],
+            "load_s": self.load_s,
+            "image_cond_backbone_instances": self.image_cond_backbone_instances,
+            "naf_backbone_instances": self.naf_backbone_instances,
+        }
 
     def _generate(
         self,
@@ -301,8 +414,10 @@ class Model:
         import numpy as np
         import o_voxel
         import torch
-        from inference import distance_from_fov, get_camera_params_wild_moge
+        from inference import distance_from_fov
         from PIL import Image
+
+        wall_t0 = time.perf_counter()
 
         if pipeline_type not in {"1024_cascade", "1536_cascade"}:
             raise ValueError("pipeline_type must be 1024_cascade or 1536_cascade")
@@ -311,16 +426,18 @@ class Model:
         if texture_size not in {2048, 4096}:
             raise ValueError("texture_size must be 2048 or 4096")
 
+        preprocess_t0 = time.perf_counter()
         image = Image.open(io.BytesIO(image_bytes))
         image = self.pipe.preprocess_image(image)
+        preprocess_s = time.perf_counter() - preprocess_t0
         with tempfile.TemporaryDirectory(prefix="pixal3d-") as temp_dir:
             work = Path(temp_dir)
-            temp = work / "input.png"
-            image.save(temp)
+            input_save_s = 0.0
 
+            camera_t0 = time.perf_counter()
             if fov is None:
                 self.moge.cuda()
-                camera = get_camera_params_wild_moge(str(temp), self.moge, device="cuda")
+                camera = _camera_params_wild_moge_image(image, self.moge, device="cuda")
                 self.moge.cpu()
                 torch.cuda.empty_cache()
             else:
@@ -333,12 +450,14 @@ class Model:
                     512,
                 )["distance_from_x"]
                 camera = {"camera_angle_x": fov, "distance": distance, "mesh_scale": 1.0}
+            camera_s = time.perf_counter() - camera_t0
 
             vram = _Vram()
             vram.start()
-            torch.cuda.synchronize()
-            t0 = time.perf_counter()
+            flex_cache_commit_s = 0.0
             try:
+                torch.cuda.synchronize()
+                generation_t0 = time.perf_counter()
                 meshes, (_, _, resolution) = self.pipe.run(
                     image,
                     camera_params=camera,
@@ -348,7 +467,30 @@ class Model:
                     pipeline_type=pipeline_type,
                     max_num_tokens=max_num_tokens,
                 )
+                torch.cuda.synchronize()
+                generation_s = time.perf_counter() - generation_t0
+
+                cache = Path(FLEX_GEMM_CACHE_PATH)
+                if cache.is_file():
+                    stat = cache.stat()
+                    signature = (stat.st_size, stat.st_mtime_ns)
+                    if signature != self.flex_cache_signature:
+                        cache_commit_t0 = time.perf_counter()
+                        autotune_cache.commit()
+                        flex_cache_commit_s = time.perf_counter() - cache_commit_t0
+                        self.flex_cache_signature = signature
+
                 mesh = meshes[0]
+                o_voxel_intermediate = validate_o_voxel_pbr_intermediate(
+                    vertices=mesh.vertices,
+                    faces=mesh.faces,
+                    attrs=mesh.attrs,
+                    coords=mesh.coords,
+                    attr_layout=self.pipe.pbr_attr_layout,
+                    grid_size=int(resolution),
+                )
+                torch.cuda.synchronize()
+                to_glb_t0 = time.perf_counter()
                 glb = o_voxel.postprocess.to_glb(
                     vertices=mesh.vertices,
                     faces=mesh.faces,
@@ -364,24 +506,34 @@ class Model:
                     remesh_project=0,
                     use_tqdm=False,
                 )
+                torch.cuda.synchronize()
+                to_glb_s = time.perf_counter() - to_glb_t0
+
+                transform_t0 = time.perf_counter()
                 glb.apply_transform(
                     np.array(
                         [[-1, 0, 0, 0], [0, 0, -1, 0], [0, -1, 0, 0], [0, 0, 0, 1]],
                         dtype=np.float64,
                     )
                 )
+                transform_s = time.perf_counter() - transform_t0
+
                 output_path = work / "output.glb"
+                export_t0 = time.perf_counter()
                 glb.export(output_path, extension_webp=True)
                 torch.cuda.synchronize()
-                inference_s = time.perf_counter() - t0
+                export_s = time.perf_counter() - export_t0
+                inference_s = generation_s + to_glb_s + transform_s + export_s
             finally:
                 peak_vram_gb = vram.stop()
 
+            artifact_t0 = time.perf_counter()
             name = f"pixal3d/{uuid.uuid4().hex}.glb"
             dst = Path("/artifacts") / name
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(output_path, dst)
-            artifacts.commit()
+            artifact_s = time.perf_counter() - artifact_t0
+        total_s = time.perf_counter() - wall_t0
         return {
             "model": "pixal3d",
             "gpu": GPU,
@@ -397,6 +549,21 @@ class Model:
             "source_faces": len(mesh.faces),
             "load_s": self.load_s,
             "inference_s": inference_s,
+            "generation_s": generation_s,
+            "postprocess_s": to_glb_s + transform_s + export_s,
+            "o_voxel_intermediate": o_voxel_intermediate,
+            "timings": {
+                "preprocess_s": preprocess_s,
+                "input_save_s": input_save_s,
+                "camera_s": camera_s,
+                "generation_s": generation_s,
+                "flex_cache_commit_s": flex_cache_commit_s,
+                "to_glb_s": to_glb_s,
+                "transform_s": transform_s,
+                "glb_export_s": export_s,
+                "artifact_write_s": artifact_s,
+                "total_s": total_s,
+            },
             "peak_vram_gb": peak_vram_gb,
         }
 
@@ -407,4 +574,11 @@ class Model:
         Input reading, canonical validation, GLB validation and result
         normalization all happen here so no CPU adapter function is needed.
         """
-        return run_generation_job(CAPABILITY["id"], artifacts, self._generate, input_path, options)
+        return run_generation_job(
+            CAPABILITY["id"],
+            artifacts,
+            self._generate,
+            input_path,
+            options,
+            quality_profile="pbr_textured",
+        )

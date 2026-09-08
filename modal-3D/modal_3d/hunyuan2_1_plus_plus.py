@@ -10,7 +10,7 @@ from pathlib import Path
 
 import modal
 
-from .common import ARTIFACT_VOLUME, run_generation_job, worker_capability
+from .common import ARTIFACT_VOLUME, run_generation_job, worker_capability, worker_identity
 
 APP_NAME = "modal-3d-hunyuan"
 MODEL_ID = "tencent/Hunyuan3D-2.1"
@@ -27,6 +27,7 @@ FORK_COMMIT = "9efd760fbec8ab490e68b330225ea1fab10de7fd"
 GPU = "L40S"
 PAINT_TAG = "hunyuan3d-2.1-paint-py311-cu124-torch251-sm89-v2"
 PAINT_BUNDLE_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{PAINT_TAG}/{PAINT_TAG}.bundle.zip"
+PAINT_PROFILE_PATCH = Path(__file__).parent / "patches/hunyuan_paint_profile.patch"
 
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-hunyuan21-weights", create_if_missing=True)
@@ -68,7 +69,7 @@ CAPABILITY = worker_capability(
         }
     },
     reference_metadata={
-        "status": "verified",
+        "status": "stale",
         "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
         "metric": "local_artifact_e2e_s",
         "profile_id": "recommended",
@@ -156,11 +157,14 @@ runtime_image = (
         "bpy==4.3.0",
         uv_version="0.12.5",
     )
+    .add_local_file(PAINT_PROFILE_PATCH, "/tmp/hunyuan-paint-profile.patch", copy=True)
     .run_commands(
         f"curl -fL '{PAINT_BUNDLE_URL}' -o /tmp/paint-bundle.zip && "
         "mkdir -p /tmp/paint-bundle && unzip -q /tmp/paint-bundle.zip -d /tmp/paint-bundle && "
         "uv pip install --system --no-deps /tmp/paint-bundle/wheels/*.whl",
         f"git clone https://github.com/{FORK}.git {SRC} && git -C {SRC} checkout {FORK_COMMIT}",
+        "python -c \"from pathlib import Path; p=Path('/tmp/hunyuan-paint-profile.patch'); p.write_bytes(p.read_bytes().replace(bytes((13, 10)), bytes((10,))))\"",
+        f"git -C {SRC} apply --check /tmp/hunyuan-paint-profile.patch && git -C {SRC} apply /tmp/hunyuan-paint-profile.patch",
         f"cp /tmp/paint-bundle/native/mesh_inpaint_processor*.so {SRC}/hy3dpaint/DifferentiableRenderer/",
         "python - <<'PY'\n"
         "from pathlib import Path\n"
@@ -246,6 +250,11 @@ def sync_weights() -> dict:
     }
 
 
+@app.function(timeout=60)
+def worker_info() -> dict:
+    return worker_identity(CAPABILITY)
+
+
 @app.cls(
     image=runtime_image,
     gpu=GPU,
@@ -307,6 +316,8 @@ class Model:
         import torch
         from PIL import Image
 
+        wall_t0 = time.perf_counter()
+
         if acceleration not in {"base", "dmd"}:
             raise ValueError("acceleration must be base or dmd")
         if not 1 <= interval <= 12:
@@ -316,7 +327,10 @@ class Model:
         if not 1 <= num_inference_steps <= 100:
             raise ValueError("num_inference_steps must be between 1 and 100")
 
+        decode_t0 = time.perf_counter()
         image = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+        image.load()
+        decode_s = time.perf_counter() - decode_t0
         if image.getchannel("A").getextrema()[0] == 255:
             raise ValueError("Hunyuan++ input must be prematted RGBA")
 
@@ -339,9 +353,12 @@ class Model:
         with tempfile.TemporaryDirectory(prefix="hunyuan21-") as temp_dir:
             work = Path(temp_dir)
             shape_path = work / "shape.glb"
+            shape_export_t0 = time.perf_counter()
             mesh.export(shape_path)
+            shape_export_s = time.perf_counter() - shape_export_t0
             textured_obj = work / "textured_mesh.obj"
 
+            self.paint_pipe.last_timings = {}
             paint_t0 = time.perf_counter()
             self.paint_pipe(
                 mesh_path=str(shape_path),
@@ -352,15 +369,21 @@ class Model:
             )
             torch.cuda.synchronize()
             paint_s = time.perf_counter() - paint_t0
+            paint_profile = dict(getattr(self.paint_pipe, "last_timings", {}))
+            paint_profile_s = float(paint_profile.get("total_s", 0.0) or 0.0)
+            paint_gpu_drain_s = max(0.0, paint_s - paint_profile_s)
             textured_glb = textured_obj.with_suffix(".glb")
             if not textured_glb.is_file() or textured_glb.stat().st_size == 0:
                 raise RuntimeError("Hunyuan3D-Paint did not produce a GLB")
 
+            artifact_t0 = time.perf_counter()
             name = f"hunyuan21pp/{uuid.uuid4().hex}.glb"
             path = Path("/artifacts") / name
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(textured_glb, path)
-            artifacts.commit()
+            artifact_s = time.perf_counter() - artifact_t0
+
+        total_s = time.perf_counter() - wall_t0
 
         return {
             "model": "hunyuan2.1-plus-plus",
@@ -378,6 +401,16 @@ class Model:
             "inference_s": shape_s + paint_s,
             "shape_s": shape_s,
             "paint_s": paint_s,
+            "timings": {
+                "decode_s": decode_s,
+                "shape_s": shape_s,
+                "shape_glb_export_s": shape_export_s,
+                "paint_s": paint_s,
+                "paint_profile": paint_profile,
+                "paint_gpu_drain_s": paint_gpu_drain_s,
+                "artifact_write_s": artifact_s,
+                "total_s": total_s,
+            },
             "peak_vram_allocated_gb": torch.cuda.max_memory_allocated() / 2**30,
             "peak_vram_reserved_gb": torch.cuda.max_memory_reserved() / 2**30,
             "source_vertices": len(mesh.vertices),
@@ -396,4 +429,11 @@ class Model:
         Input reading, canonical validation, GLB validation and result
         normalization all happen here so no CPU adapter function is needed.
         """
-        return run_generation_job(CAPABILITY["id"], artifacts, self._generate, input_path, options)
+        return run_generation_job(
+            CAPABILITY["id"],
+            artifacts,
+            self._generate,
+            input_path,
+            options,
+            quality_profile="pbr_textured",
+        )

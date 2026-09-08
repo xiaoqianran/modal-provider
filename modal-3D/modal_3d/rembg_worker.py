@@ -19,7 +19,7 @@ from pathlib import Path, PurePosixPath
 
 import modal
 
-from .common import ARTIFACT_VOLUME
+from .common import ARTIFACT_VOLUME, validate_canonical_png_bytes
 
 APP_NAME = "modal-3d-rembg"
 ENGINE = "birefnet-general-lite"
@@ -229,6 +229,9 @@ class RemBgWorker:
 
         canonical = bytes(conditioned["canonical_bytes"])
         canonical_sha256 = str(conditioned["canonical_sha256"])
+        canonical_metadata = validate_canonical_png_bytes(canonical)
+        if canonical_metadata["sha256"] != canonical_sha256:
+            raise RuntimeError("conditioned canonical SHA-256 mismatch")
         target_rel = PurePosixPath("client-inputs") / f"{canonical_sha256}.png"
         target = artifact_root / Path(*target_rel.parts)
         if (

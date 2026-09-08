@@ -87,7 +87,7 @@
       "reference": {
         "warm_seconds": 3.8,
         "cold_start_seconds": 62.46,
-        "status": "verified",
+        "status": "stale",
         "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
         "metric": "local_artifact_e2e_s",
         "e2e_seconds": 66.26,
@@ -104,7 +104,7 @@
         "sam_revision": "2e73555018d2741ccd486e56c24fac41155a1dc6",
         "pytorch3d_revision": "75ebeeaea0908c5527e7b1e305fbc7681382db47",
         "build_artifact": "fastsam3d-pytorch3d-py311-cu121-torch251-sm89-v1",
-        "adapter_revision": "modal-3d.worker-adapter.v5"
+        "adapter_revision": "modal-3d.worker-adapter.v8"
       }
     },
     {
@@ -189,7 +189,7 @@
       "reference": {
         "warm_seconds": 83.26,
         "cold_start_seconds": 61.55,
-        "status": "verified",
+        "status": "stale",
         "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
         "metric": "local_artifact_e2e_s",
         "profile_id": "recommended",
@@ -206,7 +206,7 @@
         "base_model": "tencent/Hunyuan3D-2.1",
         "base_model_revision": "0b94677654c57bb9a6b6845cd7b704ccf551d327",
         "build_artifact": "hunyuan3d-2.1-paint-py311-cu124-torch251-sm89-v2",
-        "adapter_revision": "modal-3d.worker-adapter.v5"
+        "adapter_revision": "modal-3d.worker-adapter.v8"
       }
     },
     {
@@ -287,7 +287,7 @@
       "reference": {
         "warm_seconds": 241.34,
         "cold_start_seconds": 105.49,
-        "status": "verified",
+        "status": "stale",
         "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
         "metric": "local_artifact_e2e_s",
         "e2e_seconds": 346.83,
@@ -304,7 +304,7 @@
         "build_artifact": "pixal3d-py310-cu124-torch260-sm89-v1",
         "base_model": "TencentARC/Pixal3D",
         "base_model_revision": "0b31f9160aa400719af409098bff7936a932f726",
-        "adapter_revision": "modal-3d.worker-adapter.v5"
+        "adapter_revision": "modal-3d.worker-adapter.v8"
       }
     },
     {
@@ -381,7 +381,7 @@
       "reference": {
         "warm_seconds": 338.78,
         "cold_start_seconds": 115.23,
-        "status": "verified",
+        "status": "stale",
         "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
         "metric": "local_artifact_e2e_s",
         "e2e_seconds": 454.01,
@@ -398,7 +398,7 @@
         "build_artifact": "hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v2",
         "base_model": "microsoft/TRELLIS.2-4B",
         "base_model_revision": "af44b45f2e35a493886929c6d786e563ec68364d",
-        "adapter_revision": "modal-3d.worker-adapter.v5"
+        "adapter_revision": "modal-3d.worker-adapter.v8"
       }
     }
   ]
