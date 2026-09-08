@@ -715,4 +715,3 @@ def run_stage5_smoke_core(
         "spz_bytes": sum(path.stat().st_size for path in spzs),
         "log_tail": log_path.read_text(errors="replace")[-8000:],
     }
-
