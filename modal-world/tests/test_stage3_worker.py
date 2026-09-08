@@ -48,11 +48,14 @@ def test_stage3_worker_is_persistent_and_worldstereo_is_lazy():
     assert "Sam3VideoModel.from_pretrained" not in generate
     assert "MoGeModel.from_pretrained" not in generate
     resume_check = generate.index("not recompute_downstream")
-    lazy_load = generate.index("if self.worldstereo is None:")
+    lazy_load = generate.index("if worldstereo_required or self.worldstereo_nframe is None:")
     assert resume_check < lazy_load
     assert generate.index("started = time.perf_counter()") < lazy_load
     assert generate.index("torch.cuda.reset_peak_memory_stats()") < lazy_load
+    assert "worldstereo_required = bool(force or any(not path.is_file() for path in result_paths))" in generate
+    assert "nframe=self.worldstereo_nframe" in generate
     assert '"worldstereo_load_call_s"' in generate
+    assert '"worldstereo_required_for_generation"' in generate
 
 
 def test_stage3_probe_explicitly_loads_worldstereo():

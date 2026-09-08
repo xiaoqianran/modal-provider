@@ -154,6 +154,16 @@ class WorldStereoWorker:
         )
         self.worldstereo = None
         self.worldstereo_load_s = 0.0
+        self.worldstereo_cfg_cache = Path("/runtime-cache/stage3_worldstereo_cfg.json")
+        self.worldstereo_nframe = None
+        if self.worldstereo_cfg_cache.is_file():
+            try:
+                cached_cfg = json.loads(self.worldstereo_cfg_cache.read_text(encoding="utf-8"))
+                cached_nframe = int(cached_cfg["nframe"])
+                if cached_nframe > 0:
+                    self.worldstereo_nframe = cached_nframe
+            except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+                self.worldstereo_nframe = None
         torch.set_default_dtype(torch.float)
         if torch.cuda.is_bf16_supported():
             self.autocast_dtype = torch.bfloat16
@@ -180,6 +190,16 @@ class WorldStereoWorker:
             device_mesh=self.device_mesh,
             device=self.device,
         )
+        self.worldstereo_nframe = int(self.worldstereo.cfg.nframe)
+        cached_payload = json.dumps({"nframe": self.worldstereo_nframe}, sort_keys=True) + "\n"
+        cached_before = (
+            self.worldstereo_cfg_cache.read_text(encoding="utf-8")
+            if self.worldstereo_cfg_cache.is_file()
+            else None
+        )
+        if cached_before != cached_payload:
+            self.worldstereo_cfg_cache.write_text(cached_payload, encoding="utf-8")
+            runtime_cache.commit()
         self.worldstereo_load_s += time.perf_counter() - started
 
     def _release_worldstereo(self) -> None:
@@ -302,10 +322,17 @@ class WorldStereoWorker:
         # reload cost. Load the heavyweight model only when real generation is needed.
         started = time.perf_counter()
         torch.cuda.reset_peak_memory_stats()
+        result_paths = [
+            target / f"render_results/{render_path.split('/')[-3]}/{render_path.split('/')[-2]}/{_MODEL_TYPE}_result.mp4"
+            for render_path in render_list
+        ]
+        worldstereo_required = bool(force or any(not path.is_file() for path in result_paths))
         worldstereo_load_before = self.worldstereo_load_s
-        if self.worldstereo is None:
+        if worldstereo_required or self.worldstereo_nframe is None:
             self._load_worldstereo()
         worldstereo_load_call_s = self.worldstereo_load_s - worldstereo_load_before
+        if self.worldstereo_nframe is None:
+            raise RuntimeError("Stage 3 WorldStereo nframe is unavailable")
 
         timer = Timer()
         call_index = self.call_count
@@ -323,7 +350,7 @@ class WorldStereoWorker:
                 image_width=width,
                 image_height=height,
                 device=self.device,
-                nframe=self.worldstereo.cfg.nframe,
+                nframe=self.worldstereo_nframe,
                 max_reference=8,
                 align_nframe=8,
                 rank=0,
@@ -560,6 +587,8 @@ class WorldStereoWorker:
             "worker_load_s": round(self.load_s, 3),
             "worker_worldstereo_load_s": round(self.worldstereo_load_s, 3),
             "worldstereo_load_call_s": round(worldstereo_load_call_s, 3),
+            "worldstereo_required_for_generation": worldstereo_required,
+            "worldstereo_nframe": self.worldstereo_nframe,
             "worker_call_index": call_index,
             "gpu_peak_used_mib": int(torch.cuda.max_memory_allocated() / (1024**2)),
             "host_peak_rss_mib": host_peak_rss_mib,
