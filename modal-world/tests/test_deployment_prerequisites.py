@@ -7,7 +7,8 @@ def test_modal_world_declares_complete_build_artifact_prerequisites():
     bundles = all_artifact_bundles()
     expected_tags = {str(bundle["tag"]) for bundle in bundles}
     assert len(expected_tags) == 8
-    assert len(manifest["targets"]) == 4
+    assert len(manifest["targets"]) == 5
+    assert any(target["app"] == "modal-world-stage45" for target in manifest["targets"])
     for target in manifest["targets"]:
         assert target["required"] is True
         prerequisites = target["prerequisites"]

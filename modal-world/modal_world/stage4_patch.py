@@ -6,7 +6,7 @@ from pathlib import Path
 def patch_stage4_single_gpu(source_root: str | Path) -> None:
     """Patch pinned GS-data preparation for offline, single-GPU execution."""
     script = Path(source_root) / "hyworld2/worldgen/gen_gs_data.py"
-    source = script.read_text()
+    source = script.read_text(encoding="utf-8")
 
     model_old = (
         '    moge_model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(device)\n'
@@ -88,4 +88,4 @@ def patch_stage4_single_gpu(source_root: str | Path) -> None:
     destroy_new = "    if dist.is_initialized():\n        dist.destroy_process_group()\n"
     if source.count(destroy_old) != 1:
         raise RuntimeError("expected pinned Stage 4 process-group cleanup not found")
-    script.write_text(source.replace(destroy_old, destroy_new, 1))
+    script.write_text(source.replace(destroy_old, destroy_new, 1), encoding="utf-8")

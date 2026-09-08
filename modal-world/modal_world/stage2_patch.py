@@ -8,7 +8,7 @@ def patch_stage2_single_gpu(source_root: str | Path) -> None:
     root = Path(source_root)
 
     traj_render = root / "hyworld2/worldgen/traj_render.py"
-    source = traj_render.read_text()
+    source = traj_render.read_text(encoding="utf-8")
     dist_init = (
         "    dist.init_process_group(\n"
         '        backend="cpu:gloo,cuda:nccl",\n'
@@ -40,10 +40,10 @@ def patch_stage2_single_gpu(source_root: str | Path) -> None:
             patched_lines.append(line)
     if barrier_count != 4:
         raise RuntimeError(f"expected 4 Stage 2 barriers, found {barrier_count}")
-    traj_render.write_text("".join(patched_lines))
+    traj_render.write_text("".join(patched_lines), encoding="utf-8")
 
     pointcloud = root / "hyworld2/worldgen/src/pointcloud.py"
-    source = pointcloud.read_text()
+    source = pointcloud.read_text(encoding="utf-8")
     gather_marker = (
         "    pcd_mask = torch.cat(pcd_mask, dim=0).to(torch.float32)  # [f,1,h,w]\n"
         "\n"
@@ -62,4 +62,6 @@ def patch_stage2_single_gpu(source_root: str | Path) -> None:
     )
     if source.count(gather_marker) != 1:
         raise RuntimeError("expected pinned Stage 2 gather marker not found")
-    pointcloud.write_text(source.replace(gather_marker, single_gpu_return, 1))
+    pointcloud.write_text(
+        source.replace(gather_marker, single_gpu_return, 1), encoding="utf-8"
+    )

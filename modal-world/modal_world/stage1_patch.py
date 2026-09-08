@@ -9,7 +9,7 @@ def patch_stage1_worldnav(source_root: str | Path) -> None:
     worldgen_root = root / "hyworld2/worldgen"
 
     panorama_utils = worldgen_root / "src/panorama_utils.py"
-    panorama_source = panorama_utils.read_text()
+    panorama_source = panorama_utils.read_text(encoding="utf-8")
     old_camera_code = """def get_panorama_cameras_v2(subdivisions=0):
     vertices = subdivide_icosahedron(subdivisions=subdivisions)
     intrinsics = utils3d.numpy.intrinsics_from_fov(fov_x=np.deg2rad(90), fov_y=np.deg2rad(90))
@@ -128,10 +128,10 @@ def patch_stage1_worldnav(source_root: str | Path) -> None:
     if panorama_source.count(mesh_assign_old) != 1:
         raise RuntimeError("expected pinned Open3D mesh assignment block not found")
     panorama_source = panorama_source.replace(mesh_assign_old, mesh_assign_new, 1)
-    panorama_utils.write_text(panorama_source)
+    panorama_utils.write_text(panorama_source, encoding="utf-8")
 
     navi_utils_path = worldgen_root / "src/navi_utils.py"
-    navi_source = navi_utils_path.read_text()
+    navi_source = navi_utils_path.read_text(encoding="utf-8")
     old_rotation = """        R_to_yup = mesh.get_rotation_matrix_from_xyz((-np.pi / 2, 0, 0))
         mesh.rotate(R_to_yup, center=(0, 0, 0))
 
@@ -198,10 +198,10 @@ def patch_stage1_worldnav(source_root: str | Path) -> None:
     if navi_source.count(debug_mesh_old) != 1:
         raise RuntimeError("expected pinned reconstruction-candidate debug mesh block not found")
     navi_source = navi_source.replace(debug_mesh_old, debug_mesh_new, 1)
-    navi_utils_path.write_text(navi_source)
+    navi_utils_path.write_text(navi_source, encoding="utf-8")
 
     traj_path = worldgen_root / "traj_generate.py"
-    traj_source = traj_path.read_text()
+    traj_source = traj_path.read_text(encoding="utf-8")
     cache_old = 'HF_CACHE_DIR = os.path.expanduser("~/.cache/huggingface/hub")'
     cache_new = 'HF_CACHE_DIR = os.environ.get("HUGGINGFACE_HUB_CACHE", os.path.expanduser("~/.cache/huggingface/hub"))'
     if traj_source.count(cache_old) != 1:
@@ -212,4 +212,4 @@ def patch_stage1_worldnav(source_root: str | Path) -> None:
     if traj_source.count(mesh_resolution_old) != 1:
         raise RuntimeError("expected pinned WorldNav mesh resolution not found")
     traj_source = traj_source.replace(mesh_resolution_old, mesh_resolution_new, 1)
-    traj_path.write_text(traj_source)
+    traj_path.write_text(traj_source, encoding="utf-8")

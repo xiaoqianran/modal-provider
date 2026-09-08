@@ -55,15 +55,22 @@ def test_runtime_compiler_is_cpu_only_and_isolated_from_main_app():
     assert "gpu=" not in source
     assert 'target / "render_results/global_mesh.ply"' in source
     assert "simplify_quadric_decimation" in source
-    assert 'stage="runtime-compile"' in source
-    assert 'target / "runtime"' in source
+    assert 'runtime_stage = stage_profile_name("runtime-compile", steps)' in source
+    assert "stage=runtime_stage" in source
+    assert "runtime_dir = runtime_result_dir(target, steps)" in source
     assert 'runtime_dir / "environment.ply"' in source
     assert 'runtime_dir / "world.json"' in source
     assert 'target / "objects.json"' in source
-    assert 'target / "gs_result/ply/point_cloud_7999.spz"' in source
+    assert "stage5_artifacts(target, steps).spz" in source
+    assert "runtime_result_dir(target, steps)" in source
+    assert 'runtime_stage = stage_profile_name("runtime-compile", steps)' in source
+    assert "steps: int = 8000" in source
+    assert '"steps": steps' in source
     assert "fingerprint_inputs.append(optional_input)" in source
     assert "semantics_path.is_file() == runtime_semantics.is_file()" in source
     assert "has_dedicated_navigation == runtime_navigation.is_file()" in source
+    assert 'visual_relative = "../" + visual_path.relative_to(target).as_posix()' in source
+    assert "visual=visual_relative" in source
     assert "worldgen_outputs.commit()" in source
 
 

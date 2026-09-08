@@ -21,12 +21,14 @@ from .hyworld2_runtime import (
     hyworld2_worldmirror_image,
 )
 from .service import capabilities as local_capabilities
+from .stage45_core import run_stage4_core, run_stage5_core, run_stage5_smoke_core
 from .worldgen_job import (
     build_stage_manifest,
     fingerprint_files,
     manifest_matches,
     resolve_worldgen_job_root,
-    stage_manifest_path,
+    runtime_result_dir,
+    stage5_artifacts,
     write_stage_manifest,
 )
 from .worldgen_policy import sanitize_semantic_labels
@@ -259,6 +261,7 @@ def worldgen_garden_stage0(
     source_name: str = "reference.png",
     seed: int = 42,
     prompt: str = GARDEN_PANO_PROMPT,
+    force: bool = False,
 ) -> dict:
     """Expand a perspective garden reference into the ERP panorama consumed by WorldNav."""
     import gc
@@ -298,7 +301,7 @@ def worldgen_garden_stage0(
             "prompt": prompt,
         },
     )
-    if output.is_file() and manifest_matches(target, "stage0", manifest):
+    if not force and output.is_file() and manifest_matches(target, "stage0", manifest):
         with Image.open(output) as image:
             if image.size != (1920, 960):
                 raise RuntimeError(f"resumed Stage 0 panorama has invalid size: {image.size}")
@@ -375,9 +378,9 @@ def worldgen_garden_stage0(
     }
 
 
-def _spawn_worker_call(method, *, job_id: str, wait_timeout_s: float) -> dict:
+def _spawn_worker_call(method, *, job_id: str, force: bool, wait_timeout_s: float) -> dict:
     """Spawn a deployed worker call with a hard timeout and cost-safe cancellation."""
-    call = method.spawn(job_id=job_id, force=False)
+    call = method.spawn(job_id=job_id, force=bool(force))
     try:
         result = call.get(timeout=wait_timeout_s)
     except TimeoutError as exc:
@@ -809,6 +812,13 @@ def _worldstereo_worker():
     return modal.Cls.from_name("modal-world-stage3", "WorldStereoWorker")()
 
 
+def _stage45_worker():
+    """Resolve the merged RTX PRO 6000 GS-data + 3DGS worker."""
+    return modal.Function.from_name(
+        "modal-world-stage45", "worldgen_case000_stage45_rtx6000"
+    )
+
+
 @app.function(
     image=hyworld2_worldgen_stage2_h100_image,
     gpu=H100_GPU,
@@ -822,189 +832,11 @@ def _worldstereo_worker():
     secrets=[hf_secret],
     timeout=60 * 60,
 )
-def worldgen_case000_stage4(job_id: str = "case000") -> dict:
-    """Prepare official HYWorld2 3DGS training data on one H100/sm90 worker."""
-    import json
-    import os
-    import subprocess
-    import sys
-    import threading
-    import time
-    from pathlib import Path
-
-    os.environ["HF_HOME"] = "/models/huggingface"
-    os.environ["HUGGINGFACE_HUB_CACHE"] = "/models/huggingface/hub"
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    os.environ["TRANSFORMERS_OFFLINE"] = "1"
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    os.environ["CUDA_CACHE_PATH"] = "/runtime-cache/cuda-cache"
-    os.environ["CUDA_CACHE_MAXSIZE"] = str(4 * 1024**3)
-    os.environ["TORCH_EXTENSIONS_DIR"] = "/runtime-cache/torch-extensions"
-    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/runtime-cache/torchinductor"
-    os.environ["TRITON_CACHE_DIR"] = "/runtime-cache/triton"
-
-    target = resolve_worldgen_job_root(job_id)
-    generation_bank = target / "render_results/generation_bank_worldstereo-memory-dmd"
-    required_stage3 = [generation_bank / "global_pcd.ply", generation_bank / "aligned_pcd.ply"]
-    missing_stage3 = [
-        str(path.relative_to(target)) for path in required_stage3 if not path.is_file()
-    ]
-    if missing_stage3:
-        raise RuntimeError(f"Stage 3 incomplete: missing {missing_stage3}")
-
-    stage4_inputs = [*required_stage3]
-    pcd_info = generation_bank / "pcd_info.json"
-    if pcd_info.is_file():
-        stage4_inputs.append(pcd_info)
-    stage4_manifest = build_stage_manifest(
-        job_id=job_id,
-        stage="stage4",
-        hyworld_revision=HYWORLD2_REVISION,
-        input_fingerprint=fingerprint_files(stage4_inputs, root=target),
-        config={"save_normal": True, "split_sky": True, "split_align": False},
+def worldgen_case000_stage4(job_id: str = "case000", force: bool = False) -> dict:
+    """Legacy H100 Stage 4 entry point retained for fallback and A/B benchmarks."""
+    return run_stage4_core(
+        job_id=job_id, force=bool(force), commit_worldgen=worldgen_outputs.commit
     )
-
-    gs_data = target / "gs_data"
-    cameras_path = gs_data / "cameras.json"
-    points_path = gs_data / "points.ply"
-    sky_points_path = gs_data / "sky_points.ply"
-    if cameras_path.is_file() and points_path.is_file():
-        payload = json.loads(cameras_path.read_text())
-        camera_count = len([key for key in payload if key not in {"width", "height"}])
-        images = sorted((gs_data / "images").glob("*.png"))
-        depths = sorted((gs_data / "depths").glob("*.png"))
-        normals = sorted((gs_data / "normals").glob("*.png"))
-        if camera_count and len(images) == camera_count and len(normals) == camera_count:
-            manifest_ok = manifest_matches(target, "stage4", stage4_manifest)
-            legacy_adopted = (
-                job_id == "case000" and not stage_manifest_path(target, "stage4").exists()
-            )
-            if manifest_ok or legacy_adopted:
-                if legacy_adopted:
-                    write_stage_manifest(target, "stage4", stage4_manifest)
-                    worldgen_outputs.commit()
-                return {
-                    "resumed": True,
-                    "manifest_adopted": legacy_adopted,
-                    "stage4_s": 0.0,
-                    "camera_count": camera_count,
-                    "image_count": len(images),
-                    "depth_count": len(depths),
-                    "normal_count": len(normals),
-                    "points_bytes": points_path.stat().st_size,
-                    "sky_points_bytes": (
-                        sky_points_path.stat().st_size if sky_points_path.is_file() else 0
-                    ),
-                }
-
-    worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
-    log_path = target / "stage4.log"
-    timing_path = target / "stage4_timing.json"
-    command = [
-        sys.executable,
-        "-X",
-        "faulthandler",
-        "-u",
-        "gen_gs_data.py",
-        "--root_path",
-        str(target),
-        "--save_normal",
-        "--split_sky",
-    ]
-    env = os.environ.copy()
-    env["PYTHONPATH"] = f"{worldgen_root}:{HYWORLD2_SOURCE}"
-    env["PYTHONFAULTHANDLER"] = "1"
-    env["RANK"] = "0"
-    env["LOCAL_RANK"] = "0"
-    env["WORLD_SIZE"] = "1"
-
-    stop_monitor = threading.Event()
-    gpu_peak_mib = None
-
-    def monitor_gpu() -> None:
-        nonlocal gpu_peak_mib
-        while not stop_monitor.wait(1.0):
-            try:
-                raw = subprocess.check_output(
-                    [
-                        "nvidia-smi",
-                        "--query-gpu=memory.used",
-                        "--format=csv,noheader,nounits",
-                    ],
-                    text=True,
-                    timeout=5,
-                ).splitlines()[0]
-                sample_mib = int(raw.strip())
-                gpu_peak_mib = max(gpu_peak_mib or 0, sample_mib)
-            except (subprocess.SubprocessError, ValueError, IndexError):
-                pass
-
-    monitor = None
-    if os.environ.get("MODAL_WORLD_DEBUG_GPU_SAMPLER") == "1":
-        monitor = threading.Thread(target=monitor_gpu, daemon=True)
-        monitor.start()
-    started = time.perf_counter()
-    try:
-        with log_path.open("w") as log:
-            completed = subprocess.run(
-                command,
-                cwd=worldgen_root,
-                env=env,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=False,
-                timeout=50 * 60,
-            )
-    finally:
-        if monitor is not None:
-            stop_monitor.set()
-            monitor.join(timeout=5)
-
-    stage4_s = time.perf_counter() - started
-    camera_count = 0
-    if cameras_path.is_file():
-        payload = json.loads(cameras_path.read_text())
-        camera_count = len([key for key in payload if key not in {"width", "height"}])
-    images = sorted((gs_data / "images").glob("*.png"))
-    depths = sorted((gs_data / "depths").glob("*.png"))
-    normals = sorted((gs_data / "normals").glob("*.png"))
-    timing = {
-        "stage4_s": round(stage4_s, 3),
-        "gpu_peak_used_mib": gpu_peak_mib,
-        "gpu_sampler_enabled": monitor is not None,
-        "returncode": completed.returncode,
-        "camera_count": camera_count,
-        "image_count": len(images),
-        "depth_count": len(depths),
-        "normal_count": len(normals),
-        "points_exists": points_path.is_file(),
-        "sky_points_exists": sky_points_path.is_file(),
-    }
-    timing_path.write_text(json.dumps(timing, indent=2) + "\n")
-    worldgen_outputs.commit()
-
-    if completed.returncode != 0:
-        tail = log_path.read_text(errors="replace")[-30000:]
-        raise RuntimeError(f"WorldGen Stage 4 failed with exit {completed.returncode}:\n{tail}")
-    if not cameras_path.is_file() or not points_path.is_file():
-        raise RuntimeError("Stage 4 completed without required GS dataset files")
-    if not camera_count or len(images) != camera_count or len(normals) != camera_count:
-        raise RuntimeError(
-            f"Stage 4 dataset count mismatch: cameras={camera_count} images={len(images)} "
-            f"normals={len(normals)} depths={len(depths)}"
-        )
-
-    write_stage_manifest(target, "stage4", stage4_manifest)
-    worldgen_outputs.commit()
-    return {
-        **timing,
-        "points_bytes": points_path.stat().st_size,
-        "sky_points_bytes": (sky_points_path.stat().st_size if sky_points_path.is_file() else 0),
-        "stage4_log_tail": log_path.read_text(errors="replace")[-8000:],
-    }
-
 
 @app.function(
     image=hyworld2_worldgen_stage5_image,
@@ -1115,6 +947,33 @@ def preflight_worldgen_case000_stage5(job_id: str = "case000") -> dict:
 
 @app.function(
     image=hyworld2_worldgen_stage5_image,
+    cpu=2.0,
+    memory=4096,
+    volumes={"/models": model_cache},
+    timeout=15 * 60,
+)
+def ensure_stage5_static_cache() -> dict:
+    """Idempotently bootstrap the LPIPS VGG asset required by every Stage 5 worker."""
+    import os
+    from pathlib import Path
+
+    os.environ["TORCH_HOME"] = "/models/torch"
+    path = Path("/models/torch/hub/checkpoints/vgg16-397923af.pth")
+    if path.is_file() and path.stat().st_size > 0:
+        return {"resumed": True, "path": str(path), "bytes": path.stat().st_size}
+
+    from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
+
+    metric = LearnedPerceptualImagePatchSimilarity(net_type="vgg", normalize=False)
+    del metric
+    if not path.is_file() or path.stat().st_size <= 0:
+        raise RuntimeError("LPIPS VGG16 bootstrap completed without cached weights")
+    model_cache.commit()
+    return {"resumed": False, "path": str(path), "bytes": path.stat().st_size}
+
+
+@app.function(
+    image=hyworld2_worldgen_stage5_image,
     gpu=GPU,
     cpu=16.0,
     memory=65536,
@@ -1125,250 +984,22 @@ def preflight_worldgen_case000_stage5(job_id: str = "case000") -> dict:
     },
     timeout=3 * 60 * 60,
 )
-def worldgen_case000_stage5(job_id: str = "case000", force: bool = False) -> dict:
-    """Run the full documented single-GPU 3DGS profile and export its fused mesh."""
-    import json
-    import os
-    import shutil
-    import subprocess
-    import sys
-    import threading
-    import time
-    from pathlib import Path
-
-    os.environ["TORCH_HOME"] = "/models/torch"
-    os.environ["XDG_CACHE_HOME"] = "/models/cache"
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-    os.environ["PYTHONFAULTHANDLER"] = "1"
-    os.environ["CUDA_CACHE_PATH"] = "/runtime-cache/cuda-cache"
-    os.environ["CUDA_CACHE_MAXSIZE"] = str(4 * 1024**3)
-    os.environ["TORCH_EXTENSIONS_DIR"] = "/runtime-cache/torch-extensions"
-    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/runtime-cache/torchinductor"
-    os.environ["TRITON_CACHE_DIR"] = "/runtime-cache/triton"
-
+def worldgen_case000_stage5(
+    job_id: str = "case000",
+    force: bool = False,
+    steps: int = 8000,
+    export_mesh: bool = True,
+) -> dict:
+    """Legacy standalone RTX PRO 6000 Stage 5 entry point."""
     worldgen_outputs.reload()
-    target = resolve_worldgen_job_root(job_id)
-    data_dir = target / "gs_data"
-    result_dir = target / "gs_result"
-    required = [
-        data_dir / "cameras.json",
-        data_dir / "points.ply",
-        data_dir / "meta_info.json",
-        data_dir / "images",
-        data_dir / "normals",
-    ]
-    missing = [str(path) for path in required if not path.exists()]
-    if missing:
-        raise RuntimeError(f"Stage 5 full missing GS data: {missing}")
-    vgg_cache = Path("/models/torch/hub/checkpoints/vgg16-397923af.pth")
-    if not vgg_cache.is_file():
-        raise RuntimeError(
-            "Stage 5 VGG16 cache missing; run preflight_worldgen_case000_stage5 first"
-        )
-
-    stage4_manifest = stage_manifest_path(target, "stage4")
-    fingerprint_inputs = [
-        data_dir / "cameras.json",
-        data_dir / "points.ply",
-        data_dir / "meta_info.json",
-    ]
-    if stage4_manifest.is_file():
-        fingerprint_inputs.append(stage4_manifest)
-    steps = 8000
-    manifest = build_stage_manifest(
+    return run_stage5_core(
         job_id=job_id,
-        stage="stage5",
-        hyworld_revision=HYWORLD2_REVISION,
-        input_fingerprint=fingerprint_files(fingerprint_inputs, root=target),
-        config={
-            "profile": "single-gpu-full-v1",
-            "steps": steps,
-            "save_ply": True,
-            "convert_to_spz": True,
-            "export_mesh": True,
-            "mesh_voxel_size": 0.05,
-        },
+        force=bool(force),
+        steps=int(steps),
+        export_mesh=bool(export_mesh),
+        commit_worldgen=worldgen_outputs.commit,
+        commit_runtime_cache=runtime_cache.commit,
     )
-    final_ply = result_dir / "ply" / "point_cloud_7999.ply"
-    final_spz = result_dir / "ply" / "point_cloud_7999.spz"
-    final_mesh = result_dir / "ply" / "fuse_post.ply"
-    final_outputs = (final_ply, final_spz, final_mesh)
-    log_path = target / "stage5.log"
-    timing_path = target / "stage5_timing.json"
-    outputs_complete = all(path.is_file() and path.stat().st_size > 0 for path in final_outputs)
-    if not force and outputs_complete:
-        if manifest_matches(target, "stage5", manifest):
-            return {
-                "resumed": True,
-                "adopted": False,
-                "steps": steps,
-                "result_dir": str(result_dir),
-                "ply_bytes": final_ply.stat().st_size,
-                "spz_bytes": final_spz.stat().st_size,
-                "mesh_bytes": final_mesh.stat().st_size,
-            }
-
-        # HYWorld2's pinned single-GPU trainer used to call an unguarded
-        # dist.barrier() *after* PLY/SPZ and mesh export. Adopt that exact
-        # terminal-failure shape only when the inputs have not changed.
-        prior_timing = None
-        if timing_path.is_file():
-            try:
-                prior_timing = json.loads(timing_path.read_text())
-            except (json.JSONDecodeError, OSError):
-                prior_timing = None
-        outputs_fresh = min(path.stat().st_mtime_ns for path in final_outputs) >= max(
-            path.stat().st_mtime_ns for path in fingerprint_inputs
-        )
-        terminal_barrier_failure = (
-            prior_timing is not None
-            and prior_timing.get("steps") == steps
-            and prior_timing.get("returncode") == 1
-            and outputs_fresh
-            and log_path.is_file()
-            and "UnboundLocalError: cannot access local variable 'dist'"
-            in log_path.read_text(errors="replace")
-        )
-        if terminal_barrier_failure:
-            prior_timing["adopted_terminal_barrier_failure"] = True
-            timing_path.write_text(json.dumps(prior_timing, indent=2) + "\n")
-            write_stage_manifest(target, "stage5", manifest)
-            worldgen_outputs.commit()
-            return {
-                "resumed": True,
-                "adopted": True,
-                "upstream_returncode": 1,
-                "steps": steps,
-                "result_dir": str(result_dir),
-                "ply_bytes": final_ply.stat().st_size,
-                "spz_bytes": final_spz.stat().st_size,
-                "mesh_bytes": final_mesh.stat().st_size,
-            }
-    if result_dir.exists():
-        shutil.rmtree(result_dir)
-
-    worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
-    command = [
-        sys.executable,
-        "-X",
-        "faulthandler",
-        "-u",
-        "-m",
-        "world_gs_trainer",
-        "default",
-        "--data_dir",
-        str(data_dir),
-        "--result_dir",
-        str(result_dir),
-        "--max_steps",
-        str(steps),
-        "--save_steps",
-        str(steps),
-        "--eval_steps",
-        str(steps),
-        "--ply_steps",
-        str(steps),
-        "--save_ply",
-        "--convert_to_spz",
-        "--disable_video",
-        "--disable_viewer",
-        "--use_scale_regularization",
-        "--antialiased",
-        "--depth_loss",
-        "--normal_loss",
-        "--sky_depth_from_pcd",
-        "--use_mask_gaussian",
-        "--mask_export_stochastic",
-        "--no-mask-export-anchor-protection",
-        "--use_anchor_protection",
-        "--export_mesh",
-        "--strategy.refine-start-iter",
-        "800",
-        "--strategy.refine-stop-iter",
-        "4000",
-        "--strategy.refine-every",
-        "533",
-        "--strategy.refine-scale2d-stop-iter",
-        "4000",
-        "--strategy.reset-every",
-        "99990",
-        "--strategy.grow-grad2d",
-        "0.0001",
-        "--strategy.prune-scale3d",
-        "0.1",
-    ]
-    env = os.environ.copy()
-    env["PYTHONPATH"] = f"{worldgen_root}:{HYWORLD2_SOURCE}"
-
-    stop_monitor = threading.Event()
-    gpu_peak_mib = 0
-
-    def monitor_gpu() -> None:
-        nonlocal gpu_peak_mib
-        while not stop_monitor.wait(1.0):
-            try:
-                raw = subprocess.check_output(
-                    ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-                    text=True,
-                    timeout=5,
-                ).splitlines()[0]
-                gpu_peak_mib = max(gpu_peak_mib, int(raw.strip()))
-            except (subprocess.SubprocessError, ValueError, IndexError):
-                pass
-
-    monitor = threading.Thread(target=monitor_gpu, daemon=True)
-    monitor.start()
-    started = time.perf_counter()
-    try:
-        with log_path.open("w") as log:
-            completed = subprocess.run(
-                command,
-                cwd=worldgen_root,
-                env=env,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=False,
-                timeout=170 * 60,
-            )
-    finally:
-        stop_monitor.set()
-        monitor.join(timeout=5)
-
-    elapsed = time.perf_counter() - started
-    timing = {
-        "steps": steps,
-        "stage5_s": round(elapsed, 3),
-        "gpu_peak_used_mib": gpu_peak_mib,
-        "returncode": completed.returncode,
-    }
-    timing_path.write_text(json.dumps(timing, indent=2) + "\n")
-    runtime_cache.commit()
-    worldgen_outputs.commit()
-    if completed.returncode != 0:
-        raise RuntimeError(
-            f"Stage 5 full failed with exit {completed.returncode}:\n"
-            f"{log_path.read_text(errors='replace')[-40000:]}"
-        )
-    missing_outputs = [
-        str(path) for path in (final_ply, final_spz, final_mesh) if not path.is_file()
-    ]
-    if missing_outputs:
-        raise RuntimeError(f"Stage 5 full completed without final outputs: {missing_outputs}")
-
-    write_stage_manifest(target, "stage5", manifest)
-    worldgen_outputs.commit()
-    return {
-        **timing,
-        "resumed": False,
-        "result_dir": str(result_dir),
-        "ply_bytes": final_ply.stat().st_size,
-        "spz_bytes": final_spz.stat().st_size,
-        "mesh_bytes": final_mesh.stat().st_size,
-        "mesh": str(final_mesh),
-        "log_tail": log_path.read_text(errors="replace")[-10000:],
-    }
-
 
 @app.function(
     image=hyworld2_worldgen_stage5_image,
@@ -1383,165 +1014,13 @@ def worldgen_case000_stage5(job_id: str = "case000", force: bool = False) -> dic
     timeout=20 * 60,
 )
 def worldgen_case000_stage5_smoke(job_id: str = "case000") -> dict:
-    """Run a short real 3DGS optimization to validate the final world-generation stage."""
-    import json
-    import os
-    import shutil
-    import subprocess
-    import sys
-    import threading
-    import time
-    from pathlib import Path
-
-    os.environ["TORCH_HOME"] = "/models/torch"
-    os.environ["XDG_CACHE_HOME"] = "/models/cache"
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-    os.environ["PYTHONFAULTHANDLER"] = "1"
-    os.environ["CUDA_CACHE_PATH"] = "/runtime-cache/cuda-cache"
-    os.environ["CUDA_CACHE_MAXSIZE"] = str(4 * 1024**3)
-    os.environ["TORCH_EXTENSIONS_DIR"] = "/runtime-cache/torch-extensions"
-    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/runtime-cache/torchinductor"
-    os.environ["TRITON_CACHE_DIR"] = "/runtime-cache/triton"
-
-    target = resolve_worldgen_job_root(job_id)
-    data_dir = target / "gs_data"
-    result_dir = target / "gs_smoke_result"
-    if result_dir.exists():
-        shutil.rmtree(result_dir)
-    required = [
-        data_dir / "cameras.json",
-        data_dir / "points.ply",
-        data_dir / "images",
-        data_dir / "normals",
-    ]
-    missing = [str(path) for path in required if not path.exists()]
-    if missing:
-        raise RuntimeError(f"Stage 5 smoke missing GS data: {missing}")
-    vgg_cache = Path("/models/torch/hub/checkpoints/vgg16-397923af.pth")
-    if not vgg_cache.is_file():
-        raise RuntimeError(
-            "Stage 5 VGG16 cache missing; run preflight_worldgen_case000_stage5 first"
-        )
-
-    worldgen_root = Path(HYWORLD2_SOURCE) / "hyworld2/worldgen"
-    log_path = target / "stage5_smoke.log"
-    timing_path = target / "stage5_smoke_timing.json"
-    steps = 100
-    command = [
-        sys.executable,
-        "-X",
-        "faulthandler",
-        "-u",
-        "-m",
-        "world_gs_trainer",
-        "default",
-        "--data_dir",
-        str(data_dir),
-        "--result_dir",
-        str(result_dir),
-        "--max_steps",
-        str(steps),
-        "--save_steps",
-        str(steps),
-        "--ply_steps",
-        str(steps),
-        "--save_ply",
-        "--convert_to_spz",
-        "--disable_video",
-        "--disable_viewer",
-        "--use_scale_regularization",
-        "--antialiased",
-        "--depth_loss",
-        "--normal_loss",
-        "--sky_depth_from_pcd",
-        "--use_mask_gaussian",
-        "--mask_export_stochastic",
-        "--no-mask-export-anchor-protection",
-        "--use_anchor_protection",
-        "--strategy.refine-start-iter",
-        "10",
-        "--strategy.refine-stop-iter",
-        "50",
-        "--strategy.refine-every",
-        "7",
-        "--strategy.refine-scale2d-stop-iter",
-        "50",
-        "--strategy.reset-every",
-        "99990",
-        "--strategy.grow-grad2d",
-        "0.0001",
-        "--strategy.prune-scale3d",
-        "0.1",
-    ]
-    env = os.environ.copy()
-    env["PYTHONPATH"] = f"{worldgen_root}:{HYWORLD2_SOURCE}"
-
-    stop_monitor = threading.Event()
-    gpu_peak_mib = 0
-
-    def monitor_gpu() -> None:
-        nonlocal gpu_peak_mib
-        while not stop_monitor.wait(1.0):
-            try:
-                raw = subprocess.check_output(
-                    ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-                    text=True,
-                    timeout=5,
-                ).splitlines()[0]
-                gpu_peak_mib = max(gpu_peak_mib, int(raw.strip()))
-            except (subprocess.SubprocessError, ValueError, IndexError):
-                pass
-
-    monitor = threading.Thread(target=monitor_gpu, daemon=True)
-    monitor.start()
-    started = time.perf_counter()
-    try:
-        with log_path.open("w") as log:
-            completed = subprocess.run(
-                command,
-                cwd=worldgen_root,
-                env=env,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=False,
-                timeout=15 * 60,
-            )
-    finally:
-        stop_monitor.set()
-        monitor.join(timeout=5)
-
-    elapsed = time.perf_counter() - started
-    checkpoints = sorted(result_dir.rglob("*.pt"))
-    plys = sorted(result_dir.rglob("*.ply"))
-    spzs = sorted(result_dir.rglob("*.spz"))
-    timing = {
-        "steps": steps,
-        "stage5_smoke_s": round(elapsed, 3),
-        "gpu_peak_used_mib": gpu_peak_mib,
-        "returncode": completed.returncode,
-        "checkpoint_count": len(checkpoints),
-        "ply_count": len(plys),
-        "spz_count": len(spzs),
-    }
-    timing_path.write_text(json.dumps(timing, indent=2) + "\n")
-    runtime_cache.commit()
-    worldgen_outputs.commit()
-    if completed.returncode != 0:
-        raise RuntimeError(
-            f"Stage 5 smoke failed with exit {completed.returncode}:\n"
-            f"{log_path.read_text(errors='replace')[-30000:]}"
-        )
-    if not checkpoints or not plys:
-        raise RuntimeError(f"Stage 5 smoke completed without checkpoint/PLY: {timing}")
-    return {
-        **timing,
-        "checkpoint_bytes": sum(path.stat().st_size for path in checkpoints),
-        "ply_bytes": sum(path.stat().st_size for path in plys),
-        "spz_bytes": sum(path.stat().st_size for path in spzs),
-        "log_tail": log_path.read_text(errors="replace")[-8000:],
-    }
-
+    """Legacy standalone RTX PRO 6000 Stage 5 smoke entry point."""
+    worldgen_outputs.reload()
+    return run_stage5_smoke_core(
+        job_id=job_id,
+        commit_worldgen=worldgen_outputs.commit,
+        commit_runtime_cache=runtime_cache.commit,
+    )
 
 
 @app.function(
@@ -1749,21 +1228,33 @@ def worldgen_pipeline(
     source_name: str = "reference.png",
     seed: int = 42,
     force: bool = False,
+    merge_stage45: bool = True,
+    steps: int = 8000,
 ) -> dict:
-    """Run the existing five-stage HYWorld2 chain as one durable async provider call."""
+    """Run HYWorld2 with merged Stage45 by default and the legacy Stage4/5 fallback."""
 
+    steps = int(steps)
+    if steps <= 0:
+        raise ValueError("steps must be > 0")
     prompt = str(prompt).strip()
     if not prompt:
         raise ValueError("worldgen prompt must not be empty")
 
     stages = {}
+    # Bootstrap cheap static Stage 5 assets before spending on any GPU stage.
+    stages["stage5_static_cache"] = ensure_stage5_static_cache.remote()
     worldnav_worker = _worldnav_worker()
     stages["stage0"] = worldgen_garden_stage0.remote(
-        job_id=job_id, source_name=source_name, seed=int(seed), prompt=prompt
+        job_id=job_id,
+        source_name=source_name,
+        seed=int(seed),
+        prompt=prompt,
+        force=bool(force),
     )
     stages["stage1"] = _spawn_worker_call(
         worldnav_worker.generate_nav,
         job_id=job_id,
+        force=bool(force),
         wait_timeout_s=30 * 60,
     )
 
@@ -1776,50 +1267,66 @@ def worldgen_pipeline(
     stages["stage2"] = _spawn_worker_call(
         worldnav_worker.render,
         job_id=job_id,
+        force=bool(force),
         wait_timeout_s=30 * 60,
     )
     stages["stage3"] = _spawn_worker_call(
         _worldstereo_worker().generate,
         job_id=job_id,
+        force=bool(force),
         wait_timeout_s=45 * 60,
     )
-    stages["stage4"] = worldgen_case000_stage4.remote(job_id=job_id)
-    stages["stage5"] = worldgen_case000_stage5.remote(job_id=job_id, force=bool(force))
+    if merge_stage45:
+        stages["stage45"] = _stage45_worker().remote(
+            job_id=job_id,
+            force=bool(force),
+            steps=steps,
+        )
+    else:
+        stages["stage4"] = worldgen_case000_stage4.remote(
+            job_id=job_id, force=bool(force)
+        )
+        stages["stage5"] = worldgen_case000_stage5.remote(
+            job_id=job_id,
+            force=bool(force),
+            steps=steps,
+        )
 
     runtime_compile = modal.Function.from_name(
         "modal-world-runtime-compile", "compile_world_runtime"
-    ).remote(job_id=job_id, force=bool(force))
+    ).remote(job_id=job_id, force=bool(force), steps=steps)
     stages["runtime_compile"] = runtime_compile
 
     worldgen_outputs.reload()
     target = resolve_worldgen_job_root(job_id)
+    runtime_dir = runtime_result_dir(target, steps)
     artifacts = [
         _runtime_world_artifact(
-            target / "runtime/environment.ply",
+            runtime_dir / "environment.ply",
             job_id=job_id,
             role="world-mesh",
             mime="model/ply",
         ),
         _runtime_world_artifact(
-            target / "runtime/semantics.json",
+            runtime_dir / "semantics.json",
             job_id=job_id,
             role="world-semantics",
             mime="application/json",
         ),
         _runtime_world_artifact(
-            target / "gs_result/ply/point_cloud_7999.spz",
+            stage5_artifacts(target, steps).spz,
             job_id=job_id,
             role="world-visual",
             mime="model/spz",
         ),
         _runtime_world_artifact(
-            target / "runtime/world.json",
+            runtime_dir / "world.json",
             job_id=job_id,
             role="world-manifest",
             mime="application/json",
         ),
     ]
-    navigation_path = target / "runtime/navigation.ply"
+    navigation_path = runtime_dir / "navigation.ply"
     if navigation_path.is_file():
         artifacts.append(
             _runtime_world_artifact(

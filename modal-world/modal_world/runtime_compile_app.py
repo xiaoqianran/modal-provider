@@ -16,6 +16,9 @@ from .worldgen_job import (
     fingerprint_files,
     manifest_matches,
     resolve_worldgen_job_root,
+    runtime_result_dir,
+    stage5_artifacts,
+    stage_profile_name,
     write_stage_manifest,
 )
 
@@ -34,6 +37,7 @@ def compile_world_runtime(
     job_id: str = "case000",
     target_triangles: int = 100_000,
     force: bool = False,
+    steps: int = 8000,
 ) -> dict:
     """Compile HYWorld's dense Stage 1 mesh into a browser/runtime-friendly world mesh."""
     import time
@@ -43,6 +47,9 @@ def compile_world_runtime(
 
     if target_triangles < 10_000:
         raise ValueError("target_triangles must be >= 10000")
+    steps = int(steps)
+    if steps <= 0:
+        raise ValueError("steps must be > 0")
 
     worldgen_outputs.reload()
     target = resolve_worldgen_job_root(job_id)
@@ -50,12 +57,13 @@ def compile_world_runtime(
     if not source_mesh.is_file():
         raise RuntimeError(f"runtime compile source mesh missing: {source_mesh}")
 
-    runtime_dir = target / "runtime"
+    runtime_stage = stage_profile_name("runtime-compile", steps)
+    runtime_dir = runtime_result_dir(target, steps)
     runtime_mesh = runtime_dir / "environment.ply"
     runtime_manifest = runtime_dir / "world.json"
     runtime_semantics = runtime_dir / "semantics.json"
     runtime_navigation = runtime_dir / "navigation.ply"
-    visual_path = target / "gs_result/ply/point_cloud_7999.spz"
+    visual_path = stage5_artifacts(target, steps).spz
     semantics_path = target / "objects.json"
     semantic_targets_path = target / "camera_trajectory/target_camera.json"
     navmesh_metadata_path = target / "navmesh/metadata.json"
@@ -72,12 +80,13 @@ def compile_world_runtime(
             fingerprint_inputs.append(optional_input)
     compile_manifest = build_stage_manifest(
         job_id=job_id,
-        stage="runtime-compile",
+        stage=runtime_stage,
         hyworld_revision=HYWORLD2_REVISION,
         input_fingerprint=fingerprint_files(fingerprint_inputs, root=target),
         config={
             "profile": "agentscape-environment-v1",
             "target_triangles": int(target_triangles),
+            "steps": steps,
             "coordinate_system": "z-up",
             "navigation_half_width": 0.45,
             "has_semantics": semantics_path.is_file(),
@@ -92,7 +101,7 @@ def compile_world_runtime(
         and runtime_manifest.is_file()
         and (semantics_path.is_file() == runtime_semantics.is_file())
         and (has_dedicated_navigation == runtime_navigation.is_file())
-        and manifest_matches(target, "runtime-compile", compile_manifest)
+        and manifest_matches(target, runtime_stage, compile_manifest)
     ):
         payload = json.loads(runtime_manifest.read_text())
         return {
@@ -150,6 +159,9 @@ def compile_world_runtime(
         runtime_semantics.write_text(json.dumps(semantics_payload, indent=2, sort_keys=True) + "\n")
     elif runtime_semantics.exists():
         runtime_semantics.unlink()
+    visual_relative = None
+    if visual_path.is_file():
+        visual_relative = "../" + visual_path.relative_to(target).as_posix()
     payload = build_runtime_world_manifest(
         job_id=job_id,
         source_mesh="../render_results/global_mesh.ply",
@@ -160,7 +172,7 @@ def compile_world_runtime(
         runtime_triangles=runtime_triangles,
         source_min_bound=source_min.tolist(),
         source_max_bound=source_max.tolist(),
-        visual="../gs_result/ply/point_cloud_7999.spz" if visual_path.is_file() else None,
+        visual=visual_relative,
         navigation="navigation.ply" if has_dedicated_navigation else None,
         semantics="semantics.json" if semantics_path.is_file() else None,
         navmesh_metadata=("../navmesh/metadata.json" if navmesh_metadata_path.is_file() else None),
@@ -171,7 +183,7 @@ def compile_world_runtime(
         "elapsedS": round(time.perf_counter() - started, 3),
     }
     runtime_manifest.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    write_stage_manifest(target, "runtime-compile", compile_manifest)
+    write_stage_manifest(target, runtime_stage, compile_manifest)
     worldgen_outputs.commit()
 
     return {

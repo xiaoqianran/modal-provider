@@ -104,7 +104,8 @@ def test_worker_dispatch_timeout_cancels_container():
             "@app.function", app.index("def _spawn_worker_call")
         )
     ]
-    assert ".spawn(job_id=job_id, force=False)" in helper
+    assert "force: bool" in helper
+    assert ".spawn(job_id=job_id, force=bool(force))" in helper
     assert "call.get(timeout=wait_timeout_s)" in helper
     assert "call.cancel(terminate_containers=True)" in helper
     assert "function_call_id" in helper

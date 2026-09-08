@@ -205,8 +205,14 @@ hyworld2_worldgen_stage3_h100_image = hyworld2_worldgen_stage3_image.run_functio
     timeout=30 * 60,
 )
 
+# Stage5/Stage45 does not execute the Stage3 retrieval patch. Branch directly
+# from Stage1 while preserving the exact build tools/imagesize packages that
+# Stage5 previously inherited from stage3_image. This prevents Stage3-only
+# source edits from invalidating the RTX Stage45 image cache.
 hyworld2_worldgen_stage5_image = (
-    hyworld2_worldgen_stage3_image.run_function(patch_stage5_single_gpu, args=(HYWORLD2_SOURCE,))
+    hyworld2_worldgen_stage1_image.apt_install("build-essential", "ninja-build")
+    .pip_install("imagesize==1.4.1")
+    .run_function(patch_stage5_single_gpu, args=(HYWORLD2_SOURCE,))
     .pip_install(
         "tensorboard>=2.19,<3",
         "torchmetrics==1.7.2",

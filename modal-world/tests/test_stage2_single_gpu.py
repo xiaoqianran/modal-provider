@@ -61,8 +61,8 @@ def test_stage2_patch_matches_pinned_upstream(tmp_path: Path):
 
 
 def test_stage4_resume_allows_missing_sky_points():
-    source = Path("modal_world/app.py").read_text()
-    start = source.index('def worldgen_case000_stage4(job_id: str = "case000")')
-    end = source.index("\n\n@app.function(", start)
+    source = Path("modal_world/stage45_core.py").read_text()
+    start = source.index("def run_stage4_core(")
+    end = source.index("def run_stage5_core(", start)
     section = source[start:end]
     assert "sky_points_path.stat().st_size if sky_points_path.is_file() else 0" in section

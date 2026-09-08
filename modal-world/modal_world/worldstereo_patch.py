@@ -53,6 +53,6 @@ def patch_worldstereo_wrapper_source(source: str) -> str:
 
 def patch_worldstereo_wrapper(path: str | Path) -> None:
     wrapper = Path(path)
-    original = wrapper.read_text()
+    original = wrapper.read_text(encoding="utf-8")
     patched = patch_worldstereo_wrapper_source(original)
-    wrapper.write_text(patched)
+    wrapper.write_text(patched, encoding="utf-8")

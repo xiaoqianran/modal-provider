@@ -79,9 +79,10 @@ def verify_stage3_module_paths() -> dict[str, Any]:
     startup_timeout=30 * 60,
     min_containers=0,
     max_containers=1,
-    # Stage 4 does not reuse this heavyweight worker. Keep only a short idle
-    # grace period after Stage 3 instead of paying for five idle GPU minutes.
-    scaledown_window=30,
+    # Measured Stage 3 model loading costs about 90-100s on H100. Keep a
+    # five-minute reuse window so nearby development/benchmark jobs amortize
+    # WorldStereo + MoGe + SAM3 startup without changing generation math.
+    scaledown_window=5 * 60,
 )
 class WorldStereoWorker:
     @modal.enter()
@@ -152,7 +153,7 @@ class WorldStereoWorker:
             "facebook/sam3", local_files_only=True
         )
         self.worldstereo = None
-        self._load_worldstereo()
+        self.worldstereo_load_s = 0.0
         torch.set_default_dtype(torch.float)
         if torch.cuda.is_bf16_supported():
             self.autocast_dtype = torch.bfloat16
@@ -169,6 +170,7 @@ class WorldStereoWorker:
             return
         from models.worldstereo_wrapper import WorldStereo
 
+        started = time.perf_counter()
         self.worldstereo = WorldStereo.from_pretrained(
             "hanshanxue/WorldStereo",
             subfolder=_MODEL_TYPE,
@@ -178,6 +180,7 @@ class WorldStereoWorker:
             device_mesh=self.device_mesh,
             device=self.device,
         )
+        self.worldstereo_load_s += time.perf_counter() - started
 
     def _release_worldstereo(self) -> None:
         if self.worldstereo is None:
@@ -191,8 +194,10 @@ class WorldStereoWorker:
     def probe(self) -> dict[str, Any]:
         """Validate full Stage 3 GPU model loading without running world generation."""
         torch = self.torch
+        self._load_worldstereo()
         return {
             "load_s": round(self.load_s, 3),
+            "worldstereo_load_s": round(self.worldstereo_load_s, 3),
             "device_name": torch.cuda.get_device_name(self.device),
             "device_capability": list(torch.cuda.get_device_capability(self.device)),
             "allocated_gib": round(torch.cuda.memory_allocated(self.device) / 1024**3, 3),
@@ -241,7 +246,12 @@ class WorldStereoWorker:
         )
 
     @modal.method()
-    def generate(self, job_id: str = "case000", force: bool = False) -> dict[str, Any]:
+    def generate(
+        self,
+        job_id: str = "case000",
+        force: bool = False,
+        recompute_downstream: bool = False,
+    ) -> dict[str, Any]:
         worldgen_outputs.reload()
 
         import imagesize
@@ -252,8 +262,6 @@ class WorldStereoWorker:
         from src.retrieval_wm import PanoramaMemoryBank
 
         torch = self.torch
-        if self.worldstereo is None:
-            self._load_worldstereo()
         target = resolve_worldgen_job_root(job_id)
         manifest = self._stage3_manifest(job_id=job_id, target=target)
         aligned_pcd = target / f"render_results/generation_bank_{_MODEL_TYPE}/aligned_pcd.ply"
@@ -263,7 +271,12 @@ class WorldStereoWorker:
         render_list = [str(path.with_name("render.mp4")) for path in camera_files]
         results = sorted(target.glob(f"render_results/*/traj*/{_MODEL_TYPE}_result.mp4"))
         expected_count = len(render_list)
-        if not force and aligned_pcd.is_file() and len(results) == expected_count:
+        if (
+            not force
+            and not recompute_downstream
+            and aligned_pcd.is_file()
+            and len(results) == expected_count
+        ):
             manifest_ok = manifest_matches(target, "stage3", manifest)
             legacy_adopted = (
                 job_id == "case000" and not stage_manifest_path(target, "stage3").exists()
@@ -277,20 +290,29 @@ class WorldStereoWorker:
                     "manifest_adopted": legacy_adopted,
                     "worker_call_index": self.call_count,
                     "worker_load_s": round(self.load_s, 3),
+                    "worker_worldstereo_load_s": round(self.worldstereo_load_s, 3),
                     "result_count": len(results),
                     "aligned_pcd_exists": True,
                 }
 
+        if not render_list:
+            raise RuntimeError(f"no Stage 2 renderings found under {target}")
+
+        # A completed job should resume before paying the ~90-100s WorldStereo
+        # reload cost. Load the heavyweight model only when real generation is needed.
+        started = time.perf_counter()
+        torch.cuda.reset_peak_memory_stats()
+        worldstereo_load_before = self.worldstereo_load_s
+        if self.worldstereo is None:
+            self._load_worldstereo()
+        worldstereo_load_call_s = self.worldstereo_load_s - worldstereo_load_before
+
         timer = Timer()
         call_index = self.call_count
         self.call_count += 1
-        started = time.perf_counter()
-        torch.cuda.reset_peak_memory_stats()
         set_seed(1024)
         generator = torch.Generator(device=self.device).manual_seed(1024)
 
-        if not render_list:
-            raise RuntimeError(f"no Stage 2 renderings found under {target}")
         width, height = imagesize.get(f"{'/'.join(render_list[0].split('/')[:-2])}/start_frame.png")
         scene_type = json.loads((target / "meta_info.json").read_text())["scene_type"]
         del scene_type  # Parsed exactly as upstream; retained as an input validity check.
@@ -320,10 +342,22 @@ class WorldStereoWorker:
         # Stage 3 is the only long-running worldgen stage (~tens of minutes).
         # Persist completed trajectories periodically so Modal preemption or a
         # container crash loses at most a small amount of expensive GPU work.
-        checkpoint_every = 4
+        checkpoint_every = max(
+            1, int(os.environ.get("MODAL_WORLD_STAGE3_CHECKPOINT_EVERY", "4"))
+        )
         generated_since_commit = 0
         checkpoint_commits = 0
+        checkpoint_commit_s = 0.0
 
+        def commit_checkpoint() -> None:
+            nonlocal checkpoint_commits, checkpoint_commit_s
+            commit_started = time.perf_counter()
+            worldgen_outputs.commit()
+            checkpoint_commit_s += time.perf_counter() - commit_started
+            checkpoint_commits += 1
+
+        stale_world_mirror_cleanup = None
+        stale_world_mirror_cleanup_wait_s = 0.0
         try:
             for render_path in render_list:
                 view_id, traj_id = render_path.split("/")[-3:-1]
@@ -422,24 +456,59 @@ class WorldStereoWorker:
                 )
                 generated_since_commit += 1
                 if generated_since_commit >= checkpoint_every:
-                    worldgen_outputs.commit()
-                    checkpoint_commits += 1
+                    commit_checkpoint()
                     generated_since_commit = 0
 
             if generated_since_commit:
-                worldgen_outputs.commit()
-                checkpoint_commits += 1
+                commit_checkpoint()
                 generated_since_commit = 0
             # WorldStereo is no longer needed once all trajectory videos exist.
             # Release it before spawning WorldMirror so the subprocess gets a
             # mostly-empty H100 instead of competing with the ~60 GiB parent model.
             self._release_worldstereo()
-            with timer.track("Run World Mirror"):
-                memory_bank.apply_worldmirror(skip_exist=True)
+            stale_world_mirror = None
+            stale_world_mirror_cleanup = None
+            world_mirror_dir = (
+                target
+                / "render_results"
+                / f"generation_bank_{_MODEL_TYPE}"
+                / "world_mirror_data"
+            )
+            if force and world_mirror_dir.exists():
+                # Keep the previous validated cache until the replacement has
+                # completed. A same-Volume rename is cheap compared with recursively
+                # deleting thousands of files before launching WorldMirror.
+                stale_world_mirror = (
+                    target
+                    / ".modal-world"
+                    / f"world-mirror-stale-{os.getpid()}-{time.time_ns()}"
+                )
+                stale_world_mirror.parent.mkdir(parents=True, exist_ok=True)
+                world_mirror_dir.rename(stale_world_mirror)
+            try:
+                with timer.track("Run World Mirror"):
+                    memory_bank.apply_worldmirror(skip_exist=not force)
+            except Exception:
+                if stale_world_mirror is not None and stale_world_mirror.exists():
+                    import shutil
+
+                    shutil.rmtree(world_mirror_dir, ignore_errors=True)
+                    stale_world_mirror.rename(world_mirror_dir)
+                raise
             # WorldMirror is itself reusable (`skip_exist=True`), so make its
             # completed artifacts durable before the expensive alignment pass.
-            worldgen_outputs.commit()
-            checkpoint_commits += 1
+            commit_checkpoint()
+            if stale_world_mirror is not None:
+                import shutil
+                import threading
+
+                stale_world_mirror_cleanup = threading.Thread(
+                    target=shutil.rmtree,
+                    args=(stale_world_mirror,),
+                    kwargs={"ignore_errors": True},
+                    daemon=True,
+                )
+                stale_world_mirror_cleanup.start()
             with timer.track("Memory bank Alignment"):
                 memory_bank.alignment(debug_mode=False)
             alignment_profile = {
@@ -468,6 +537,12 @@ class WorldStereoWorker:
                     N_points=2_000_000,
                 )
         finally:
+            if stale_world_mirror_cleanup is not None:
+                cleanup_wait_started = time.perf_counter()
+                stale_world_mirror_cleanup.join()
+                stale_world_mirror_cleanup_wait_s += (
+                    time.perf_counter() - cleanup_wait_started
+                )
             del memory_bank
             gc.collect()
             torch.cuda.empty_cache()
@@ -483,12 +558,18 @@ class WorldStereoWorker:
         timing = {
             "stage3_s": round(stage3_s, 3),
             "worker_load_s": round(self.load_s, 3),
+            "worker_worldstereo_load_s": round(self.worldstereo_load_s, 3),
+            "worldstereo_load_call_s": round(worldstereo_load_call_s, 3),
             "worker_call_index": call_index,
             "gpu_peak_used_mib": int(torch.cuda.max_memory_allocated() / (1024**2)),
             "host_peak_rss_mib": host_peak_rss_mib,
             "result_count": len(results),
             "aligned_pcd_exists": aligned_pcd.is_file(),
             "checkpoint_commits": checkpoint_commits,
+            "checkpoint_commit_s": round(checkpoint_commit_s, 3),
+            "stale_world_mirror_cleanup_wait_s": round(
+                stale_world_mirror_cleanup_wait_s, 3
+            ),
             "alignment_profile": alignment_profile,
             "alignment_phase2_profile": alignment_phase2_profile,
             "alignment_phase2_detail": alignment_phase2_detail,

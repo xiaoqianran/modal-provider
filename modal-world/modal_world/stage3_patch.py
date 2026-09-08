@@ -12,7 +12,7 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
     patch_worldstereo_wrapper(worldgen_root / "models/worldstereo_wrapper.py")
 
     retrieval_path = worldgen_root / "src/retrieval_wm.py"
-    source = retrieval_path.read_text()
+    source = retrieval_path.read_text(encoding="utf-8")
     processor_old = "            self.processor = AutoImageProcessor.from_pretrained(model_path, use_fast=True)\n"
     processor_new = (
         "            self.processor = AutoImageProcessor.from_pretrained(\n"
@@ -320,6 +320,100 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
         raise RuntimeError("expected pinned percentile log line not found")
     source = source.replace(percentile_log_old, percentile_log_new, 1)
 
+    # Phase 6 builds large per-video point clouds. Upstream repeatedly
+    # np.concatenate()s the full accumulated array for every frame, producing
+    # quadratic memory copies. Preserve chunk order and concatenate exactly once.
+    aggregate_init_old = (
+        '            video_aligned_data[video_name] = {"points": None, "colors": None}\n'
+    )
+    aggregate_init_new = (
+        "            video_aligned_data[video_name] = {\n"
+        '                "points": None, "colors": None, "point_chunks": [], "color_chunks": []\n'
+        "            }\n"
+    )
+    aggregate_old = (
+        "                # Aggregate at video level.\n"
+        '                if video_aligned_data[video_name]["points"] is None:\n'
+        '                    video_aligned_data[video_name]["points"] = update_points3d\n'
+        '                    video_aligned_data[video_name]["colors"] = update_rgb\n'
+        "                else:\n"
+        '                    video_aligned_data[video_name]["points"] = np.concatenate([video_aligned_data[video_name]["points"], update_points3d], axis=0)\n'
+        '                    video_aligned_data[video_name]["colors"] = np.concatenate([video_aligned_data[video_name]["colors"], update_rgb], axis=0)\n'
+    )
+    aggregate_new = (
+        "                # Preserve upstream point order without repeatedly copying\n"
+        "                # the full accumulated cloud on every frame.\n"
+        '                video_aligned_data[video_name]["point_chunks"].append(update_points3d)\n'
+        '                video_aligned_data[video_name]["color_chunks"].append(update_rgb)\n'
+    )
+    aggregate_finalize_marker = (
+        "            n_aligned = len(video_camera_dicts.get(video_name, {}))\n"
+    )
+    aggregate_finalize = (
+        '            point_chunks = video_aligned_data[video_name].pop("point_chunks")\n'
+        '            color_chunks = video_aligned_data[video_name].pop("color_chunks")\n'
+        "            if point_chunks:\n"
+        '                video_aligned_data[video_name]["points"] = np.concatenate(point_chunks, axis=0)\n'
+        '                video_aligned_data[video_name]["colors"] = np.concatenate(color_chunks, axis=0)\n'
+    )
+    if source.count(aggregate_init_old) != 1 or source.count(aggregate_old) != 1:
+        raise RuntimeError("expected pinned Phase 6 point aggregation blocks not found")
+    if source.count(aggregate_finalize_marker) != 1:
+        raise RuntimeError("expected pinned Phase 6 aggregation finalization marker not found")
+    source = source.replace(aggregate_init_old, aggregate_init_new, 1)
+    source = source.replace(aggregate_old, aggregate_new, 1)
+    source = source.replace(
+        aggregate_finalize_marker,
+        aggregate_finalize + aggregate_finalize_marker,
+        1,
+    )
+
+    # PNG encoding and filesystem writes are independent per frame. The aligned
+    # depth tensor is still copied to the same float32 NumPy array, but Pillow
+    # compression/write runs in worker threads while the GPU processes later frames.
+    phase6_start = "        abandoned_video_names = set(vname for vname, _ in abandoned_videos)\n"
+    depth_save_old = '                save_16bit_png_depth(aligned_depth.cpu().numpy(), f"{save_path}/depths/{fname}.png")\n'
+    phase65_marker = "        # Phase 6.5: Filter outlier points after video-level aggregation with Statistical Outlier Removal.\n"
+    if source.count(phase6_start) != 1 or source.count(depth_save_old) != 1:
+        raise RuntimeError("expected pinned Phase 6 depth-save blocks not found")
+    if source.count(phase65_marker) != 1:
+        raise RuntimeError("expected pinned Phase 6.5 marker not found")
+    source = source.replace(
+        phase6_start,
+        phase6_start
+        + "        _depth_save_executor = ThreadPoolExecutor(max_workers=8)\n"
+        + "        _depth_save_futures = collections.deque()\n"
+        + "        _depth_save_max_pending = 16\n",
+        1,
+    )
+    source = source.replace(
+        depth_save_old,
+        "                aligned_depth_np = aligned_depth.cpu().numpy()\n"
+        + "                _depth_save_futures.append(\n"
+        + "                    _depth_save_executor.submit(\n"
+        + '                        save_16bit_png_depth, aligned_depth_np, f"{save_path}/depths/{fname}.png"\n'
+        + "                    )\n"
+        + "                )\n"
+        + "                if len(_depth_save_futures) >= _depth_save_max_pending:\n"
+        + "                    _depth_save_futures.popleft().result()\n",
+        1,
+    )
+    source = source.replace(
+        phase65_marker,
+        "        while _depth_save_futures:\n"
+        + "            _depth_save_futures.popleft().result()\n"
+        + "        _depth_save_executor.shutdown(wait=True)\n\n"
+        + phase65_marker,
+        1,
+    )
+
+    points_clone_old = (
+        "                    self.points.clone(), aligned_depth, rgb_colors, update_mask\n"
+    )
+    points_clone_new = "                    self.points, aligned_depth, rgb_colors, update_mask\n"
+    if source.count(points_clone_old) != 1:
+        raise RuntimeError("expected pinned Phase 6 points clone not found")
+    source = source.replace(points_clone_old, points_clone_new, 1)
     alignment_pos = source.index(alignment_start)
     next_method = source.find("\n    def ", alignment_pos + len(alignment_start))
     if next_method == -1:
@@ -336,4 +430,4 @@ def patch_stage3_runtime(source_root: str | Path) -> None:
     )
     source = source[:insert_pos] + final_timing + source[insert_pos:]
 
-    retrieval_path.write_text(source)
+    retrieval_path.write_text(source, encoding="utf-8")

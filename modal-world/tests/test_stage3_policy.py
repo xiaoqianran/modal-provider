@@ -22,7 +22,7 @@ def test_stage3_requests_high_cpu_memory_and_scales_to_zero():
     assert "memory=(98304, 131072)" in decorator
     assert "cpu=16.0" in decorator
     assert "min_containers=0" in decorator
-    assert "scaledown_window=30" in decorator
+    assert "scaledown_window=5 * 60" in decorator
 
 
 def test_stage3_records_host_peak_rss():

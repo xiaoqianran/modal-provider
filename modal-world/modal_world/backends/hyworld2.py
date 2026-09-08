@@ -194,7 +194,6 @@ class HYWorld2Backend(WorldBackend):
             "runtime/navigation.ply": "world-navigation",
             "runtime/world.json": "world-manifest",
             "runtime/semantics.json": "world-semantics",
-            "gs_result/ply/point_cloud_7999.spz": "world-visual",
         }
         found: list[Artifact] = []
         for path in sorted(root.rglob("*")):
@@ -205,6 +204,12 @@ class HYWorld2Backend(WorldBackend):
                 continue
             relative = path.relative_to(root).as_posix()
             role = roles.get(relative)
+            if (
+                role is None
+                and relative.startswith("gs_result/ply/point_cloud_")
+                and relative.endswith(".spz")
+            ):
+                role = "world-visual"
             found.append(Artifact(kind=kind, path=path, role=role))
         return tuple(found)
 

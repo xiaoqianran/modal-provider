@@ -13,7 +13,13 @@ def _trainer_path(root: Path) -> Path:
 
 def test_stage5_single_gpu_patch_guards_unique_mesh_export_barrier(tmp_path: Path):
     trainer = _trainer_path(tmp_path)
-    trainer.write_text("before\n                    dist.barrier()\nafter\n")
+    trainer.write_text(
+        "before\n"
+        "            desc = f\"loss={loss.item():.3f}| \"\n"
+        "            pbar.set_description(desc)\n"
+        "                    dist.barrier()\n"
+        "after\n"
+    )
 
     patch_stage5_single_gpu(tmp_path)
 

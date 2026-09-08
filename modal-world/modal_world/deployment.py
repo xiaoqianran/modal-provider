@@ -56,6 +56,16 @@ def deployment_manifest() -> dict[str, object]:
                 "prerequisites": prerequisites,
             },
             {
+                "app": "modal-world-stage45",
+                "secrets": ["hyworld2-hf"],
+                "module": "modal_world.stage45_app",
+                "kind": "worker",
+                "revision": revision,
+                "models": ["hyworld2"],
+                "required": True,
+                "prerequisites": prerequisites,
+            },
+            {
                 "app": "modal-world-runtime-compile",
                 "secrets": ["hyworld2-hf"],
                 "module": "modal_world.runtime_compile_app",
