@@ -3,9 +3,7 @@ from __future__ import annotations
 import io
 import os
 import shutil
-import subprocess
 import tempfile
-import threading
 import time
 import urllib.request
 import uuid
@@ -20,7 +18,9 @@ from .common import (
     worker_capability,
     worker_identity,
 )
+from .gpu_telemetry import GpuStageProfiler
 from .o_voxel_contract import validate_o_voxel_pbr_intermediate
+from .pixal3d_patch import STAGE_CACHE_ENV, patch_pixal3d_stage_cache_guard
 
 APP_NAME = "modal-3d-pixal3d"
 GPU = "L40S"
@@ -119,10 +119,12 @@ runtime_image = (
         "git clone https://github.com/valeoai/NAF.git /opt/NAF && git -C /opt/NAF checkout 37f2dfc180f2de53d98bd601109c0da0dd6b0f43",
         f"curl -fL --retry 5 --retry-all-errors --retry-delay 2 '{WHEELS_URL}' -o /tmp/wheels.zip && mkdir -p /tmp/wheels && unzip -q /tmp/wheels.zip -d /tmp/wheels && uv pip install --system --no-deps /tmp/wheels/*.whl",
         "git clone https://github.com/TencentARC/Pixal3D.git /opt/Pixal3D && git -C /opt/Pixal3D checkout cdbb2bbffbf4e6f298b5f2af3d1d76a8d823d2af",
+        "python - <<'PY'\np='/opt/Pixal3D/inference.py'\ns=open(p).read()\nold_cache='os.environ[\"FLEX_GEMM_AUTOTUNE_CACHE_PATH\"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), \'autotune_cache.json\')'\nold_verbose='os.environ[\"FLEX_GEMM_AUTOTUNER_VERBOSE\"] = \'1\''\nassert old_cache in s, 'Pixal3D inference.py cache assignment changed upstream'\nassert old_verbose in s, 'Pixal3D inference.py verbose assignment changed upstream'\ns=s.replace(old_cache, 'os.environ.setdefault(\"FLEX_GEMM_AUTOTUNE_CACHE_PATH\", os.path.join(os.path.dirname(os.path.abspath(__file__)), \'autotune_cache.json\'))')\ns=s.replace(old_verbose, 'os.environ.setdefault(\"FLEX_GEMM_AUTOTUNER_VERBOSE\", \'1\')')\nopen(p,'w').write(s)\nPY",
         "python - <<'PY'\np='/opt/Pixal3D/pixal3d/trainers/flow_matching/mixins/image_conditioned_proj.py'\ns=open(p).read().replace('torch.hub.load(\\n                \"valeoai/NAF\", \"naf\", pretrained=True, device=device, trust_repo=True\\n            )','torch.hub.load(\\n                \"/opt/NAF\", \"naf\", pretrained=True, device=device, source=\"local\"\\n            )')\nopen(p,'w').write(s)\nPY",
         "uv pip install --system 'huggingface_hub>=0.34,<1'",
         "python -c \"import einops, huggingface_hub, transformers; assert huggingface_hub.__version__.startswith('0.'), (huggingface_hub.__version__, transformers.__version__)\"",
     )
+    .run_function(patch_pixal3d_stage_cache_guard, args=(SRC,))
     .env(
         {
             "PYTHONPATH": SRC,
@@ -136,7 +138,13 @@ runtime_image = (
             "NATTEN_CUDA_ARCH": "8.9",
             "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
             "FLEX_GEMM_AUTOTUNE_CACHE_PATH": FLEX_GEMM_CACHE_PATH,
+            "FLEX_GEMM_USE_AUTOTUNE_CACHE": "1",
+            "FLEX_GEMM_AUTOSAVE_AUTOTUNE_CACHE": "1",
             "FLEX_GEMM_AUTOTUNER_VERBOSE": "0",
+            "PIXAL3D_PROFILE": "1",
+            "PIXAL3D_TELEMETRY_INTERVAL_S": "0.5",
+            "PIXAL3D_KEEP_MOGE_ON_GPU": "0",
+            STAGE_CACHE_ENV: "0",
             "CC": "/usr/bin/gcc",
         }
     )
@@ -189,32 +197,6 @@ def sync_weights() -> dict:
     weights.commit()
     total = sum(p.stat().st_size for p in Path("/models").rglob("*") if p.is_file())
     return {"elapsed_s": time.perf_counter() - t0, "bytes": total}
-
-
-class _Vram:
-    def __init__(self):
-        self.stop_event = threading.Event()
-        self.peak_mib = 0.0
-
-    def start(self):
-        def loop():
-            while not self.stop_event.wait(0.5):
-                try:
-                    out = subprocess.check_output(
-                        ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-                        text=True,
-                    )
-                    self.peak_mib = max(self.peak_mib, float(out.splitlines()[0]))
-                except (subprocess.SubprocessError, ValueError, IndexError):
-                    continue
-
-        self.thread = threading.Thread(target=loop, daemon=True)
-        self.thread.start()
-
-    def stop(self) -> float:
-        self.stop_event.set()
-        self.thread.join(timeout=2)
-        return self.peak_mib / 1024
 
 
 def _camera_params_wild_moge_image(
@@ -388,7 +370,11 @@ class Model:
 
         self.image_cond_backbone_instances = len({id(model.model) for model in image_cond_models})
         self.naf_backbone_instances = len({id(model.naf_model) for model in naf_models})
-        self.moge = load_moge_model(device="cpu", model_name=str(moge_dir / "model.pt"))
+        self.keep_moge_on_gpu = os.environ.get("PIXAL3D_KEEP_MOGE_ON_GPU", "0") == "1"
+        self.moge = load_moge_model(
+            device="cuda" if self.keep_moge_on_gpu else "cpu",
+            model_name=str(moge_dir / "model.pt"),
+        )
         torch.cuda.synchronize()
         self.load_s = time.perf_counter() - t0
         self.flex_cache_signature = cache_signature()
@@ -400,7 +386,24 @@ class Model:
             "load_s": self.load_s,
             "image_cond_backbone_instances": self.image_cond_backbone_instances,
             "naf_backbone_instances": self.naf_backbone_instances,
+            "attention_backend": os.environ.get("ATTN_BACKEND"),
+            "flex_gemm_cache": FLEX_GEMM_CACHE_PATH,
+            "moge_resident_gpu": self.keep_moge_on_gpu,
+            "stage_empty_cache_suppressed": os.environ.get(STAGE_CACHE_ENV, "0") == "1",
         }
+
+    def _commit_flex_cache_if_changed(self) -> float:
+        cache = Path(FLEX_GEMM_CACHE_PATH)
+        if not cache.is_file():
+            return 0.0
+        stat = cache.stat()
+        signature = (stat.st_size, stat.st_mtime_ns)
+        if signature == self.flex_cache_signature:
+            return 0.0
+        t0 = time.perf_counter()
+        autotune_cache.commit()
+        self.flex_cache_signature = signature
+        return time.perf_counter() - t0
 
     def _generate(
         self,
@@ -417,123 +420,126 @@ class Model:
         from inference import distance_from_fov
         from PIL import Image
 
-        wall_t0 = time.perf_counter()
-
         if pipeline_type not in {"1024_cascade", "1536_cascade"}:
             raise ValueError("pipeline_type must be 1024_cascade or 1536_cascade")
         if not 32768 <= max_num_tokens <= 65536:
             raise ValueError("max_num_tokens must be between 32768 and 65536")
         if texture_size not in {2048, 4096}:
             raise ValueError("texture_size must be 2048 or 4096")
+        profiler = GpuStageProfiler(torch).start()
+        worker_t0 = time.perf_counter()
+        try:
+            with profiler.stage("preprocess", cuda_sync=False):
+                image = Image.open(io.BytesIO(image_bytes))
+                image = self.pipe.preprocess_image(image)
 
-        preprocess_t0 = time.perf_counter()
-        image = Image.open(io.BytesIO(image_bytes))
-        image = self.pipe.preprocess_image(image)
-        preprocess_s = time.perf_counter() - preprocess_t0
-        with tempfile.TemporaryDirectory(prefix="pixal3d-") as temp_dir:
-            work = Path(temp_dir)
-            input_save_s = 0.0
+            with tempfile.TemporaryDirectory(prefix="pixal3d-") as temp_dir:
+                work = Path(temp_dir)
+                with profiler.stage("camera"):
+                    if fov is None:
+                        if not self.keep_moge_on_gpu:
+                            self.moge.cuda()
+                        camera = _camera_params_wild_moge_image(image, self.moge, device="cuda")
+                        if not self.keep_moge_on_gpu:
+                            self.moge.cpu()
+                            torch.cuda.empty_cache()
+                    else:
+                        grid = torch.tensor([-1.0, 0.0, 0.0])
+                        distance = distance_from_fov(
+                            fov,
+                            grid,
+                            torch.tensor([0, 511]),
+                            1.0,
+                            512,
+                        )["distance_from_x"]
+                        camera = {
+                            "camera_angle_x": fov,
+                            "distance": distance,
+                            "mesh_scale": 1.0,
+                        }
 
-            camera_t0 = time.perf_counter()
-            if fov is None:
-                self.moge.cuda()
-                camera = _camera_params_wild_moge_image(image, self.moge, device="cuda")
-                self.moge.cpu()
-                torch.cuda.empty_cache()
-            else:
-                grid = torch.tensor([-1.0, 0.0, 0.0])
-                distance = distance_from_fov(
-                    fov,
-                    grid,
-                    torch.tensor([0, 511]),
-                    1.0,
-                    512,
-                )["distance_from_x"]
-                camera = {"camera_angle_x": fov, "distance": distance, "mesh_scale": 1.0}
-            camera_s = time.perf_counter() - camera_t0
+                with profiler.stage("pipeline"):
+                    meshes, (_, _, resolution) = self.pipe.run(
+                        image,
+                        camera_params=camera,
+                        seed=seed,
+                        preprocess_image=False,
+                        return_latent=True,
+                        pipeline_type=pipeline_type,
+                        max_num_tokens=max_num_tokens,
+                    )
 
-            vram = _Vram()
-            vram.start()
-            flex_cache_commit_s = 0.0
-            try:
-                torch.cuda.synchronize()
-                generation_t0 = time.perf_counter()
-                meshes, (_, _, resolution) = self.pipe.run(
-                    image,
-                    camera_params=camera,
-                    seed=seed,
-                    preprocess_image=False,
-                    return_latent=True,
-                    pipeline_type=pipeline_type,
-                    max_num_tokens=max_num_tokens,
-                )
-                torch.cuda.synchronize()
-                generation_s = time.perf_counter() - generation_t0
-
-                cache = Path(FLEX_GEMM_CACHE_PATH)
-                if cache.is_file():
-                    stat = cache.stat()
-                    signature = (stat.st_size, stat.st_mtime_ns)
-                    if signature != self.flex_cache_signature:
-                        cache_commit_t0 = time.perf_counter()
-                        autotune_cache.commit()
-                        flex_cache_commit_s = time.perf_counter() - cache_commit_t0
-                        self.flex_cache_signature = signature
+                with profiler.stage("flex_cache_commit", cuda_sync=False):
+                    flex_cache_commit_s = self._commit_flex_cache_if_changed()
 
                 mesh = meshes[0]
-                o_voxel_intermediate = validate_o_voxel_pbr_intermediate(
-                    vertices=mesh.vertices,
-                    faces=mesh.faces,
-                    attrs=mesh.attrs,
-                    coords=mesh.coords,
-                    attr_layout=self.pipe.pbr_attr_layout,
-                    grid_size=int(resolution),
-                )
-                torch.cuda.synchronize()
-                to_glb_t0 = time.perf_counter()
-                glb = o_voxel.postprocess.to_glb(
-                    vertices=mesh.vertices,
-                    faces=mesh.faces,
-                    attr_volume=mesh.attrs,
-                    coords=mesh.coords,
-                    attr_layout=self.pipe.pbr_attr_layout,
-                    grid_size=resolution,
-                    aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
-                    decimation_target=1_000_000,
-                    texture_size=texture_size,
-                    remesh=True,
-                    remesh_band=1,
-                    remesh_project=0,
-                    use_tqdm=False,
-                )
-                torch.cuda.synchronize()
-                to_glb_s = time.perf_counter() - to_glb_t0
-
-                transform_t0 = time.perf_counter()
-                glb.apply_transform(
-                    np.array(
-                        [[-1, 0, 0, 0], [0, 0, -1, 0], [0, -1, 0, 0], [0, 0, 0, 1]],
-                        dtype=np.float64,
+                with profiler.stage("o_voxel_validate"):
+                    o_voxel_intermediate = validate_o_voxel_pbr_intermediate(
+                        vertices=mesh.vertices,
+                        faces=mesh.faces,
+                        attrs=mesh.attrs,
+                        coords=mesh.coords,
+                        attr_layout=self.pipe.pbr_attr_layout,
+                        grid_size=int(resolution),
                     )
-                )
-                transform_s = time.perf_counter() - transform_t0
+
+                with profiler.stage("glb_postprocess"):
+                    glb = o_voxel.postprocess.to_glb(
+                        vertices=mesh.vertices,
+                        faces=mesh.faces,
+                        attr_volume=mesh.attrs,
+                        coords=mesh.coords,
+                        attr_layout=self.pipe.pbr_attr_layout,
+                        grid_size=resolution,
+                        aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
+                        decimation_target=1_000_000,
+                        texture_size=texture_size,
+                        remesh=True,
+                        remesh_band=1,
+                        remesh_project=0,
+                        use_tqdm=False,
+                    )
+
+                with profiler.stage("transform"):
+                    glb.apply_transform(
+                        np.array(
+                            [
+                                [-1, 0, 0, 0],
+                                [0, 0, -1, 0],
+                                [0, -1, 0, 0],
+                                [0, 0, 0, 1],
+                            ],
+                            dtype=np.float64,
+                        )
+                    )
 
                 output_path = work / "output.glb"
-                export_t0 = time.perf_counter()
-                glb.export(output_path, extension_webp=True)
-                torch.cuda.synchronize()
-                export_s = time.perf_counter() - export_t0
-                inference_s = generation_s + to_glb_s + transform_s + export_s
-            finally:
-                peak_vram_gb = vram.stop()
+                with profiler.stage("glb_export"):
+                    glb.export(output_path, extension_webp=True)
 
-            artifact_t0 = time.perf_counter()
-            name = f"pixal3d/{uuid.uuid4().hex}.glb"
-            dst = Path("/artifacts") / name
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(output_path, dst)
-            artifact_s = time.perf_counter() - artifact_t0
-        total_s = time.perf_counter() - wall_t0
+                with profiler.stage("artifact_write", cuda_sync=False):
+                    name = f"pixal3d/{uuid.uuid4().hex}.glb"
+                    dst = Path("/artifacts") / name
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(output_path, dst)
+        finally:
+            profiler.timings["worker_total_s"] = time.perf_counter() - worker_t0
+            gpu_telemetry = profiler.stop()
+
+        generation_s = profiler.timings["pipeline_s"]
+        postprocess_s = sum(
+            profiler.timings[key]
+            for key in ("glb_postprocess_s", "transform_s", "glb_export_s")
+        )
+        inference_s = generation_s + postprocess_s
+        profiler.timings.update(
+            {
+                "input_save_s": 0.0,
+                "generation_s": generation_s,
+                "to_glb_s": profiler.timings["glb_postprocess_s"],
+                "total_s": profiler.timings["worker_total_s"],
+            }
+        )
         return {
             "model": "pixal3d",
             "gpu": GPU,
@@ -550,21 +556,16 @@ class Model:
             "load_s": self.load_s,
             "inference_s": inference_s,
             "generation_s": generation_s,
-            "postprocess_s": to_glb_s + transform_s + export_s,
+            "postprocess_s": postprocess_s,
             "o_voxel_intermediate": o_voxel_intermediate,
-            "timings": {
-                "preprocess_s": preprocess_s,
-                "input_save_s": input_save_s,
-                "camera_s": camera_s,
-                "generation_s": generation_s,
-                "flex_cache_commit_s": flex_cache_commit_s,
-                "to_glb_s": to_glb_s,
-                "transform_s": transform_s,
-                "glb_export_s": export_s,
-                "artifact_write_s": artifact_s,
-                "total_s": total_s,
-            },
-            "peak_vram_gb": peak_vram_gb,
+            "peak_vram_gb": gpu_telemetry.get("peak_vram_gb"),
+            "attention_backend": os.environ.get("ATTN_BACKEND"),
+            "moge_resident_gpu": self.keep_moge_on_gpu,
+            "stage_empty_cache_suppressed": os.environ.get(STAGE_CACHE_ENV, "0") == "1",
+            "flex_gemm_cache_path": FLEX_GEMM_CACHE_PATH,
+            "flex_cache_commit_s": flex_cache_commit_s,
+            "timings": profiler.timings,
+            "gpu_telemetry": gpu_telemetry,
         }
 
     @modal.method()
