@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from .artifacts import ArtifactService
+from .artifacts import MAX_INPUT_ARTIFACT_BYTES, ArtifactService
 from .capabilities import CapabilityRegistry
 from .constants import SESSION_PATH, allow_any_origin
 from .credentials import CredentialStore
@@ -336,6 +336,31 @@ def create_app(state: Runtime | None = None) -> FastAPI:
         )
         return {"job": current().jobs.cancel(job_id, session)}
 
+    @app.post("/connector/v1/artifacts", status_code=201)
+    async def upload_artifact(request: Request):
+        session = current().sessions.authorize(
+            request.headers.get("authorization"),
+            "artifacts.write",
+            request_origin=request.headers.get("origin"),
+        )
+        mime = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if mime != "image/png":
+            raise ConnectorError(
+                "ARTIFACT_UPLOAD_UNSUPPORTED",
+                "当前本地上传只接受 image/png",
+                415,
+            )
+        data = await _read_bounded_body(request, MAX_INPUT_ARTIFACT_BYTES)
+        artifact = await run_in_threadpool(
+            current().artifacts.register_upload,
+            data,
+            owner_client=str(session["client_identity"]),
+            owner_origin=str(session["origin"]),
+            role="primary-image",
+            mime=mime,
+        )
+        return {"artifact": current().artifacts.summary(artifact), "source": "uploaded"}
+
     @app.get("/connector/v1/artifacts")
     def list_artifacts(request: Request, mime: str | None = None, limit: int = 12, offset: int = 0):
         session = current().sessions.authorize(
@@ -401,6 +426,25 @@ async def _json_body(request: Request) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ConnectorError("CONNECTOR_REQUEST_INVALID", "请求 body 必须是对象", 400)
     return payload
+
+
+async def _read_bounded_body(request: Request, max_bytes: int) -> bytes:
+    declared = request.headers.get("content-length")
+    if declared:
+        try:
+            if int(declared) > max_bytes:
+                raise ConnectorError("ARTIFACT_SIZE_INVALID", "上传图片超过 20 MiB", 413)
+        except ValueError as exc:
+            raise ConnectorError("CONNECTOR_REQUEST_INVALID", "Content-Length 无效", 400) from exc
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > max_bytes:
+            raise ConnectorError("ARTIFACT_SIZE_INVALID", "上传图片超过 20 MiB", 413)
+        if chunk:
+            chunks.append(bytes(chunk))
+    return b"".join(chunks)
 
 
 def _cors_origin(request: Request) -> str | None:

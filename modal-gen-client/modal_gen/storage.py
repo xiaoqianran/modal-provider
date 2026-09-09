@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .paths import database_path
 
-_DB_VERSION = 3
+_DB_VERSION = 4
 
 
 class Store:
@@ -110,9 +110,22 @@ class Store:
                     UNIQUE(job_id, provider_artifact_id),
                     FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS uploaded_artifacts (
+                    id TEXT PRIMARY KEY,
+                    owner_client TEXT NOT NULL,
+                    owner_origin TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    mime TEXT NOT NULL,
+                    bytes INTEGER NOT NULL,
+                    hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(owner_client, owner_origin, hash, role)
+                );
                 CREATE INDEX IF NOT EXISTS jobs_owner_idx
                     ON jobs(owner_client, owner_origin, created_at);
                 CREATE INDEX IF NOT EXISTS artifacts_job_idx ON artifacts(job_id);
+                CREATE INDEX IF NOT EXISTS uploaded_artifacts_owner_idx
+                    ON uploaded_artifacts(owner_client, owner_origin, created_at);
                 """
             )
             job_columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
@@ -328,6 +341,87 @@ class Store:
                     row["provider_job_id"],
                 ),
             )
+
+    def create_uploaded_artifact(self, row: dict[str, object]) -> None:
+        with self.connect() as db:
+            db.execute(
+                """
+                INSERT INTO uploaded_artifacts(
+                    id,owner_client,owner_origin,role,mime,bytes,hash,created_at
+                ) VALUES(?,?,?,?,?,?,?,?)
+                """,
+                (
+                    row["id"], row["owner_client"], row["owner_origin"], row["role"],
+                    row["mime"], row["bytes"], row["hash"], row["created_at"],
+                ),
+            )
+
+    def find_uploaded_artifact_by_hash(
+        self, owner_client: str, owner_origin: str, hash_value: str, role: str
+    ) -> dict[str, object] | None:
+        with self.connect() as db:
+            row = db.execute(
+                """
+                SELECT * FROM uploaded_artifacts
+                WHERE owner_client=? AND owner_origin=? AND hash=? AND role=?
+                """,
+                (owner_client, owner_origin, hash_value, role),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_uploaded_artifact(
+        self, artifact_id: str, owner_client: str, owner_origin: str
+    ) -> dict[str, object] | None:
+        with self.connect() as db:
+            row = db.execute(
+                """
+                SELECT * FROM uploaded_artifacts
+                WHERE id=? AND owner_client=? AND owner_origin=?
+                """,
+                (artifact_id, owner_client, owner_origin),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_uploaded_artifacts(
+        self,
+        owner_client: str,
+        owner_origin: str,
+        *,
+        mime: str | None = None,
+        limit: int = 12,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        where = ["owner_client=?", "owner_origin=?"]
+        params: list[object] = [owner_client, owner_origin]
+        if mime:
+            where.append("mime=?")
+            params.append(mime)
+        with self.connect() as db:
+            rows = db.execute(
+                f"""
+                SELECT * FROM uploaded_artifacts
+                WHERE {" AND ".join(where)}
+                ORDER BY created_at DESC, id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (*params, limit, offset),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def count_uploaded_artifacts(
+        self, owner_client: str, owner_origin: str, *, mime: str | None = None
+    ) -> int:
+        where = ["owner_client=?", "owner_origin=?"]
+        params: list[object] = [owner_client, owner_origin]
+        if mime:
+            where.append("mime=?")
+            params.append(mime)
+        with self.connect() as db:
+            row = db.execute(
+                f'SELECT COUNT(*) FROM uploaded_artifacts WHERE {" AND ".join(where)}',
+                params,
+            ).fetchone()
+        return int(row[0])
 
     def get_artifact_for_provider(
         self, job_id: str, provider_artifact_id: str

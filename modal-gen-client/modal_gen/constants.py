@@ -9,6 +9,7 @@ SESSION_SCOPES = (
     "jobs.read",
     "jobs.cancel",
     "artifacts.read",
+    "artifacts.write",
 )
 
 MODAL_2D_PROVIDER = "modal-2d"

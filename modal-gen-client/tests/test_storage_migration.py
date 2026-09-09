@@ -51,10 +51,16 @@ def test_v1_database_migrates_provider_state_column(tmp_path: Path):
     try:
         version = db.execute("PRAGMA user_version").fetchone()[0]
         columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+        uploaded_columns = {
+            row[1] for row in db.execute("PRAGMA table_info(uploaded_artifacts)")
+        }
     finally:
         db.close()
-    assert version == 3
+    assert version == 4
     assert "provider_state_json" in columns
+    assert {"owner_client", "owner_origin", "role", "mime", "bytes", "hash"}.issubset(
+        uploaded_columns
+    )
 
 
 def test_v2_artifact_role_identity_migrates_to_provider_artifact_identity(tmp_path: Path):
