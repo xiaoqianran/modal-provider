@@ -134,6 +134,16 @@ bash ./scripts/deploy-worker.sh modal_3d/hermit_trellis2_plus_plus.py
 bash ./scripts/deploy-worker.sh modal_3d/pixal3d.py
 ```
 
+## 本地测试
+
+`pytest` 已纳入默认安装的 `dev` 依赖组，不需要临时添加 `--with pytest`。
+
+```bash
+uv run --locked --default-index https://pypi.org/simple --no-config pytest -q
+```
+
+仓库锁文件使用官方 PyPI 地址；更新锁文件时也应显式指定官方索引，避免提交本机镜像地址。
+
 ## 验收记录
 
 2026-08-31：本地正式测试目录 `77 passed`、`20 subtests`；本次修改文件 Ruff/format 全部通过。配置
