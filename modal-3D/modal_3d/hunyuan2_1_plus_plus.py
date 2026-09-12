@@ -11,6 +11,7 @@ from pathlib import Path
 import modal
 
 from .common import ARTIFACT_VOLUME, run_generation_job, worker_capability, worker_identity
+from .hunyuan_runtime import HunyuanRuntimeAcceleration, apply_shape_runtime_acceleration
 
 APP_NAME = "modal-3d-hunyuan"
 MODEL_ID = "tencent/Hunyuan3D-2.1"
@@ -184,6 +185,9 @@ runtime_image = (
             "HF_HUB_OFFLINE": "1",
             "TRANSFORMERS_OFFLINE": "1",
             "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+            "HUNYUAN_ENABLE_FLASHVDM": "0",
+            "HUNYUAN_ENABLE_COMPILE": "0",
+            "USE_SAGEATTN": "0",
         }
     )
 )
@@ -273,6 +277,8 @@ class Model:
         sys.path.insert(0, f"{SRC}/hy3dshape")
         sys.path.insert(0, f"{SRC}/hy3dpaint")
         os.chdir(SRC)
+        self.runtime_acceleration = HunyuanRuntimeAcceleration.from_env()
+
         import torch
         from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline
         from textureGenPipeline import Hunyuan3DPaintConfig, Hunyuan3DPaintPipeline
@@ -291,6 +297,7 @@ class Model:
         t0 = time.perf_counter()
         self.shape_pipe = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(MODEL_DIR)
         self.shape_pipe.to("cuda")
+        apply_shape_runtime_acceleration(self.shape_pipe, self.runtime_acceleration)
         paint_config = Hunyuan3DPaintConfig(max_num_view=6, resolution=512)
         paint_config.multiview_pretrained_path = MODEL_ID
         paint_config.dino_ckpt_path = DINO_ID
@@ -301,7 +308,11 @@ class Model:
 
     @modal.method()
     def warmup(self) -> dict:
-        return {"model": CAPABILITY["id"], "load_s": self.load_s}
+        return {
+            "model": CAPABILITY["id"],
+            "load_s": self.load_s,
+            "runtime_acceleration": self.runtime_acceleration.as_dict(),
+        }
 
     def _generate(
         self,
@@ -395,6 +406,7 @@ class Model:
             "interval": interval,
             "history": history,
             "num_inference_steps": num_inference_steps,
+            "runtime_acceleration": self.runtime_acceleration.as_dict(),
             "artifact": name,
             "glb_bytes": path.stat().st_size,
             "load_s": self.load_s,

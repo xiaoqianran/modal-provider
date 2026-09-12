@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>FIRE3D acceptance — source camera</title>
+<style>
+body{margin:20px;background:#202328;color:#eee;font:16px system-ui}h1{font-size:22px}
+main{display:flex;gap:16px}figure{margin:0}img,canvas{width:648px;height:484px;display:block}
+figcaption{padding:10px 0}button{padding:8px;margin:8px 8px 12px 0}#status{white-space:pre-wrap}
+</style>
+<h1>FIRE3D official single_image / 003025 — fresh GPU reconstruction</h1>
+<button id="native">Input camera</button><button id="overview">Scene overview</button>
+<button id="background">Toggle background</button><button id="unlit">Toggle unlit textures</button>
+<main><figure><img id="input"><figcaption>Official RGB input</figcaption></figure>
+<figure><div id="view"></div><figcaption>Generated GLB · Three.js PBR preview</figcaption></figure></main>
+<p id="status">Loading local GLB…</p>
+<script type="importmap">
+{"imports":{"three":"/AgentScape/node_modules/three/build/three.module.js","three/addons/":"/AgentScape/node_modules/three/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+const run = new URLSearchParams(location.search).get('run');
+const base = `/modal-provider/modal-fire3d/acceptance/${run}/`;
+document.querySelector('h1').textContent = `FIRE3D single_image / 003025 — ${run}`;
+const inputBase = new URLSearchParams(location.search).get('input') || run;
+document.querySelector('#input').src = `/modal-provider/modal-fire3d/acceptance/${inputBase}/input.jpeg`;
+const renderer = new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
+renderer.setSize(648,484); renderer.setPixelRatio(1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+document.querySelector('#view').append(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#eeeeee');
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(),0.04).texture;
+const camera = new THREE.PerspectiveCamera(45,648/484,0.01,1000);
+const controls = new OrbitControls(camera,renderer.domElement);
+const status = document.querySelector('#status');
+try {
+ const sourceCamera = (await (await fetch(`/modal-provider/modal-fire3d/acceptance/${inputBase}/camera.json`)).json()).native;
+ const model = new URLSearchParams(location.search).get('model') || 'output/reconstruction/003025/appearance/predicted_textured_world_scene.glb';
+ const gltf = await new GLTFLoader().loadAsync(base+model);
+ scene.add(gltf.scene);
+ const bounds = new THREE.Box3().setFromObject(gltf.scene), center = bounds.getCenter(new THREE.Vector3());
+ const size = bounds.getSize(new THREE.Vector3());
+ let meshes=0, triangles=0, textured=0;
+ gltf.scene.traverse(o=>{if(o.isMesh){
+  meshes++;triangles+=(o.geometry.index?.count||o.geometry.attributes.position.count)/3;if(o.material.map)textured++;
+  o.material.side=THREE.DoubleSide; o.userData.pbr=o.material;
+ }});
+ let unlit=false;
+ document.querySelector('#unlit').onclick=()=>{
+  unlit=!unlit;
+  gltf.scene.traverse(o=>{if(o.isMesh){o.material=unlit?new THREE.MeshBasicMaterial({map:o.userData.pbr.map,color:o.userData.pbr.color,side:THREE.DoubleSide}):o.userData.pbr;}});
+ };
+ document.querySelector('#background').onclick=()=>gltf.scene.traverse(o=>{if(o.name.includes('background'))o.visible=!o.visible;});
+ const native = () => {
+  camera.fov=2*Math.atan(sourceCamera.height/(2*sourceCamera.K[1][1]))*180/Math.PI;
+  camera.aspect=sourceCamera.width/sourceCamera.height; camera.updateProjectionMatrix();
+  camera.position.fromArray(sourceCamera.frame.eye); camera.up.fromArray(sourceCamera.frame.up);
+  controls.target.fromArray(sourceCamera.frame.lookat); controls.update();
+ };
+ const overview = () => {
+  camera.fov=45; camera.updateProjectionMatrix(); camera.up.set(0,0,1);
+  camera.position.copy(center).add(new THREE.Vector3(size.length(),size.length(),size.length()*0.65));
+  controls.target.copy(center); controls.update();
+ };
+ document.querySelector('#native').onclick=native; document.querySelector('#overview').onclick=overview;
+ native();
+ window.audit={loaded:true,meshes,triangles,textured,bounds:[bounds.min.toArray(),bounds.max.toArray()]};
+ status.textContent=JSON.stringify(window.audit,null,2);
+ renderer.setAnimationLoop(()=>renderer.render(scene,camera));
+} catch(e) { window.audit={loaded:false,error:String(e)}; status.textContent=e.stack; }
+</script>

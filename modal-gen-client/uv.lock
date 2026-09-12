@@ -566,6 +566,7 @@ requires-dist = [{ name = "modal", extras = ["api-proxy-support"], specifier = "
 dev = [
     { name = "numpy", specifier = "==2.3.5" },
     { name = "pillow", specifier = "==12.1.0" },
+    { name = "pytest", specifier = ">=8,<10" },
     { name = "scipy", specifier = "==1.16.3" },
 ]
 

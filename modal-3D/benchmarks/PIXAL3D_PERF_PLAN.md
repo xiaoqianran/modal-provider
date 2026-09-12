@@ -23,14 +23,30 @@ Every benchmark must report at least:
 
 1. `load_s`
 2. `camera_s`
-3. `pipeline_s`
+3. `pipeline_s` plus native sub-stages:
+   - `sparse_structure_s`
+   - `shape_lr_s`
+   - `shape_upsample_s`
+   - `shape_hr_s`
+   - `texture_s`
+   - `decode_s`
 4. `glb_postprocess_s`
 5. `glb_export_s`
 6. `artifact_commit_s`
 7. `worker_total_s`
 8. client end-to-end time
 
+The worker also records per-stage token counts / effective HR resolution. The
+instrumentation is applied as a strict pinned-source build patch and fails the
+image build if upstream stage anchors drift.
+
 The optimization target is chosen from measured stage contribution, not from total latency alone.
+
+The production wrapper also shortens tensor lifetimes without changing quality:
+after `run(..., return_latent=True)` returns the effective cascade resolution,
+the no-longer-used shape and texture latents are released before O-Voxel
+remesh/bake, and the raw decoded mesh is released after `to_glb()`. This avoids
+retaining large 1536 intermediates through unrelated export work.
 
 ## Required GPU telemetry
 
@@ -106,14 +122,15 @@ Acceptance:
 
 Keep Gate A quality and source revisions identical. Change only the attention implementation.
 
-Candidate artifact:
+Published artifact:
 
 - `pixal3d-py310-cu124-torch260-sm89-fa2-v1`
-- derived from the existing six SM89 CUDA wheels; do not rebuild them
-- FlashAttention 2.8.3 wheel matching Torch 2.6 / CPython 3.10 / CXX11 ABI false
-- wheel SHA256 pinned to upstream GitHub Release metadata
+- derived from the existing six SM89 CUDA wheels; they were not rebuilt
+- adds official FlashAttention 2.8.3 for Torch 2.6 / CPython 3.10 / CXX11 ABI false
+- upstream wheel SHA256 is pinned and verified before publishing
+- the production image installs the seven-wheel bundle but still defaults to `ATTN_BACKEND=sdpa`
 
-The benchmark variant intentionally fails closed until that artifact is actually published and wired into the worker image. After that gate is opened:
+The FA2 benchmark is therefore a single environment-variable change on the same deployed image:
 
 ```powershell
 uv run python scripts/benchmark_pixal3d.py --variant fa2-official --runs 2

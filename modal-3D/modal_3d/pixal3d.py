@@ -20,7 +20,11 @@ from .common import (
 )
 from .gpu_telemetry import GpuStageProfiler
 from .o_voxel_contract import validate_o_voxel_pbr_intermediate
-from .pixal3d_patch import STAGE_CACHE_ENV, patch_pixal3d_stage_cache_guard
+from .pixal3d_patch import (
+    STAGE_CACHE_ENV,
+    patch_pixal3d_stage_cache_guard,
+    patch_pixal3d_stage_profiling,
+)
 
 APP_NAME = "modal-3d-pixal3d"
 GPU = "L40S"
@@ -34,7 +38,7 @@ MODEL_DIR = "/models/Pixal3D"
 HF_HOME = "/models/hf"
 TORCH_HOME = "/models/torch"
 SRC = "/opt/Pixal3D"
-TAG = "pixal3d-py310-cu124-torch260-sm89-v1"
+TAG = "pixal3d-py310-cu124-torch260-sm89-fa2-v1"
 WHEELS_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{TAG}/{TAG}.wheels.zip"
 FLEX_GEMM_CACHE_PATH = (
     "/pixal-cache/sm89-cu124-torch260-pixal-cdbb2bbffbf4/autotune_cache.json"
@@ -124,6 +128,7 @@ runtime_image = (
         "uv pip install --system 'huggingface_hub>=0.34,<1'",
         "python -c \"import einops, huggingface_hub, transformers; assert huggingface_hub.__version__.startswith('0.'), (huggingface_hub.__version__, transformers.__version__)\"",
     )
+    .run_function(patch_pixal3d_stage_profiling, args=(SRC,))
     .run_function(patch_pixal3d_stage_cache_guard, args=(SRC,))
     .env(
         {
@@ -356,6 +361,20 @@ class Model:
         self.pipe.cuda()
         image_cond_models = [getattr(self.pipe, name).cuda() for name in image_cond_names]
 
+        self.attention_backend = os.environ.get("ATTN_BACKEND", "sdpa")
+        self.attention_backend_version = None
+        if self.attention_backend == "flash_attn":
+            try:
+                import flash_attn
+            except ImportError as exc:
+                raise RuntimeError(
+                    "ATTN_BACKEND=flash_attn requested but flash-attn is not installed "
+                    "in the Pixal3D runtime image"
+                ) from exc
+            self.attention_backend_version = getattr(flash_attn, "__version__", "unknown")
+        elif self.attention_backend != "sdpa":
+            raise RuntimeError(f"unsupported Pixal3D attention backend: {self.attention_backend}")
+
         # The three NAF-enabled branches also use the same frozen NAF weights;
         # only target resolution / ProjGrid differ and stay on each extractor.
         naf_models = [model for model in image_cond_models if model.use_naf_upsample]
@@ -386,7 +405,8 @@ class Model:
             "load_s": self.load_s,
             "image_cond_backbone_instances": self.image_cond_backbone_instances,
             "naf_backbone_instances": self.naf_backbone_instances,
-            "attention_backend": os.environ.get("ATTN_BACKEND"),
+            "attention_backend": self.attention_backend,
+            "attention_backend_version": self.attention_backend_version,
             "flex_gemm_cache": FLEX_GEMM_CACHE_PATH,
             "moge_resident_gpu": self.keep_moge_on_gpu,
             "stage_empty_cache_suppressed": os.environ.get(STAGE_CACHE_ENV, "0") == "1",
@@ -459,7 +479,7 @@ class Model:
                         }
 
                 with profiler.stage("pipeline"):
-                    meshes, (_, _, resolution) = self.pipe.run(
+                    meshes, (shape_slat, tex_slat, resolution) = self.pipe.run(
                         image,
                         camera_params=camera,
                         seed=seed,
@@ -468,11 +488,45 @@ class Model:
                         pipeline_type=pipeline_type,
                         max_num_tokens=max_num_tokens,
                     )
+                pipeline_stage_timings = dict(
+                    getattr(self.pipe, "last_stage_timings", {}) or {}
+                )
+                pipeline_stage_metrics = dict(
+                    getattr(self.pipe, "last_stage_metrics", {}) or {}
+                )
+                expected_pipeline_stages = {
+                    "sparse_structure_s",
+                    "shape_lr_s",
+                    "shape_upsample_s",
+                    "shape_hr_s",
+                    "texture_s",
+                    "decode_s",
+                }
+                missing_pipeline_stages = expected_pipeline_stages - pipeline_stage_timings.keys()
+                if missing_pipeline_stages:
+                    raise RuntimeError(
+                        "Pixal3D stage profiler missing timings: "
+                        + ", ".join(sorted(missing_pipeline_stages))
+                    )
+                profiler.timings.update(
+                    {
+                        f"pipeline_{key}": float(value)
+                        for key, value in pipeline_stage_timings.items()
+                    }
+                )
 
                 with profiler.stage("flex_cache_commit", cuda_sync=False):
                     flex_cache_commit_s = self._commit_flex_cache_if_changed()
 
                 mesh = meshes[0]
+                source_vertices = len(mesh.vertices)
+                source_faces = len(mesh.faces)
+                # return_latent=True is required only to recover the effective cascade
+                # resolution. Do not retain the large shape/texture latents through
+                # O-Voxel remesh/bake; on 1536 they consume valuable headroom and are
+                # no longer used once the decoded MeshWithVoxel exists.
+                del meshes, shape_slat, tex_slat
+
                 with profiler.stage("o_voxel_validate"):
                     o_voxel_intermediate = validate_o_voxel_pbr_intermediate(
                         vertices=mesh.vertices,
@@ -499,6 +553,10 @@ class Model:
                         remesh_project=0,
                         use_tqdm=False,
                     )
+
+                # The GLB owns the baked geometry/textures from this point onward.
+                # Release the raw O-Voxel tensors before export/compression.
+                del mesh
 
                 with profiler.stage("transform"):
                     glb.apply_transform(
@@ -551,15 +609,18 @@ class Model:
             "seed": seed,
             "artifact": name,
             "glb_bytes": dst.stat().st_size,
-            "source_vertices": len(mesh.vertices),
-            "source_faces": len(mesh.faces),
+            "source_vertices": source_vertices,
+            "source_faces": source_faces,
             "load_s": self.load_s,
             "inference_s": inference_s,
             "generation_s": generation_s,
             "postprocess_s": postprocess_s,
             "o_voxel_intermediate": o_voxel_intermediate,
             "peak_vram_gb": gpu_telemetry.get("peak_vram_gb"),
-            "attention_backend": os.environ.get("ATTN_BACKEND"),
+            "attention_backend": self.attention_backend,
+            "attention_backend_version": self.attention_backend_version,
+            "pipeline_stage_timings": pipeline_stage_timings,
+            "pipeline_stage_metrics": pipeline_stage_metrics,
             "moge_resident_gpu": self.keep_moge_on_gpu,
             "stage_empty_cache_suppressed": os.environ.get(STAGE_CACHE_ENV, "0") == "1",
             "flex_gemm_cache_path": FLEX_GEMM_CACHE_PATH,

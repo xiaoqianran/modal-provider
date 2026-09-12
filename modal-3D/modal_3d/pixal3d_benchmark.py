@@ -46,14 +46,14 @@ VARIANTS: dict[str, BenchmarkVariant] = {
         attention_backend="sdpa",
         suppress_stage_empty_cache=True,
     ),
-    # Kept fail-closed until the derived FA2 bundle is actually published and
-    # wired into the deployed image. The launcher refuses this variant by
-    # default so an expensive GPU invocation cannot discover a missing module.
+    # The derived bundle is published and installed in the production image,
+    # while the default runtime backend remains SDPA. This keeps FA2 a true
+    # single-variable benchmark switch on the same source/build environment.
     "fa2-official": BenchmarkVariant(
         name="fa2-official",
         attention_backend="flash_attn",
         suppress_stage_empty_cache=False,
-        ready=False,
+        ready=True,
         requires_artifact="pixal3d-py310-cu124-torch260-sm89-fa2-v1",
     ),
 }
@@ -106,6 +106,19 @@ def summarize_runs(records: list[dict[str, Any]]) -> dict[str, Any]:
                 values.append(float(value))
         return values
 
+    pipeline_stage_medians = {
+        name: _median(
+            collect(("result", "metrics", "pipeline_stage_timings", f"{name}_s"))
+        )
+        for name in (
+            "sparse_structure",
+            "shape_lr",
+            "shape_upsample",
+            "shape_hr",
+            "texture",
+            "decode",
+        )
+    }
     return {
         "runs": len(records),
         "client_e2e_median_s": _median(collect(("client_e2e_s",))),
@@ -113,16 +126,11 @@ def summarize_runs(records: list[dict[str, Any]]) -> dict[str, Any]:
             collect(("result", "metrics", "timings", "worker_total_s"))
         ),
         "inference_median_s": _median(collect(("result", "timing", "inference_s"))),
-        "pipeline_median_s": _median(
-            collect(("result", "metrics", "timings", "pipeline_s"))
-        ),
+        "pipeline_median_s": _median(collect(("result", "metrics", "timings", "pipeline_s"))),
+        "pipeline_stage_medians_s": pipeline_stage_medians,
         "glb_postprocess_median_s": _median(
             collect(("result", "metrics", "timings", "glb_postprocess_s"))
         ),
-        "glb_export_median_s": _median(
-            collect(("result", "metrics", "timings", "glb_export_s"))
-        ),
-        "peak_vram_max_gb": max(
-            collect(("result", "metrics", "peak_vram_gb")), default=None
-        ),
+        "glb_export_median_s": _median(collect(("result", "metrics", "timings", "glb_export_s"))),
+        "peak_vram_max_gb": max(collect(("result", "metrics", "peak_vram_gb")), default=None),
     }

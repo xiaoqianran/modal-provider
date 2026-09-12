@@ -14,7 +14,8 @@ modal-provider
 ├─ modal-2D/              image generation Provider
 ├─ modal-3D-client/       3D Reference Sidecar
 ├─ modal-3D/              3D generation Provider
-├─ modal-world/           world generation/reconstruction Provider
+├─ modal-world/          HYWorld2 generation/reconstruction Provider + lightweight World contracts
+├─ modal-fire3d/         independent FIRE3D reconstruction runtime and adapter
 ├─ modal-EmbodiedGen/     EmbodiedGen fork；其 modal/ 仅负责 EmbodiedGen 的 Modal 集成
 └─ modal-build/           通用 CUDA/PyTorch 可复现构建与 release artifacts
 ```

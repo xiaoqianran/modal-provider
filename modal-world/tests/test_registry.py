@@ -3,7 +3,7 @@ from modal_world.providers import register_builtin_backends
 from modal_world.registry import get_backend, list_backends
 
 
-def test_builtin_registry_contains_hyworld2():
+def test_builtin_registry_contains_world_backends():
     register_builtin_backends()
-    assert "hyworld2" in list_backends()
+    assert list_backends() == ("hyworld2",)
     assert isinstance(get_backend("HYWORLD2"), HYWorld2Backend)

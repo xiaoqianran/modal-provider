@@ -9,7 +9,10 @@ def test_modal_world_declares_complete_build_artifact_prerequisites():
     assert len(expected_tags) == 8
     assert len(manifest["targets"]) == 5
     assert any(target["app"] == "modal-world-stage45" for target in manifest["targets"])
-    for target in manifest["targets"]:
+
+    hyworld_targets = [target for target in manifest["targets"] if target["models"] == ["hyworld2"]]
+    assert len(hyworld_targets) == 5
+    for target in hyworld_targets:
         assert target["required"] is True
         prerequisites = target["prerequisites"]
         assert len(prerequisites) == 8
@@ -25,7 +28,9 @@ def test_modal_world_declares_complete_build_artifact_prerequisites():
 
 
 def test_public_bundle_recovery_uses_release_restore_and_private_bundles_use_builders():
-    target = deployment_manifest()["targets"][0]
+    target = next(
+        target for target in deployment_manifest()["targets"] if target["app"] == "modal-world"
+    )
     by_tag = {
         spec["requiredPaths"][0].removesuffix(".wheels.zip"): spec for spec in target["prerequisites"]
     }

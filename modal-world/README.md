@@ -6,6 +6,10 @@ models can be added as isolated backends.
 
 ## Architecture
 
+FIRE3D lives in the independent [`../modal-fire3d`](../modal-fire3d/README.md)
+package. Its app, adapter, tests, and deployment manifest are separate from
+HYWorld2. Only the lightweight World backend/result contracts are shared.
+
 ```text
 caller
   |
