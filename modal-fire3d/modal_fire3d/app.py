@@ -231,6 +231,53 @@ def preload_official_single_image(scene_id: str = FIRE3D_SINGLE_IMAGE_SCENE) -> 
     }
 
 
+@app.function(image=fire3d_image, cpu=4.0, memory=16384, volumes=VOLUMES, timeout=2 * 60 * 60)
+def preload_raw_image_models() -> dict:
+    """Persist FIRE3D + Pi3 model artifacts without allocating a GPU."""
+    import hashlib
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+
+    from huggingface_hub import hf_hub_download
+
+    from modal_fire3d.pi3_preprocessor import (
+        PI3_MODEL_ID,
+        PI3_MODEL_REVISION,
+        PI3_MODEL_SHA256,
+    )
+
+    root = Path(FIRE3D_SOURCE)
+    started = time.perf_counter()
+    models.reload()
+    subprocess.run([sys.executable, "-m", "fire3d", "download", "--models"], cwd=root, check=True)
+    pi3_weights = Path(
+        hf_hub_download(
+            repo_id=PI3_MODEL_ID,
+            filename="model.safetensors",
+            revision=PI3_MODEL_REVISION,
+        )
+    )
+    digest = hashlib.sha256()
+    with pi3_weights.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    actual_sha = digest.hexdigest()
+    if actual_sha != PI3_MODEL_SHA256:
+        raise RuntimeError(
+            f"unexpected Pi3 model.safetensors sha256: {actual_sha} != {PI3_MODEL_SHA256}"
+        )
+    models.commit()
+    return {
+        "revision": FIRE3D_REVISION,
+        "pi3_model": PI3_MODEL_ID,
+        "pi3_sha256": actual_sha,
+        "pi3_weights": str(pi3_weights),
+        "elapsed_s": round(time.perf_counter() - started, 3),
+    }
+
+
 @app.function(
     image=fire3d_image,
     gpu=FIRE3D_GPU,
@@ -408,3 +455,117 @@ def official_single_image_smoke(
         "files": files,
         "stdout_tail": completed.stdout[-10000:],
     }
+
+
+@app.function(
+    image=fire3d_image,
+    gpu=FIRE3D_GPU,
+    cpu=32.0,
+    memory=65536,
+    volumes=VOLUMES,
+    timeout=3 * 60 * 60,
+)
+def raw_image_to_scene(
+    image_bytes: bytes,
+    *,
+    filename: str = "input.png",
+    scene_id: str = "",
+    run_id: str = "",
+    render: bool = False,
+    background_policy: str = "observed_single_image",
+) -> dict:
+    """Run the complete JPG/PNG -> Pi3 -> FIRE3D -> GLB path on one H100."""
+    import uuid
+    from pathlib import Path
+
+    from modal_fire3d.service import execute
+
+    if not image_bytes:
+        raise ValueError("image_bytes is empty")
+    if len(image_bytes) > 64 * 1024 * 1024:
+        raise ValueError("raw image exceeds the 64 MiB request limit")
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png"}:
+        raise ValueError("filename must end in .jpg, .jpeg or .png")
+    if scene_id and (not scene_id.isascii() or not scene_id.isalnum()):
+        raise ValueError("scene_id must contain only ASCII letters and digits")
+    if run_id and (
+        not run_id.isascii() or not all(char.isalnum() or char in "-_" for char in run_id)
+    ):
+        raise ValueError("run_id must contain only ASCII letters, digits, hyphens or underscores")
+
+    models.reload()
+    outputs.reload()
+    build_artifacts.reload()
+    flash_attn = _ensure_flash_attn(verify_cuda=True)
+    pytorch3d = _ensure_pytorch3d(verify_cuda=True)
+
+    resolved_run_id = run_id or uuid.uuid4().hex
+    work_root = Path("/tmp/fire3d-raw") / resolved_run_id
+    work_root.mkdir(parents=True, exist_ok=False)
+    input_path = work_root / f"source{suffix}"
+    input_path.write_bytes(image_bytes)
+    output_root = Path("/outputs") / "raw-image" / resolved_run_id
+    if output_root.exists():
+        raise FileExistsError(f"raw-image run must use a fresh output directory: {output_root}")
+
+    options = {
+        "fire3d_root": FIRE3D_SOURCE,
+        "dataset": "single_image",
+        "skip_render": not render,
+        "skip_existing": False,
+        "background_policy": background_policy,
+    }
+    if scene_id:
+        options["scene_id"] = scene_id
+    result = execute(
+        input_path=str(input_path),
+        output_dir=str(output_root),
+        operation="reconstruct",
+        options=options,
+    )
+    outputs.commit()
+    return {
+        "run_id": resolved_run_id,
+        "backend": result.backend,
+        "operation": result.operation.value,
+        "scene_id": result.metadata.get("scene_id"),
+        "input_kind": result.metadata.get("input_kind"),
+        "preparation": result.metadata.get("preparation"),
+        "flash_attn": flash_attn,
+        "pytorch3d": pytorch3d,
+        "artifacts": [
+            {
+                "kind": artifact.kind,
+                "role": artifact.role,
+                "media_type": artifact.media_type,
+                "path": str(artifact.path),
+                "bytes": artifact.path.stat().st_size if artifact.path.is_file() else None,
+            }
+            for artifact in result.artifacts
+        ],
+    }
+
+
+@app.local_entrypoint()
+def raw_image(
+    image: str,
+    scene_id: str = "",
+    render: bool = False,
+    background_policy: str = "observed_single_image",
+) -> None:
+    """Submit one local JPG/PNG to the complete remote raw-image pipeline."""
+    import json
+    from pathlib import Path
+
+    source = Path(image).expanduser().resolve()
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    result = raw_image_to_scene.remote(
+        source.read_bytes(),
+        filename=source.name,
+        scene_id=scene_id,
+        render=render,
+        background_policy=background_policy,
+    )
+    print(json.dumps(result, indent=2))

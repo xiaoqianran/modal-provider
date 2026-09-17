@@ -7,7 +7,12 @@ name = "modal-fire3d"
 version = "0.1.0"
 description = "Independent FIRE3D reconstruction runtime and dataset adapter"
 requires-python = ">=3.10,<3.13"
-dependencies = ["modal>=1.5,<2", "modal-world>=0.1.0,<0.2"]
+dependencies = [
+    "modal>=1.5,<2",
+    "modal-world>=0.1.0,<0.2",
+    "numpy>=1.26,<3",
+    "pillow>=10",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.8"]

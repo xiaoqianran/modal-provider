@@ -4,6 +4,21 @@
 `2368dd2f3909120cf90bbf8a17807abe9c41e600`。
 本次直接读取官方源码和论文；没有重新执行 H100 推理，也没有下载历史 GLB 核验。
 
+## 2026-09-13 实现更新
+
+下文保留 2026-09-12 审查时的历史判断。其后已补齐 raw-image adapter：当前
+`modal-fire3d` 可接收 JPG/PNG，固定使用论文基线 Pi3（源码 revision
+`9fa3ddb3f8d53041f8b2738df404f62223bbaa7b`，Hub 权重 revision
+`b1a2678bfcdc34b4d3b4b199ea959629782106ff`），生成 FIRE3D `single_image`
+目录契约后进入原 reconstruction path。
+
+实现不是把 Pi3 官方稀疏 PLY 直接塞给 FIRE3D：它保留完整 dense local point map，
+按原图 `floor(H/2) x floor(W/2)` 建立有序点阵；使用 nearest depth + recovered
+pinhole backprojection，低置信度/geometry-edge 位置保留为 NaN。另写入
+`camera.json` 与 `preprocess.json` provenance。Pi3 推理完成后主动释放模型/VRAM，
+再启动 FIRE3D 子进程。当前本地 contract/unit tests 已覆盖该转换；完整任意图片的
+H100 Pi3 -> FIRE3D 质量仍必须用真实远端 E2E 验收，不能由单元测试替代。
+
 ## 独立判断
 
 FIRE3D 的核心是实例级场景重建：感知对象、生成形状与材质、把 canonical

@@ -14,6 +14,9 @@ def test_fire3d_capability_is_reconstruction_only_and_truthful():
     capability = Fire3DBackend().capability
     assert capability.backend == "fire3d"
     assert capability.operations == frozenset({Operation.RECONSTRUCT})
+    assert "prepared_dataset" in capability.inputs
+    assert "image/jpeg" in capability.inputs
+    assert "image/png" in capability.inputs
     assert "world_scene_glb" in capability.outputs
     assert any("aligned RGB + point-cloud" in note for note in capability.notes)
 
@@ -74,3 +77,7 @@ def test_fire3d_runtime_uses_prebuilt_flash_attn_artifact():
     assert '"--force-reinstall"' in app
     assert "sample_farthest_points(points, K=8)" in app
     assert "completed.stdout[-10000:]" in app
+    assert "github.com/yyfz/Pi3.git" in runtime
+    assert "PI3_SOURCE_REVISION" in runtime
+    assert "raw_image_to_scene" in app
+    assert "preload_raw_image_models" in app

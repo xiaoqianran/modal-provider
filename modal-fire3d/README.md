@@ -22,9 +22,19 @@ remain in `../modal-world`. Native wheel builders remain in
 | Outputs | composed scene and canonical object GLBs | existing HYWorld2 artifacts |
 | Data/models/output volumes | `fire3d-data`, `fire3d-models`, `fire3d-output` | HYWorld2 volumes |
 
-FIRE3D consumes processed datasets. An arbitrary JPG/PNG preprocessing service is
-not implemented. Do not advertise raw-image support from the official sample run.
-The current capability input is `prepared_dataset`.
+FIRE3D now supports two reconstruction inputs:
+
+- `prepared_dataset`: the original release-compatible path remains unchanged.
+- JPG/PNG: `modal_fire3d.pi3_preprocessor` runs the paper's pinned Pi3 path, preserves
+  the dense point map, and materializes the exact `single_image` contract before the
+  normal FIRE3D pipeline runs.
+
+The raw-image adapter writes `rgb.jpeg`, ordered `aligned_pcd.ply`, `camera.json`,
+`preprocess.json`, and `single_image_valid.txt`. The PLY always has exactly
+`floor(H/2)*floor(W/2)` vertices; low-confidence and geometry-edge samples remain in
+that ordered lattice as NaN instead of being deleted. Pi3 is released before the
+FIRE3D subprocess starts so its 1B model does not reserve H100 VRAM during the larger
+reconstruction stages.
 
 `uv sync --extra dev` installs the sibling `modal-world` package only to share its
 lightweight backend/result contracts. FIRE3D does not import HYWorld2 adapters,
@@ -34,6 +44,8 @@ sources and the two shared contract modules.
 ```powershell
 uv run pytest -q
 uv run modal deploy -m modal_fire3d.app
+uv run modal run -m modal_fire3d.app::preload_raw_image_models
+uv run modal run -m modal_fire3d.app::raw_image --image path/to/input.png
 uv run modal run -m modal_fire3d.app::official_single_image_smoke
 ```
 

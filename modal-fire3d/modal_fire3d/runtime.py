@@ -21,6 +21,8 @@ FIRE3D_FLASH_ATTN_TAG = "fire3d-flash-attn-py310-cu128-torch271-sm90-v1"
 FIRE3D_FLASH_ATTN_VERSION = "2.7.3"
 FIRE3D_PYTORCH3D_TAG = "fire3d-pytorch3d-py310-cu128-torch271-sm90-v1"
 FIRE3D_PYTORCH3D_VERSION = "0.7.8"
+PI3_SOURCE = "/opt/Pi3"
+PI3_SOURCE_REVISION = "9fa3ddb3f8d53041f8b2738df404f62223bbaa7b"
 
 # The official installer compiles several CUDA extensions. Building from the CUDA
 # devel image supplies nvcc; targeting sm90 keeps the first reproduction path close
@@ -58,6 +60,8 @@ fire3d_image = (
         f"git clone https://github.com/xiahongchi/Fire3D.git {FIRE3D_SOURCE}",
         f"cd {FIRE3D_SOURCE} && git checkout --detach {FIRE3D_REVISION}",
         f"python -m pip install -e '{FIRE3D_SOURCE}[dev]'",
+        f"git clone https://github.com/yyfz/Pi3.git {PI3_SOURCE}",
+        f"cd {PI3_SOURCE} && git checkout --detach {PI3_SOURCE_REVISION}",
         "python -m pip install spconv-cu118==2.3.8",
         "python -m pip install --no-build-isolation 'git+https://github.com/NVlabs/nvdiffrast.git@253ac4fcea7de5f396371124af597e6cc957bfae'",
         "python -m pip install --no-build-isolation 'git+https://github.com/facebookresearch/pytorch3d.git@75ebeeaea0908c5527e7b1e305fbc7681382db47'",
@@ -73,12 +77,14 @@ fire3d_image = (
     .env(
         {
             "FIRE3D_ROOT": FIRE3D_SOURCE,
-            "PYTHONPATH": FIRE3D_SOURCE,
-            "HF_HOME": "/models/huggingface",
-            "HUGGINGFACE_HUB_CACHE": "/models/huggingface/hub",
+            "PI3_ROOT": PI3_SOURCE,
+            "PYTHONPATH": f"{FIRE3D_SOURCE}:{PI3_SOURCE}",
+            "HF_HOME": f"{FIRE3D_SOURCE}/checkpoints/huggingface",
+            "HUGGINGFACE_HUB_CACHE": f"{FIRE3D_SOURCE}/checkpoints/huggingface/hub",
             "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
         }
     )
+    .add_local_python_source("modal_fire3d", "modal_world")
 )
 
 

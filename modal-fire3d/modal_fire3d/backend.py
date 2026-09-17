@@ -16,6 +16,7 @@ from modal_world.backend import (
 from modal_world.contracts import Artifact, Capability, Operation, WorldRequest, WorldResult
 
 from .background_policy import write_background_protocol
+from .preprocess import is_raw_image
 
 FIRE3D_REVISION = "2368dd2f3909120cf90bbf8a17807abe9c41e600"
 OFFICIAL_EXAMPLES = {
@@ -29,16 +30,16 @@ OFFICIAL_EXAMPLES = {
 class Fire3DBackend(WorldBackend):
     """Adapter for the official Fire3D release CLI.
 
-    Single-image runs default to the observed-background repair policy. The current
-    official single-image adapter consumes aligned RGB + point-cloud inputs; it does
-    not yet expose an arbitrary raw-RGB-to-Pi3 preprocessing path.
+    Single-image runs default to the observed-background repair policy. Prepared
+    datasets remain accepted directly; JPG/PNG inputs are first converted into the
+    same native single-image contract through the paper's Pi3 geometry path.
     """
 
     name = "fire3d"
     _capability = Capability(
         backend=name,
         operations=frozenset({Operation.RECONSTRUCT}),
-        inputs=frozenset({"prepared_dataset"}),
+        inputs=frozenset({"prepared_dataset", "image/jpeg", "image/png"}),
         outputs=frozenset(
             {
                 "world_scene_glb",
@@ -52,8 +53,9 @@ class Fire3DBackend(WorldBackend):
         notes=(
             "single-image background preserves observations; official policy remains selectable",
             "single_image_v1 expects aligned RGB + point-cloud release input",
+            "raw JPG/PNG is prepared with Pi3 into the native ordered point-grid contract",
             "foreground objects are exported as independent canonical GLBs",
-            "arbitrary raw RGB preprocessing via Pi3 is not yet wired",
+            "raw-image geometry uses the Pi3 single-camera reference frame; gravity is not invented",
         ),
     )
 
@@ -85,8 +87,55 @@ class Fire3DBackend(WorldBackend):
         dataset = str(options.get("dataset", "single_image"))
         if dataset not in OFFICIAL_EXAMPLES:
             raise ValueError(f"unsupported Fire3D release dataset: {dataset}")
-        scene_id = str(options.get("scene_id") or OFFICIAL_EXAMPLES[dataset])
-        data_root = Path(str(options.get("data_root") or request.input_path)).expanduser().resolve()
+        raw_image = is_raw_image(request.input_path)
+        input_kind = "raw_image" if raw_image else "prepared_dataset"
+        preparation: dict[str, Any] | None = None
+        requested_scene_id = options.get("scene_id")
+        if raw_image:
+            if dataset != "single_image":
+                raise ValueError("raw JPG/PNG input is supported only for the single_image dataset")
+            if options.get("data_root"):
+                raise ValueError("data_root cannot be supplied for raw JPG/PNG input")
+            from .pi3_preprocessor import (
+                PI3_CONFIDENCE_THRESHOLD,
+                PI3_EDGE_RTOL,
+                PI3_PIXEL_LIMIT,
+                PI3_SOURCE,
+                prepare_raw_image,
+                release_pi3_models,
+            )
+
+            try:
+                prepared = prepare_raw_image(
+                    request.input_path,
+                    data_root=request.output_dir / "_prepared_input",
+                    scene_id=str(requested_scene_id) if requested_scene_id else None,
+                    pi3_root=Path(
+                        str(options.get("pi3_root") or os.environ.get("PI3_ROOT") or PI3_SOURCE)
+                    ),
+                    device=str(options.get("pi3_device", "cuda")),
+                    pixel_limit=int(options.get("pi3_pixel_limit", PI3_PIXEL_LIMIT)),
+                    confidence_threshold=float(
+                        options.get("pi3_confidence_threshold", PI3_CONFIDENCE_THRESHOLD)
+                    ),
+                    edge_rtol=float(options.get("pi3_edge_rtol", PI3_EDGE_RTOL)),
+                    jpeg_quality=int(options.get("jpeg_quality", 95)),
+                )
+            finally:
+                # FIRE3D runs in a child process and needs the full H100 budget.
+                # Do not leave the 1B Pi3 model resident in the parent process.
+                release_pi3_models()
+            scene_id = prepared.scene_id
+            data_root = prepared.data_root
+            preparation = {
+                "manifest": str(prepared.manifest_path),
+                "dataset_root": str(prepared.dataset_root),
+                "scene_dir": str(prepared.scene_dir),
+                "valid_ratio": prepared.valid_ratio,
+            }
+        else:
+            scene_id = str(requested_scene_id or OFFICIAL_EXAMPLES[dataset])
+            data_root = Path(str(options.get("data_root") or request.input_path)).expanduser().resolve()
         python = str(options.get("python", sys.executable))
         skip_render = bool(options.get("skip_render", True))
         skip_existing = bool(options.get("skip_existing", False))
@@ -163,9 +212,11 @@ class Fire3DBackend(WorldBackend):
             metadata={
                 "official_revision": FIRE3D_REVISION,
                 "dataset": dataset,
+                "input_kind": input_kind,
                 "background_policy": background_policy,
                 "scene_id": scene_id,
                 "skip_render": skip_render,
+                "preparation": preparation,
                 "summary": summary,
                 "artifact_count": len(artifacts),
                 "stdout_tail": completed.stdout[-6000:],
