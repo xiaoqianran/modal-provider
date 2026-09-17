@@ -351,8 +351,14 @@ class Store:
                 ) VALUES(?,?,?,?,?,?,?,?)
                 """,
                 (
-                    row["id"], row["owner_client"], row["owner_origin"], row["role"],
-                    row["mime"], row["bytes"], row["hash"], row["created_at"],
+                    row["id"],
+                    row["owner_client"],
+                    row["owner_origin"],
+                    row["role"],
+                    row["mime"],
+                    row["bytes"],
+                    row["hash"],
+                    row["created_at"],
                 ),
             )
 
@@ -418,7 +424,7 @@ class Store:
             params.append(mime)
         with self.connect() as db:
             row = db.execute(
-                f'SELECT COUNT(*) FROM uploaded_artifacts WHERE {" AND ".join(where)}',
+                f"SELECT COUNT(*) FROM uploaded_artifacts WHERE {' AND '.join(where)}",
                 params,
             ).fetchone()
         return int(row[0])

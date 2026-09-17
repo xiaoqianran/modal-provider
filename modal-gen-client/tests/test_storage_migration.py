@@ -51,9 +51,7 @@ def test_v1_database_migrates_provider_state_column(tmp_path: Path):
     try:
         version = db.execute("PRAGMA user_version").fetchone()[0]
         columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
-        uploaded_columns = {
-            row[1] for row in db.execute("PRAGMA table_info(uploaded_artifacts)")
-        }
+        uploaded_columns = {row[1] for row in db.execute("PRAGMA table_info(uploaded_artifacts)")}
     finally:
         db.close()
     assert version == 4

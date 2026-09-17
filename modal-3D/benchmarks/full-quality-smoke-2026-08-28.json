@@ -282,7 +282,7 @@
       "deployment": {
         "source": "TencentARC/Pixal3D",
         "source_revision": "cdbb2bbffbf4e6f298b5f2af3d1d76a8d823d2af",
-        "build_artifact": "pixal3d-py310-cu124-torch260-sm89-v1",
+        "build_artifact": "pixal3d-py310-cu124-torch260-sm89-fa2-v1",
         "base_model": "TencentARC/Pixal3D",
         "base_model_revision": "0b31f9160aa400719af409098bff7936a932f726",
         "adapter_revision": "modal-3d.worker-adapter.v3"

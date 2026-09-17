@@ -466,13 +466,15 @@ class DeploymentService:
                 client,
                 environment_name,
                 on_phase=(
-                    (lambda phase: on_phase(
-                        {
-                            "checking_weights": "checking_prerequisites",
-                            "downloading_weights": "preparing_prerequisites",
-                            "verifying_weights": "verifying_prerequisites",
-                        }.get(phase, phase)
-                    ))
+                    (
+                        lambda phase: on_phase(
+                            {
+                                "checking_weights": "checking_prerequisites",
+                                "downloading_weights": "preparing_prerequisites",
+                                "verifying_weights": "verifying_prerequisites",
+                            }.get(phase, phase)
+                        )
+                    )
                     if on_phase is not None
                     else None
                 ),
