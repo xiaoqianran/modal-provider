@@ -23,11 +23,11 @@ from modal_3d.operations import (
     RESULT_CONTRACT,
     SPECS,
     capabilities,
+    input_mimes_for,
     options_for,
     request_key,
     required_roles_for,
     revision_for,
-    input_mimes_for,
     validate_descriptor,
     worker_for,
 )
