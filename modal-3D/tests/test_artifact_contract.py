@@ -80,6 +80,44 @@ class ArtifactContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "COLOR_0"):
             validate_glb_quality(self._write(data), "vertex_color")
 
+    def test_base_color_guard_accepts_embedded_texture_without_metallic_map(self) -> None:
+        data = quality_glb_bytes(
+            {
+                "meshes": [
+                    {
+                        "primitives": [
+                            {"attributes": {"POSITION": 0, "TEXCOORD_0": 1}, "material": 0}
+                        ]
+                    }
+                ],
+                "materials": [
+                    {"pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}}
+                ],
+                "textures": [{"source": 0}],
+                "images": [{"mimeType": "image/png", "bufferView": 0}],
+                "bufferViews": [{"byteLength": 128}],
+            }
+        )
+        result = validate_glb_quality(self._write(data), "base_color_textured")
+        self.assertTrue(result["has_base_color_texture"])
+        self.assertFalse(result["has_metallic_roughness_texture"])
+
+    def test_base_color_guard_rejects_missing_embedded_texture(self) -> None:
+        data = quality_glb_bytes(
+            {
+                "meshes": [
+                    {
+                        "primitives": [
+                            {"attributes": {"POSITION": 0, "TEXCOORD_0": 1}, "material": 0}
+                        ]
+                    }
+                ],
+                "materials": [{"pbrMetallicRoughness": {}}],
+            }
+        )
+        with self.assertRaisesRegex(ValueError, "embedded base-color"):
+            validate_glb_quality(self._write(data), "base_color_textured")
+
     def test_pbr_guard_accepts_webp_extension_textures(self) -> None:
         data = quality_glb_bytes(
             {

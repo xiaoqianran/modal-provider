@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCENES_PATH = ROOT / "benchmarks/full-quality-scenes-2026-08-28.json"
 SMOKE_PATH = ROOT / "benchmarks/full-quality-smoke-2026-08-28.json"
 STATION_COLD_PATH = ROOT / "benchmarks/station-canonical-cold-e2e-2026-09-08.json"
+FASTSAM_TEXTURED_PATH = ROOT / "benchmarks/fastsam3d-full-textured-2026-09-21.json"
 CAPABILITIES = {item["id"]: item for item in (FASTSAM, HUNYUAN, HERMIT, PIXAL)}
 
 
@@ -58,8 +59,18 @@ class BenchmarkRecordTests(unittest.TestCase):
         advertised = [model["id"] for model in capabilities_document([FASTSAM, HUNYUAN, PIXAL, HERMIT])["models"]]
         self.assertEqual(advertised, record["order"])
         for capability in CAPABILITIES.values():
-            self.assertEqual(capability["reference"]["benchmark"], "benchmarks/station-canonical-cold-e2e-2026-09-08.json")
-            self.assertEqual(capability["reference"]["metric"], "local_artifact_e2e_s")
+            if capability["id"] == "fastsam3d-plus-plus":
+                self.assertEqual(
+                    capability["reference"]["benchmark"],
+                    "benchmarks/fastsam3d-full-textured-2026-09-21.json",
+                )
+                self.assertEqual(capability["reference"]["metric"], "worker_job_total_s")
+            else:
+                self.assertEqual(
+                    capability["reference"]["benchmark"],
+                    "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
+                )
+                self.assertEqual(capability["reference"]["metric"], "local_artifact_e2e_s")
 
     def test_smoke_record_matches_current_quality_profiles(self) -> None:
         smoke = json.loads(SMOKE_PATH.read_text())
@@ -73,19 +84,63 @@ class BenchmarkRecordTests(unittest.TestCase):
             capability = CAPABILITIES[model_id]
             recommended = next(profile for profile in capability["profiles"] if profile["id"] == "recommended")
             self.assertEqual(record["status"], "passed")
-            self.assertEqual(record["options"], recommended["options"])
-            self.assertEqual(record["quality"], recommended["quality"])
+            if model_id == "fastsam3d-plus-plus":
+                # This immutable smoke predates the restored textured path. It
+                # records the old vertex-color shortcut, now represented by the
+                # explicit `fast` profile rather than `recommended`.
+                self.assertEqual(record["options"], {"dmd_interval": 1, "dmd_history": 5})
+                self.assertNotEqual(record["options"], recommended["options"])
+                self.assertEqual(capability["reference"]["profile_id"], "recommended")
+            else:
+                self.assertEqual(record["options"], recommended["options"])
+                self.assertEqual(record["quality"], recommended["quality"])
             # `adapter_revision` is a runtime-contract marker stamped into the
             # manifest, not part of the physical deployment a benchmark ran
             # against. Historical records keep the revision they were taken with.
-            self.assertEqual(
-                {k: v for k, v in record["deployment"].items() if k != "adapter_revision"},
-                {k: v for k, v in capability["deployment"].items() if k != "adapter_revision"},
-            )
+            if model_id == "fastsam3d-plus-plus":
+                self.assertEqual(
+                    record["deployment"]["build_artifact"],
+                    "fastsam3d-pytorch3d-py311-cu121-torch251-sm89-v1",
+                )
+                self.assertEqual(
+                    capability["deployment"]["build_artifact"],
+                    "fastsam3d-native-py311-cu121-torch251-sm89-v3",
+                )
+                self.assertNotIn("gsplat_revision", record["deployment"])
+                self.assertNotIn("nvdiffrast_revision", record["deployment"])
+                self.assertIn("gsplat_revision", capability["deployment"])
+                self.assertIn("nvdiffrast_revision", capability["deployment"])
+            else:
+                self.assertEqual(
+                    {k: v for k, v in record["deployment"].items() if k != "adapter_revision"},
+                    {k: v for k, v in capability["deployment"].items() if k != "adapter_revision"},
+                )
             self.assertEqual(record["result"]["model"], model_id)
             self.assertEqual(record["result"]["artifact"]["glb_version"], 2)
             self.assertGreater(record["result"]["artifact"]["bytes"], 0)
             self.assertGreater(record["result"]["timing"]["inference_s"], 0)
+
+    def test_restored_fastsam_textured_smoke_is_current_reference(self) -> None:
+        record = json.loads(FASTSAM_TEXTURED_PATH.read_text())
+        self.assertEqual(record["schema"], "modal-3d.fastsam3d-full-textured-smoke.v1")
+        self.assertEqual(record["status"], "passed")
+        self.assertEqual(record["profile_id"], "recommended")
+        self.assertEqual(record["options"]["asset_mode"], "textured")
+        self.assertEqual(record["deployment"]["build_artifact"], "fastsam3d-native-py311-cu121-torch251-sm89-v3")
+        self.assertEqual(record["deployment"]["nvdiffrast_revision"], FASTSAM["deployment"]["nvdiffrast_revision"])
+        artifact = record["result"]["artifact"]
+        quality = artifact["quality"]
+        self.assertEqual(artifact["glb_version"], 2)
+        self.assertGreater(artifact["bytes"], 0)
+        self.assertEqual(quality["profile"], "base_color_textured")
+        self.assertTrue(quality["has_base_color_texture"])
+        self.assertFalse(quality["has_vertex_color"])
+        metrics = record["result"]["metrics"]
+        self.assertTrue(metrics["mesh_postprocess"])
+        self.assertTrue(metrics["texture_baking"])
+        self.assertTrue(metrics["layout_postprocess"])
+        self.assertGreater(record["result"]["timing"]["inference_s"], 0)
+        self.assertEqual(FASTSAM["reference"]["benchmark"], "benchmarks/fastsam3d-full-textured-2026-09-21.json")
 
     def test_smoke_records_full_quality_hunyuan(self) -> None:
         smoke = json.loads(SMOKE_PATH.read_text())

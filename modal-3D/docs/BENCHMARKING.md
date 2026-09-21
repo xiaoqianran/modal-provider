@@ -6,7 +6,7 @@ Paid GPU benchmarks are **dry-run by default**. A full matrix is never the first
 
 | Model | Recommended benchmark profile | Quality status |
 | --- | --- | --- |
-| FastSAM3D++ | Fast-SAM3D official acceleration recipe, DMD off, runtime SS=25 / SLaT=25 | accelerated reference |
+| FastSAM3D++ | Fast-SAM3D++ generation, DMD off, runtime SS=25 / SLaT=25, full mesh postprocess + texture baking + layout postprocess | full-quality; verified 2026-09-21 |
 | Hunyuan2.1++ | base shape, 50 steps, Paint 6 views / 512, PBR, `paint_remesh=true` | full-quality; smoke required after remesh correction |
 | Hermite-TRELLIS2++ | 1536 cascade, stock/base sampler, 4096 PBR, official remesh/to_glb | full-quality |
 | Pixal3D | standard 1536 cascade, 12/12/12 sampler defaults, 49152 tokens, 4096 PBR | full-quality |
@@ -64,4 +64,8 @@ Every recommended capability profile declares a quality tier and verification me
 
 ## 2026-08-28 smoke result
 
-All four production profiles passed the same repaired RGB+alpha biplane input. Worker inference times were FastSAM3D++ 5.01s, Hunyuan2.1++ 83.63s (29.89s shape + 53.74s paint), Hermite-TRELLIS2++ 228.82s, and Pixal3D 260.31s. See `benchmarks/full-quality-smoke-2026-08-28.json` for exact artifacts and metrics. This smoke validates correctness; it does not replace a multi-scene latency distribution.
+Historical note: the 2026-08-28 FastSAM3D++ result (5.01s) used the former vertex-color shortcut and now maps to the explicit `fast` profile; it does **not** validate the restored `recommended` textured path. Hunyuan2.1++ (83.63s), Hermite-TRELLIS2++ (228.82s), and Pixal3D (260.31s) remain historical records for their respective profiles. See `benchmarks/full-quality-smoke-2026-08-28.json` for the immutable record.
+
+## 2026-09-21 FastSAM3D restored textured smoke
+
+`benchmarks/fastsam3d-full-textured-2026-09-21.json` is the current FastSAM3D++ `recommended` reference. Modal L40S produced an embedded-base-color textured GLB with mesh postprocess, texture baking and layout postprocess all enabled. Inference was 35.71 s, worker job total 37.27 s, startup 32.30 s, and peak allocated VRAM about 17.02 GiB. The native runtime bundle is `fastsam3d-native-py311-cu121-torch251-sm89-v3` and contains validated PyTorch3D, gsplat and nvdiffrast wheels.

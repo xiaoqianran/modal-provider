@@ -1,42 +1,79 @@
 # FastSAM3D-plus-plus / L40S
 
-Production single-object geometry worker for `Archerkattri/fastsam3d-plus-plus`, pinned at `36191e4`.
+Production single-object **textured asset** worker for `Archerkattri/fastsam3d-plus-plus`, pinned at `36191e4`.
 
-Runtime policy: `min_containers=0`, `scaledown_window=120`. The capability reports warm wall time (`6.06s`) separately from a conservative production cold-start reference (`60s`). The mmap checkpoint loader has shown startup profiles between roughly 28s and 58s on L40S depending on cache state, without changing model weights, precision, or sampling steps.
+The default `recommended` profile is the full asset path: Fast-SAM3D++ generation followed by mesh postprocess, texture baking and layout postprocess. The former provider shortcut is preserved only as the explicit `fast` profile and exports a vertex-color GLB.
 
-Submissions are spawned directly on `Model.generate_job`, the same entrypoint every worker now exposes. It reads the uploaded canonical input, validates it, runs inference, validates the GLB, and returns the normalized generation-result contract — all inside the GPU container, so there is no CPU adapter hop and no gateway.
+Submissions are spawned directly on `Model.generate_job`. It reads the uploaded canonical input, validates it, runs inference, validates the resulting GLB against the selected appearance contract, and returns the normalized generation-result contract inside the GPU container.
 
 - GPU: L40S / `sm_89`
 - CUDA: 12.1.1
 - PyTorch: 2.5.1+cu121
 - sparse backend: spconv 2.3.8
 - attention backend: PyTorch SDPA
-- PyTorch3D: build-time compile, pinned commit
+- native bundle: `fastsam3d-native-py311-cu121-torch251-sm89-v3`
+- PyTorch3D: pinned prebuilt wheel
+- Gaussian texture-observation renderer: pinned `gsplat` wheel
+- mesh/raster postprocess: pinned `nvdiffrast` wheel
+- texture optimizer: PyTorch3D
 - input: pre-matted RGBA
-- output: vertex-color GLB
+- default output: embedded base-color textured GLB
+- `fast` output: vertex-color GLB
 - one resident GPU model, `max_containers=1`
-- no runtime compilation
+- no runtime model compilation
 
-CPU-only `sync_weights()` pins Meta SAM 3D Objects and MoGe revisions, then deterministically generates Fast-SAM3D's two missing `*_faster.yaml` configs from the pinned baseline configs. The final weight Volume is about 12.76 GiB.
+## Profiles
 
-The worker keeps Fast-SAM3D's native acceleration path enabled: `ShortCut_faster` for sparse-structure generation, token carving in the slat stage, and the HFER mesh policy. HiCache++ DMD remains available but defaults to **off** (`dmd_interval=1`).
-
-This is explicitly the **Fast-SAM3D accelerated profile**, not the dense Meta SAM 3D Objects baseline. The underlying generator YAMLs declare SS `2` / SLaT `12`, but the deployed pipeline overrides both runtime `inference_steps` to **25 / 25**; production logs and the 2026-08-28 full-quality smoke confirm those runtime values. Acceleration comes from the public Fast-SAM3D stride/cache and token-carving recipe, not from silently lowering the runtime step count.
-
-The deployed top-level `generate(input_path, options)` adapter was also validated with no DMD option supplied; it resolved to `dmd_interval=1 / dmd_enabled=false` and produced a valid GLB.
-
-On the L40S chair smoke, a fair same-container warm comparison was:
+### `recommended`
 
 ```text
-interval=1 (DMD off)  2.579s
-interval=3            2.600s
-interval=4            2.636s
-interval=6            2.652s
+Fast-SAM3D++ SS generation
+→ SLaT generation
+→ mesh + Gaussian decode
+→ mesh postprocess
+→ multi-view texture observation
+→ UV parameterization / optimized texture baking
+→ layout postprocess
+→ textured GLB
 ```
 
-The first control inference was 5.73s because it included first-inference warm-up effects; comparing that run with later DMD calls would falsely suggest a ~2x DMD speedup. The steady-state comparison shows no DMD benefit for this workload, so production does not enable it by default.
+Runtime flags are equivalent to:
 
-All tested outputs were watertight with zero boundary and non-manifold edges. DMD changed surface geometry slightly (~0.35–0.38% normalized symmetric surface distance versus control) without reducing warm latency.
+```python
+with_mesh_postprocess=True
+with_texture_baking=True
+with_layout_postprocess=True
+use_vertex_color=False
+```
+
+The runtime image therefore keeps the postprocess dependencies that the old provider patch removed: `xatlas`, `pyvista`, `pymeshfix`, `igraph`, `open3d`, plus pinned `gsplat` and `nvdiffrast` native wheels. The `slat_decoder_gs_4` config and checkpoint also remain enabled in the derived pipeline configuration.
+
+The restored path is **verified** by `benchmarks/fastsam3d-full-textured-2026-09-21.json`. On Modal L40S, the biplane smoke produced a 1,842,756-byte GLB with embedded base-color texture, no vertex-color fallback, `mesh_postprocess=true`, `texture_baking=true`, and `layout_postprocess=true`. Worker inference was 35.71 s, worker job total was 37.27 s, startup was 32.30 s, and peak allocated VRAM was about 17.02 GiB.
+
+### `fast`
+
+The old provider behavior remains available explicitly:
+
+```python
+with_mesh_postprocess=False
+with_texture_baking=False
+with_layout_postprocess=False
+use_vertex_color=True
+```
+
+This profile is useful when latency matters more than full asset finishing, but it is no longer the default and must not be described as equivalent to the full textured pipeline.
+
+## Generator acceleration
+
+Both profiles keep Fast-SAM3D's native acceleration path: `ShortCut_faster` for sparse-structure generation, token carving in the SLaT stage, and the HFER mesh policy. HiCache++ DMD remains available but defaults to off (`dmd_interval=1`). These acceleration mechanisms are separate from the asset-finishing profile.
+
+The underlying generator YAMLs declare SS `2` / SLaT `12`, while the deployed pipeline overrides runtime `inference_steps` to 25 / 25. No runtime step count was reduced as part of the full-path restoration.
+
+## Historical benchmark note
+
+The earlier L40S warm measurements (roughly 2.6–6 seconds worker inference depending on warm-up) and the 2026-08-28 / 2026-09-08 records were produced by the vertex-color shortcut. They now belong to the `fast` profile only. They must not be used as the latency or quality baseline for `recommended`.
+
+## Deploy
 
 ```bash
 modal run -m modal_3d.fastsam3d_plus_plus::sync_weights

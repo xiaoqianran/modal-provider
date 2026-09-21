@@ -22,8 +22,10 @@ MOGE_COMMIT = "a8c37341bc0325ca99b9d57981cc3bb2bd3e255b"
 UTILS3D_COMMIT = "3913c65d81e05e47b9f367250cf8c0f7462a0900"
 DINO_COMMIT = "7764ea0f912e53c92e82eb78a2a1631e92725fc8"
 PYTORCH3D_COMMIT = "75ebeeaea0908c5527e7b1e305fbc7681382db47"
-BUILD_TAG = "fastsam3d-pytorch3d-py311-cu121-torch251-sm89-v1"
-PYTORCH3D_WHEELS_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{BUILD_TAG}/{BUILD_TAG}.wheels.zip"
+GSPLAT_COMMIT = "2323de5905d5e90e035f792fe65bad0fedd413e7"
+NVDIFFRAST_COMMIT = "253ac4fcea7de5f396371124af597e6cc957bfae"
+BUILD_TAG = "fastsam3d-native-py311-cu121-torch251-sm89-v3"
+NATIVE_WHEELS_URL = f"https://github.com/xiaoqianran/modal-build/releases/download/{BUILD_TAG}/{BUILD_TAG}.wheels.zip"
 
 # These paths are interpreted by Linux image-build/runtime code. PurePosixPath
 # keeps their spelling stable when the deployment command itself runs on Windows.
@@ -95,18 +97,23 @@ CAPABILITY = worker_capability(
     "fastsam3d-plus-plus",
     "FastSAM3D++",
     APP_NAME,
-    "最快的彩色资产生成；vertex-color GLB",
+    "完整 Fast-SAM3D++ 纹理资产生成；默认保留 mesh/texture/layout 后处理，fast profile 提供 vertex-color 快路径",
     {
         "seed": {"type": "integer", "default": 42, "minimum": 0, "maximum": 4294967295},
+        "asset_mode": {
+            "type": "string",
+            "default": "textured",
+            "enum": ["textured", "vertex_color"],
+        },
         "dmd_interval": {"type": "integer", "default": 1, "minimum": 1, "maximum": 12},
         "dmd_history": {"type": "integer", "default": 5, "minimum": 4, "maximum": 25},
     },
-    profile={"dmd_interval": 1, "dmd_history": 5},
-    profile_name="推荐 · Fast-SAM3D 加速",
+    profile={"asset_mode": "textured", "dmd_interval": 1, "dmd_history": 5},
+    profile_name="推荐 · 完整纹理资产",
     profile_metadata={
         "quality": {
-            "tier": "accelerated",
-            "basis": "wlfeng0509/Fast-SAM3D official acceleration recipe",
+            "tier": "full_quality",
+            "basis": "Fast-SAM3D++ accelerated generator with full SAM3D mesh postprocess, optimized texture baking, and layout postprocess",
             "sampler": {
                 "runtime_ss_steps": 25,
                 "runtime_slat_steps": 25,
@@ -115,17 +122,18 @@ CAPABILITY = worker_capability(
                 "ss_cache_stride": 3,
                 "slat_carving_ratio": 0.1,
             },
+            "appearance": "base_color_texture",
             "verification": {
                 "status": "verified",
-                "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json",
+                "benchmark": "benchmarks/fastsam3d-full-textured-2026-09-21.json",
             },
         }
     },
     reference_metadata={
-        "status": "stale",
-        "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
-        "metric": "local_artifact_e2e_s",
-        "e2e_seconds": 66.26,
+        "status": "verified",
+        "benchmark": "benchmarks/fastsam3d-full-textured-2026-09-21.json",
+        "metric": "worker_job_total_s",
+        "e2e_seconds": 37.266964525,
         "profile_id": "recommended",
     },
     output="textured",
@@ -134,10 +142,12 @@ CAPABILITY = worker_capability(
         "source_revision": FORK_COMMIT,
         "sam_revision": SAM_REVISION,
         "pytorch3d_revision": PYTORCH3D_COMMIT,
+        "gsplat_revision": GSPLAT_COMMIT,
+        "nvdiffrast_revision": NVDIFFRAST_COMMIT,
         "build_artifact": BUILD_TAG,
     },
     warm_seconds=3.80,
-    cold_start_seconds=62.46,
+    cold_start_seconds=32.30,
     generation_entrypoint={
         "kind": "class_method",
         "class_name": "Model",
@@ -145,6 +155,46 @@ CAPABILITY = worker_capability(
     },
     priority=10,
 )
+CAPABILITY["profiles"].append(
+    {
+        "id": "fast",
+        "name": "Fast · Vertex Color",
+        "options": {"asset_mode": "vertex_color", "dmd_interval": 1, "dmd_history": 5},
+        "quality": {
+            "tier": "accelerated",
+            "basis": "Provider fast path: skip mesh/layout postprocess and texture baking, export vertex colors",
+            "appearance": "vertex_color",
+            "verification": {
+                "status": "stale",
+                "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
+            },
+        },
+    }
+)
+
+_ASSET_POLICIES = {
+    "textured": {
+        "with_mesh_postprocess": True,
+        "with_texture_baking": True,
+        "with_layout_postprocess": True,
+        "use_vertex_color": False,
+        "quality_profile": "base_color_textured",
+    },
+    "vertex_color": {
+        "with_mesh_postprocess": False,
+        "with_texture_baking": False,
+        "with_layout_postprocess": False,
+        "use_vertex_color": True,
+        "quality_profile": "vertex_color",
+    },
+}
+
+
+def _asset_policy(asset_mode: str) -> dict:
+    try:
+        return _ASSET_POLICIES[asset_mode]
+    except KeyError as exc:
+        raise ValueError(f"asset_mode must be one of: {sorted(_ASSET_POLICIES)}") from exc
 
 
 PATCH = Path(__file__).parent / "patches/fastsam3d.patch"
@@ -173,6 +223,14 @@ runtime_image = (
         "scipy==1.14.1",
         "hydra-core==1.3.2",
         "omegaconf==2.3.0",
+        "igraph==0.11.8",
+        "jaxtyping==0.2.36",
+        "ninja==1.11.1.3",
+        "rich==13.9.4",
+        "open3d==0.18.0",
+        "pymeshfix==0.17.0",
+        "pyvista==0.44.2",
+        "xatlas==0.0.9",
         "loguru==0.7.2",
         "easydict==1.13",
         "einops==0.8.0",
@@ -204,11 +262,12 @@ runtime_image = (
         f"git -C {SRC} apply --check /tmp/fastsam3d.patch && git -C {SRC} apply /tmp/fastsam3d.patch",
     )
     .run_commands(
-        f"curl -fL '{PYTORCH3D_WHEELS_URL}' -o /tmp/pytorch3d-wheels.zip && "
-        "mkdir -p /tmp/pytorch3d-wheels && unzip -q /tmp/pytorch3d-wheels.zip -d /tmp/pytorch3d-wheels && "
-        "uv pip install --system --no-deps /tmp/pytorch3d-wheels/*.whl",
-        'python -c "import torch, pytorch3d; from pytorch3d.renderer import MeshRasterizer; '
-        "assert torch.__version__.startswith('2.5.1'); print(pytorch3d.__file__, MeshRasterizer)\"",
+        f"curl -fL '{NATIVE_WHEELS_URL}' -o /tmp/fastsam3d-native-wheels.zip && "
+        "mkdir -p /tmp/fastsam3d-native-wheels && unzip -q /tmp/fastsam3d-native-wheels.zip -d /tmp/fastsam3d-native-wheels && "
+        "python -m pip install --no-deps /tmp/fastsam3d-native-wheels/*.whl",
+        'python -c "import torch, pytorch3d, gsplat, nvdiffrast.torch as dr; from pytorch3d.renderer import MeshRasterizer; from gsplat import rasterization; '
+        "assert torch.__version__.startswith('2.5.1'); assert callable(rasterization); print(pytorch3d.__file__, gsplat.__file__, dr.__file__, MeshRasterizer)\"",
+        "python -m pip check",
     )
     .run_commands(
         f"python {SRC}/patching/hydra",
@@ -290,14 +349,6 @@ def sync_weights() -> dict:
         ("ss_generator.yaml", "ss_generator_faster.yaml"),
         ("slat_generator.yaml", "slat_generator_faster.yaml"),
         ("compile_model: true", "compile_model: false"),
-        (
-            "slat_decoder_gs_4_config_path: slat_decoder_gs_4.yaml",
-            "slat_decoder_gs_4_config_path: null",
-        ),
-        (
-            "slat_decoder_gs_4_ckpt_path: slat_decoder_gs_4.ckpt",
-            "slat_decoder_gs_4_ckpt_path: null",
-        ),
     ):
         if old not in pipeline:
             raise RuntimeError(f"pipeline config changed: missing {old}")
@@ -406,6 +457,7 @@ class Model:
         self,
         image_bytes: bytes,
         seed: int = 42,
+        asset_mode: str = "textured",
         dmd_interval: int = 1,
         dmd_history: int = 5,
     ) -> dict:
@@ -415,6 +467,7 @@ class Model:
 
         if not 0 <= seed <= 4294967295:
             raise ValueError("seed must be between 0 and 4294967295")
+        policy = _asset_policy(asset_mode)
         if not 1 <= dmd_interval <= 12:
             raise ValueError("dmd_interval must be between 1 and 12")
         if not 4 <= dmd_history <= 25:
@@ -454,10 +507,10 @@ class Model:
             None,
             seed,
             stage1_only=False,
-            with_mesh_postprocess=False,
-            with_texture_baking=False,
-            with_layout_postprocess=False,
-            use_vertex_color=True,
+            with_mesh_postprocess=policy["with_mesh_postprocess"],
+            with_texture_baking=policy["with_texture_baking"],
+            with_layout_postprocess=policy["with_layout_postprocess"],
+            use_vertex_color=policy["use_vertex_color"],
         )
         torch.cuda.synchronize()
         inference_s = time.perf_counter() - t0
@@ -482,6 +535,10 @@ class Model:
             "moge_revision": MOGE_REVISION,
             "gpu": torch.cuda.get_device_name(),
             "seed": seed,
+            "asset_mode": asset_mode,
+            "mesh_postprocess": policy["with_mesh_postprocess"],
+            "texture_baking": policy["with_texture_baking"],
+            "layout_postprocess": policy["with_layout_postprocess"],
             "dmd_interval": dmd_interval,
             "dmd_enabled": dmd_interval > 1,
             "dmd_history": dmd_history,
@@ -513,11 +570,13 @@ class Model:
         Input reading, canonical validation, GLB validation and result
         normalization all happen here so no CPU adapter function is needed.
         """
+        resolved_options = dict(options or {})
+        policy = _asset_policy(str(resolved_options.get("asset_mode", "textured")))
         return run_generation_job(
             CAPABILITY["id"],
             artifacts,
             self._generate,
             input_path,
-            options,
-            quality_profile="vertex_color",
+            resolved_options,
+            quality_profile=policy["quality_profile"],
         )

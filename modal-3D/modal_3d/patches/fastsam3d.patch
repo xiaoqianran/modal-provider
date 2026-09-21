@@ -97,26 +97,6 @@ index 583b5e3..60aa79f 100644
 -        return vd, faces, s_edges, edge_indices, vd_color
 \ No newline at end of file
 +        return vd, faces, s_edges, edge_indices, vd_color
-diff --git a/sam3d_objects/model/backbone/tdfy_dit/utils/postprocessing_utils.py b/sam3d_objects/model/backbone/tdfy_dit/utils/postprocessing_utils.py
-index de7a4da..f577aa7 100644
---- a/sam3d_objects/model/backbone/tdfy_dit/utils/postprocessing_utils.py
-+++ b/sam3d_objects/model/backbone/tdfy_dit/utils/postprocessing_utils.py
-@@ -7,15 +7,9 @@ from PIL import Image
- from tqdm import tqdm
- import trimesh
- import trimesh.visual
--import xatlas
--import pyvista as pv
--from pymeshfix import _meshfix
--import igraph
- import cv2
- from PIL import Image
- from .random_utils import sphere_hammersley_sequence
--from .render_utils import render_multiview
--from ..renderers import GaussianRenderer
- from ..representations import Strivec, Gaussian, MeshExtractResult
- from loguru import logger
- 
 diff --git a/sam3d_objects/model/io.py b/sam3d_objects/model/io.py
 index 9d05de6..10f7115 100644
 --- a/sam3d_objects/model/io.py
@@ -255,3 +235,14 @@ index d1b627f..f4e8e7d 100644
 -    return bbox_area / total_area
 \ No newline at end of file
 +    return bbox_area / total_area
+diff --git a/sam3d_objects/model/backbone/tdfy_dit/utils/render_utils.py b/sam3d_objects/model/backbone/tdfy_dit/utils/render_utils.py
+--- a/sam3d_objects/model/backbone/tdfy_dit/utils/render_utils.py
++++ b/sam3d_objects/model/backbone/tdfy_dit/utils/render_utils.py
+@@ -190,6 +190,6 @@ def render_multiview(sample, resolution=512, nviews=30):
+         sample,
+         extrinsics,
+         intrinsics,
+-        {"resolution": resolution, "bg_color": (0, 0, 0)},
++        {"resolution": resolution, "bg_color": (0, 0, 0), "backend": "gsplat"},
+     )
+     return res["color"], extrinsics, intrinsics

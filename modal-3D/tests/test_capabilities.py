@@ -111,7 +111,7 @@ class CapabilityContractTests(unittest.TestCase):
     def test_recommended_profiles_match_verified_client_baseline(self) -> None:
         self.assertEqual(
             profile_options("fastsam3d-plus-plus", "recommended", self.models),
-            {"dmd_interval": 1, "dmd_history": 5},
+            {"asset_mode": "textured", "dmd_interval": 1, "dmd_history": 5},
         )
         self.assertEqual(
             profile_options("hermit-trellis2-plus-plus", "recommended", self.models),
@@ -133,7 +133,7 @@ class CapabilityContractTests(unittest.TestCase):
 
     def test_recommended_profiles_declare_quality_and_provenance(self) -> None:
         expected_tiers = {
-            "fastsam3d-plus-plus": "accelerated",
+            "fastsam3d-plus-plus": "full_quality",
             "hermit-trellis2-plus-plus": "full_quality",
             "hunyuan2.1-plus-plus": "full_quality",
             "pixal3d": "full_quality",
@@ -141,7 +141,8 @@ class CapabilityContractTests(unittest.TestCase):
         for capability in (FASTSAM3D, TRELLIS2, HUNYUAN, PIXAL3D):
             profile = capability["profiles"][0]
             self.assertEqual(profile["quality"]["tier"], expected_tiers[capability["id"]])
-            self.assertIn(profile["quality"]["verification"]["status"], {"verified", "stale"})
+            status = profile["quality"]["verification"]["status"]
+            self.assertIn(status, {"verified", "stale"})
             self.assertIn("benchmark", capability["reference"])
             self.assertIn("status", capability["reference"])
 
@@ -154,6 +155,26 @@ class CapabilityContractTests(unittest.TestCase):
         self.assertEqual(sampler["ss_cache_stride"], 3)
         self.assertEqual(sampler["slat_carving_ratio"], 0.1)
 
+    def test_fastsam_has_explicit_full_and_fast_asset_profiles(self) -> None:
+        self.assertEqual(
+            profile_options("fastsam3d-plus-plus", "recommended", self.models),
+            {"asset_mode": "textured", "dmd_interval": 1, "dmd_history": 5},
+        )
+        self.assertEqual(
+            profile_options("fastsam3d-plus-plus", "fast", self.models),
+            {"asset_mode": "vertex_color", "dmd_interval": 1, "dmd_history": 5},
+        )
+        self.assertEqual(FASTSAM3D["profiles"][0]["quality"]["appearance"], "base_color_texture")
+        self.assertEqual(FASTSAM3D["profiles"][0]["quality"]["verification"]["status"], "verified")
+        self.assertEqual(
+            FASTSAM3D["profiles"][0]["quality"]["verification"]["benchmark"],
+            "benchmarks/fastsam3d-full-textured-2026-09-21.json",
+        )
+        self.assertEqual(FASTSAM3D["profiles"][1]["quality"]["appearance"], "vertex_color")
+        self.assertEqual(FASTSAM3D["profiles"][1]["quality"]["verification"]["status"], "stale")
+        self.assertEqual(FASTSAM3D["reference"]["profile_id"], "recommended")
+        self.assertEqual(FASTSAM3D["reference"]["status"], "verified")
+
     def test_fastsam_dmd_controls_are_bounded(self) -> None:
         options = FASTSAM3D["options"]
         self.assertEqual(options["seed"]["minimum"], 0)
@@ -162,6 +183,8 @@ class CapabilityContractTests(unittest.TestCase):
         self.assertEqual(options["dmd_interval"]["maximum"], 12)
         self.assertEqual(options["dmd_history"]["minimum"], 4)
         self.assertEqual(options["dmd_history"]["maximum"], 25)
+        self.assertEqual(options["asset_mode"]["default"], "textured")
+        self.assertEqual(options["asset_mode"]["enum"], ["textured", "vertex_color"])
 
     def test_hunyuan_full_quality_defaults_are_bounded(self) -> None:
         options = HUNYUAN["options"]

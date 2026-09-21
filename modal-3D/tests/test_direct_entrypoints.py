@@ -32,7 +32,7 @@ WORKERS = [
 ]
 
 QUALITY_PROFILES = {
-    "fastsam3d-plus-plus": "vertex_color",
+    "fastsam3d-plus-plus": None,
     "hunyuan2.1-plus-plus": "pbr_textured",
     "hermit-trellis2-plus-plus": "pbr_textured",
     "pixal3d": "pbr_textured",
@@ -69,7 +69,13 @@ class DirectEntrypointContractTests(unittest.TestCase):
                 self.assertIn("self._generate,", source)
                 self.assertIn("input_path,", source)
                 self.assertIn("options,", source)
-                self.assertIn(f'quality_profile="{QUALITY_PROFILES[model_id]}"', source)
+                quality_profile = QUALITY_PROFILES[model_id]
+                if quality_profile is None:
+                    self.assertIn('quality_profile=policy["quality_profile"]', source)
+                    self.assertIn('"quality_profile": "base_color_textured"', source)
+                    self.assertIn('"quality_profile": "vertex_color"', source)
+                else:
+                    self.assertIn(f'quality_profile="{quality_profile}"', source)
                 self.assertNotIn("self.generate, input_path, options", source)
                 self.assertNotIn("def generate(\n", source)
 

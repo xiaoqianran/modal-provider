@@ -19,7 +19,7 @@
     {
       "id": "fastsam3d-plus-plus",
       "name": "FastSAM3D++",
-      "description": "最快的彩色资产生成；vertex-color GLB",
+      "description": "完整 Fast-SAM3D++ 纹理资产生成；默认保留 mesh/texture/layout 后处理，fast profile 提供 vertex-color 快路径",
       "status": "enabled",
       "worker_app": "modal-3d-fastsam3d",
       "output": "textured",
@@ -40,14 +40,15 @@
       "profiles": [
         {
           "id": "recommended",
-          "name": "推荐 · Fast-SAM3D 加速",
+          "name": "推荐 · 完整纹理资产",
           "options": {
+            "asset_mode": "textured",
             "dmd_interval": 1,
             "dmd_history": 5
           },
           "quality": {
-            "tier": "accelerated",
-            "basis": "wlfeng0509/Fast-SAM3D official acceleration recipe",
+            "tier": "full_quality",
+            "basis": "Fast-SAM3D++ accelerated generator with full SAM3D mesh postprocess, optimized texture baking, and layout postprocess",
             "sampler": {
               "runtime_ss_steps": 25,
               "runtime_slat_steps": 25,
@@ -56,9 +57,28 @@
               "ss_cache_stride": 3,
               "slat_carving_ratio": 0.1
             },
+            "appearance": "base_color_texture",
             "verification": {
               "status": "verified",
-              "benchmark": "benchmarks/full-quality-smoke-2026-08-28.json"
+              "benchmark": "benchmarks/fastsam3d-full-textured-2026-09-21.json"
+            }
+          }
+        },
+        {
+          "id": "fast",
+          "name": "Fast · Vertex Color",
+          "options": {
+            "asset_mode": "vertex_color",
+            "dmd_interval": 1,
+            "dmd_history": 5
+          },
+          "quality": {
+            "tier": "accelerated",
+            "basis": "Provider fast path: skip mesh/layout postprocess and texture baking, export vertex colors",
+            "appearance": "vertex_color",
+            "verification": {
+              "status": "stale",
+              "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json"
             }
           }
         }
@@ -69,6 +89,14 @@
           "default": 42,
           "minimum": 0,
           "maximum": 4294967295
+        },
+        "asset_mode": {
+          "type": "string",
+          "default": "textured",
+          "enum": [
+            "textured",
+            "vertex_color"
+          ]
         },
         "dmd_interval": {
           "type": "integer",
@@ -86,11 +114,11 @@
       "priority": 10,
       "reference": {
         "warm_seconds": 3.8,
-        "cold_start_seconds": 62.46,
-        "status": "stale",
-        "benchmark": "benchmarks/station-canonical-cold-e2e-2026-09-08.json",
-        "metric": "local_artifact_e2e_s",
-        "e2e_seconds": 66.26,
+        "cold_start_seconds": 32.3,
+        "status": "verified",
+        "benchmark": "benchmarks/fastsam3d-full-textured-2026-09-21.json",
+        "metric": "worker_job_total_s",
+        "e2e_seconds": 37.266964525,
         "profile_id": "recommended"
       },
       "generation_entrypoint": {
@@ -103,8 +131,10 @@
         "source_revision": "36191e491ca0bf9d51cda39aa7b6c91205eb82e3",
         "sam_revision": "2e73555018d2741ccd486e56c24fac41155a1dc6",
         "pytorch3d_revision": "75ebeeaea0908c5527e7b1e305fbc7681382db47",
-        "build_artifact": "fastsam3d-pytorch3d-py311-cu121-torch251-sm89-v1",
-        "adapter_revision": "modal-3d.worker-adapter.v8"
+        "gsplat_revision": "2323de5905d5e90e035f792fe65bad0fedd413e7",
+        "nvdiffrast_revision": "253ac4fcea7de5f396371124af597e6cc957bfae",
+        "build_artifact": "fastsam3d-native-py311-cu121-torch251-sm89-v3",
+        "adapter_revision": "modal-3d.worker-adapter.v9"
       }
     },
     {
@@ -206,7 +236,7 @@
         "base_model": "tencent/Hunyuan3D-2.1",
         "base_model_revision": "0b94677654c57bb9a6b6845cd7b704ccf551d327",
         "build_artifact": "hunyuan3d-2.1-paint-py311-cu124-torch251-sm89-v2",
-        "adapter_revision": "modal-3d.worker-adapter.v8"
+        "adapter_revision": "modal-3d.worker-adapter.v9"
       }
     },
     {
@@ -301,10 +331,10 @@
       "deployment": {
         "source": "TencentARC/Pixal3D",
         "source_revision": "cdbb2bbffbf4e6f298b5f2af3d1d76a8d823d2af",
-        "build_artifact": "pixal3d-py310-cu124-torch260-sm89-v1",
+        "build_artifact": "pixal3d-py310-cu124-torch260-sm89-fa2-v1",
         "base_model": "TencentARC/Pixal3D",
         "base_model_revision": "0b31f9160aa400719af409098bff7936a932f726",
-        "adapter_revision": "modal-3d.worker-adapter.v8"
+        "adapter_revision": "modal-3d.worker-adapter.v9"
       }
     },
     {
@@ -398,7 +428,7 @@
         "build_artifact": "hermit-trellis2-plus-plus-py311-cu124-torch260-sm89-v2",
         "base_model": "microsoft/TRELLIS.2-4B",
         "base_model_revision": "af44b45f2e35a493886929c6d786e563ec68364d",
-        "adapter_revision": "modal-3d.worker-adapter.v8"
+        "adapter_revision": "modal-3d.worker-adapter.v9"
       }
     }
   ]

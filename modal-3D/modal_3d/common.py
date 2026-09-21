@@ -20,7 +20,7 @@ ARTIFACT_VOLUME = "modal-gen-artifacts"
 CLIENT_INPUT_NAMESPACE = "client-inputs"
 # Historical capability field name: this is now the direct worker deployment
 # revision, not a CPU adapter revision. Keep the value/field stable for v3 clients.
-WORKER_ADAPTER_REVISION = "modal-3d.worker-adapter.v8"
+WORKER_ADAPTER_REVISION = "modal-3d.worker-adapter.v9"
 CANONICAL_INPUT = {
     "role": "canonical_rgba",
     "mime": "image/png",
@@ -211,7 +211,7 @@ def _glb_json_document(path: Path) -> dict:
 
 def validate_glb_quality(path: Path, profile: str) -> dict:
     """Fail closed when a generated GLB loses renderable color or embedded PBR data."""
-    if profile not in {"geometry", "vertex_color", "pbr_textured"}:
+    if profile not in {"geometry", "vertex_color", "base_color_textured", "pbr_textured"}:
         raise ValueError(f"unknown GLB quality profile: {profile}")
 
     document = _glb_json_document(path)
@@ -301,7 +301,8 @@ def validate_glb_quality(path: Path, profile: str) -> dict:
         )
 
     textured_primitives = 0
-    if profile == "pbr_textured":
+    metallic_roughness_primitives = 0
+    if profile in {"base_color_textured", "pbr_textured"}:
         for primitive in geometry:
             attributes = primitive["attributes"]
             if "TEXCOORD_0" not in attributes:
@@ -321,7 +322,9 @@ def validate_glb_quality(path: Path, profile: str) -> dict:
                 raise TypeError("GLB quality guard: pbrMetallicRoughness must be an object")
             if not texture_is_embedded(pbr.get("baseColorTexture")):
                 raise ValueError("GLB quality guard: embedded base-color texture is missing")
-            if not texture_is_embedded(pbr.get("metallicRoughnessTexture")):
+            if texture_is_embedded(pbr.get("metallicRoughnessTexture")):
+                metallic_roughness_primitives += 1
+            elif profile == "pbr_textured":
                 raise ValueError(
                     "GLB quality guard: embedded metallic/roughness texture is missing"
                 )
@@ -336,7 +339,7 @@ def validate_glb_quality(path: Path, profile: str) -> dict:
         "pbr_textured_primitive_count": textured_primitives,
         "has_vertex_color": bool(vertex_colored),
         "has_base_color_texture": textured_primitives > 0,
-        "has_metallic_roughness_texture": textured_primitives > 0,
+        "has_metallic_roughness_texture": metallic_roughness_primitives > 0,
     }
 
 

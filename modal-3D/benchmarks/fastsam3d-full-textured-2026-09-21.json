@@ -1,0 +1,76 @@
+{
+  "schema": "modal-3d.fastsam3d-full-textured-smoke.v1",
+  "date": "2026-09-21",
+  "status": "passed",
+  "model": "fastsam3d-plus-plus",
+  "profile_id": "recommended",
+  "options": {
+    "asset_mode": "textured",
+    "dmd_interval": 1,
+    "dmd_history": 5
+  },
+  "input": {
+    "scene": "scene-biplane",
+    "path": "client-inputs/d1a52d77df72bdb26e05c251a1db4ab4fe7512c5e9321f53834936d4564c17db.png",
+    "sha256": "d1a52d77df72bdb26e05c251a1db4ab4fe7512c5e9321f53834936d4564c17db"
+  },
+  "deployment": {
+    "source": "Archerkattri/fastsam3d-plus-plus",
+    "source_revision": "36191e491ca0bf9d51cda39aa7b6c91205eb82e3",
+    "sam_revision": "2e73555018d2741ccd486e56c24fac41155a1dc6",
+    "pytorch3d_revision": "75ebeeaea0908c5527e7b1e305fbc7681382db47",
+    "gsplat_revision": "2323de5905d5e90e035f792fe65bad0fedd413e7",
+    "nvdiffrast_revision": "253ac4fcea7de5f396371124af597e6cc957bfae",
+    "build_artifact": "fastsam3d-native-py311-cu121-torch251-sm89-v3",
+    "gpu": "NVIDIA L40S"
+  },
+  "warmup": {
+    "startup_s": 32.296685167,
+    "load_s": 27.746892303000003,
+    "load_profile": {
+      "config_s": 0.014818882000000144,
+      "cuda_check_s": 0.03939848799999979,
+      "imports_s": 4.495572484,
+      "model_load_s": 27.746892303000003,
+      "total_s": 32.296685167
+    }
+  },
+  "result": {
+    "artifact": {
+      "path": "fastsam3d-plus-plus/ae6828a845254f55bf749313ad951e6c.glb",
+      "bytes": 1842756,
+      "sha256": "120b40ea5846a376135357c2e8ea4d2069fa86bb7b5c4a5f66d4dcfd91c70c4c",
+      "mime": "model/gltf-binary",
+      "glb_version": 2,
+      "quality": {
+        "profile": "base_color_textured",
+        "mesh_count": 1,
+        "primitive_count": 1,
+        "geometry_primitive_count": 1,
+        "pbr_textured_primitive_count": 1,
+        "vertex_colored_primitive_count": 0,
+        "has_base_color_texture": true,
+        "has_metallic_roughness_texture": false,
+        "has_vertex_color": false
+      }
+    },
+    "timing": {
+      "load_s": 27.746892303000003,
+      "inference_s": 35.707148053,
+      "job_total_s": 37.266964525000006,
+      "glb_export_s": 0.3827364590000002,
+      "artifact_validation_s": 0.003451851999997757
+    },
+    "metrics": {
+      "asset_mode": "textured",
+      "mesh_postprocess": true,
+      "texture_baking": true,
+      "layout_postprocess": true,
+      "dmd_enabled": false,
+      "peak_vram_allocated_gb": 17.019842624664307,
+      "peak_vram_reserved_gb": 17.318359375,
+      "source_vertices": 68488,
+      "source_faces": 136984
+    }
+  }
+}

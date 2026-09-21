@@ -18,7 +18,7 @@ This prevents each 3D worker from receiving a different background-removal resul
 
 ## Models
 
-- FastSAM3D++ — vertex-color GLB
+- FastSAM3D++ — default: embedded base-color textured GLB; `fast`: vertex-color GLB
 - Hunyuan2.1++ — base shape sampling + Hunyuan3D Paint PBR
 - Hermite-TRELLIS2++ — 1536 cascade + official remesh/to_glb PBR export
 - Pixal3D — 1536 cascade + PBR export
@@ -53,6 +53,10 @@ See `docs/BENCHMARKING.md`. New matrices are smoke-first, cost-budgeted, and dry
 
 The final post-hardening benchmark intentionally runs **one scene across the four models**, not a 5×4 matrix. The open-source TripoSR teapot is preprocessed with BiRefNet into one content-addressed 1024×1024 canonical RGBA and the exact same PNG is verified from Modal Volume before submission.
 
-The machine-readable evidence is `benchmarks/pages-teapot-full-quality-2026-08-28.json`. Final worker inference times are FastSAM3D++ 6.16s, Hunyuan2.1++ 84.29s, Hermite-TRELLIS2++ 364.12s, and Pixal3D 194.75s. Hunyuan remains the recommended complete PBR path for this scene: 50 shape steps, 6 paint views at 512, and `paint_remesh=true`.
+The machine-readable evidence is `benchmarks/pages-teapot-full-quality-2026-08-28.json`. Its FastSAM3D++ 6.16s record was produced by the former vertex-color shortcut and now belongs to `fast`; it is not a benchmark for the restored textured `recommended` profile. The historical Hunyuan2.1++ / Hermite-TRELLIS2++ / Pixal3D times remain 84.29s / 364.12s / 194.75s respectively.
 
 The public gallery now displays each scene's actual preprocessing method instead of labeling every input as SAM 3.1. Teapot browser previews are separate Draco/WebP derivatives and do not change the full artifact metrics.
+
+## 2026-09-21 FastSAM3D full-texture verification
+
+The restored `recommended` FastSAM3D++ path is separately verified by `benchmarks/fastsam3d-full-textured-2026-09-21.json`. The smoke produced an embedded-base-color textured GLB with no vertex-color fallback. This verification does not rewrite the older public gallery records; those remain immutable historical `fast`-profile results.
