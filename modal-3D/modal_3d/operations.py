@@ -8,6 +8,8 @@ import re
 from pathlib import Path, PurePosixPath
 
 REVISION = "mesh-operations.v1-bpy420-xatlas009-r5"
+P3SAM_REVISION = "p3sam.e96be065-w67717446-sonata-df998974-v1"
+XPART_REVISION = "xpart-lite.e96be065-hf67717446-v1"
 RESULT_CONTRACT = "modal-3d.operation-result.v1"
 MAX_BYTES = 512 * 1024 * 1024
 MIMES = {".glb": "model/gltf-binary", ".obj": "model/obj", ".blend": "application/x-blender",
@@ -41,6 +43,36 @@ SPECS = {
         "seed": number(0, 0, 2147483647, True)}},
     "uv_unwrap": {"label": "xatlas UV unwrap", "inputs": ["asset"], "options": UV_OPTIONS},
     "texture_bake": {"label": "Rebake PBR", "inputs": ["source", "target"], "options": BAKE_OPTIONS},
+    "segment_parts": {
+        "label": "P3-SAM part segmentation",
+        "inputs": ["asset"],
+        "options": {
+            "point_num": number(100000, 10000, 200000, True),
+            "prompt_num": number(400, 32, 800, True),
+            "threshold": number(0.95, 0.0, 1.0),
+            "post_process": {"type": "boolean", "default": True},
+            "seed": number(42, 0, 2147483647, True),
+            "prompt_bs": number(32, 1, 128, True),
+        },
+        "worker_app": "modal-3d-p3sam",
+        "revision": P3SAM_REVISION,
+        "resource": "gpu",
+        "required_roles": ["primary-glb", "parts-manifest", "face-labels", "quality-report"],
+    },
+    "complete_parts": {
+        "label": "X-Part lite part completion",
+        "inputs": ["asset", "parts_manifest", "face_labels"],
+        "options": {
+            "part_index": number(0, 0, 255, True),
+            "seed": number(42, 0, 2147483647, True),
+            "num_inference_steps": number(50, 1, 100, True),
+            "octree_resolution": number(512, 128, 512, True),
+        },
+        "worker_app": "modal-3d-xpart",
+        "revision": XPART_REVISION,
+        "resource": "gpu",
+        "required_roles": ["primary-glb", "assembly-preview", "quality-report"],
+    },
 }
 
 def spec_for(operation):

@@ -1,0 +1,30 @@
+diff --git a/XPart/partgen/partformer_pipeline.py b/XPart/partgen/partformer_pipeline.py
+--- a/XPart/partgen/partformer_pipeline.py
++++ b/XPart/partgen/partformer_pipeline.py
+@@ -240,7 +240,6 @@ class PartFormerPipeline(TokenAllocMixin):
+         shapevae_ckpt = load_file(
+             os.path.join(model_dir, "shapevae/shapevae.safetensors")
+         )
+-        p3sam_path = os.path.join(model_dir, "p3sam/p3sam.safetensors")
+         with open(os.path.join(model_dir, "model/config.json"), "r") as f:
+             model_config = EasyDict(json.load(f))
+         with open(os.path.join(model_dir, "conditioner/config.json"), "r") as f:
+@@ -248,9 +247,6 @@ class PartFormerPipeline(TokenAllocMixin):
+             shapevae_config = EasyDict(json.load(f))
+         with open(os.path.join(model_dir, "scheduler/config.json"), "r") as f:
+             scheduler_config = EasyDict(json.load(f))
+-        with open(os.path.join(model_dir, "p3sam/config.json"), "r") as f:
+-            bbox_predictor_config = EasyDict(json.load(f))
+-            bbox_predictor_config["params"]["ckpt_path"] = p3sam_path
+         # load model
+         model = instantiate_from_config(model_config)
+         model.load_state_dict(model_ckpt)
+@@ -260,7 +256,7 @@ class PartFormerPipeline(TokenAllocMixin):
+         conditioner = instantiate_from_config(conditioner_config)
+         conditioner.load_state_dict(conditioner_ckpt)
+         scheduler = instantiate_from_config(scheduler_config)
+-        bbox_predictor = instantiate_from_config(bbox_predictor_config)
++        bbox_predictor = None
+         model_kwargs = dict(
+             vae=vae,
+             model=model,

@@ -12,9 +12,46 @@ from modal_3d.common import (
     output_descriptor,
 )
 from modal_3d.fastsam3d_plus_plus import CAPABILITY as FASTSAM3D
+from modal_3d.operations import (
+    capabilities as operation_capabilities,
+)
+from modal_3d.operations import (
+    required_roles_for,
+    revision_for,
+    worker_for,
+)
 
 
 class OperationContractTests(unittest.TestCase):
+    def test_segment_parts_uses_dedicated_gpu_worker_and_partset_roles(self):
+        capability = next(
+            item for item in operation_capabilities() if item["id"] == "segment_parts"
+        )
+        self.assertEqual(worker_for("segment_parts"), "modal-3d-p3sam")
+        self.assertEqual(capability["worker_app"], "modal-3d-p3sam")
+        self.assertEqual(capability["execution"]["resource"], "gpu")
+        self.assertEqual(capability["revision"], revision_for("segment_parts"))
+        self.assertEqual(
+            required_roles_for("segment_parts"),
+            ["primary-glb", "parts-manifest", "face-labels", "quality-report"],
+        )
+
+    def test_complete_parts_uses_xpart_and_assembly_roles(self):
+        capability = next(
+            item for item in operation_capabilities() if item["id"] == "complete_parts"
+        )
+        self.assertEqual(worker_for("complete_parts"), "modal-3d-xpart")
+        self.assertEqual(capability["worker_app"], "modal-3d-xpart")
+        self.assertEqual(capability["execution"]["resource"], "gpu")
+        self.assertEqual(capability["revision"], revision_for("complete_parts"))
+        self.assertEqual(
+            capability["inputs"], ["asset", "parts_manifest", "face_labels"]
+        )
+        self.assertEqual(
+            required_roles_for("complete_parts"),
+            ["primary-glb", "assembly-preview", "quality-report"],
+        )
+
     def test_existing_generation_worker_keeps_legacy_contract_and_gains_operation_shape(self):
         validated = validate_capability(FASTSAM3D)
         self.assertEqual(validated["operation"], "image_to_3d")
@@ -37,13 +74,19 @@ class OperationContractTests(unittest.TestCase):
 
     def test_non_image_mesh_operation_does_not_need_fake_generation_fields(self):
         capability = operation_capability(
-            "retopo",
-            "Retopology",
-            "modal-3d-mesh",
-            "Quad mesh retopology",
-            "retopology",
+            "p3-sam",
+            "P3-SAM",
+            "modal-3d-p3sam",
+            "Semantic 3D part segmentation",
+            "segment_parts",
             [input_descriptor("asset", "mesh", artifact=GLB_ARTIFACT)],
-            [output_descriptor("asset", "mesh", artifact=GLB_ARTIFACT)],
+            [
+                output_descriptor(
+                    "parts",
+                    "part_set",
+                    artifact={"mime": "application/json", "extension": ".json"},
+                )
+            ],
             {},
             warm_seconds=1.0,
             entrypoint={
@@ -53,9 +96,9 @@ class OperationContractTests(unittest.TestCase):
             },
         )
         validated = validate_capability(capability)
-        self.assertEqual(validated["operation"], "retopology")
+        self.assertEqual(validated["operation"], "segment_parts")
         self.assertEqual(validated["inputs"][0]["kind"], "mesh")
-        self.assertEqual(validated["outputs"][0]["kind"], "mesh")
+        self.assertEqual(validated["outputs"][0]["kind"], "part_set")
         self.assertNotIn("input", validated)
         self.assertNotIn("output", validated)
         self.assertNotIn("generation_entrypoint", validated)
@@ -81,27 +124,27 @@ class OperationContractTests(unittest.TestCase):
                 return FakeObject(self.method)
 
         method = FakeMethod()
-        route = ("modal-3d-mesh", "Model", "run_job")
+        route = ("modal-3d-p3sam", "Model", "run_job")
         with (
-            patch.dict(router.ROUTES, {"retopo": route}),
+            patch.dict(router.ROUTES, {"p3-sam": route}),
             patch.object(router.modal.Cls, "from_name", return_value=FakeCls(method)) as lookup,
         ):
             call = router.spawn_operation(
-                "retopo",
+                "p3-sam",
                 {"asset": "fastsam3d-plus-plus/example.glb"},
-                {"target_faces": 4000},
+                {"semantic": True},
             )
 
-        self.assertEqual(lookup.call_args.args, ("modal-3d-mesh", "Model"))
+        self.assertEqual(lookup.call_args.args, ("modal-3d-p3sam", "Model"))
         self.assertEqual(
             method.calls,
-            [({"asset": "fastsam3d-plus-plus/example.glb"}, {"target_faces": 4000})],
+            [({"asset": "fastsam3d-plus-plus/example.glb"}, {"semantic": True})],
         )
         self.assertEqual(call, "fc-operation")
 
     def test_generic_operation_key_separates_operation_semantics(self):
         inputs = {"asset": "fastsam3d-plus-plus/example.glb"}
-        first = router.operation_job_key("tool", "decimate", inputs, {})
+        first = router.operation_job_key("tool", "segment_parts", inputs, {})
         second = router.operation_job_key("tool", "retopology", inputs, {})
         self.assertNotEqual(first, second)
 
@@ -114,7 +157,7 @@ class OperationContractTests(unittest.TestCase):
 
     def test_operation_input_rejects_path_traversal(self):
         with self.assertRaises(ValueError):
-            router.spawn_operation("retopo", {"asset": "../private.glb"}, {})
+            router.spawn_operation("p3-sam", {"asset": "../private.glb"}, {})
 
 
 if __name__ == "__main__":

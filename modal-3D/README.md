@@ -14,12 +14,18 @@ failed download stops deployment.
 
 **Live benchmark:** https://xiaoqianran.github.io/modal-3D/
 
-Current 3D workers:
+Current 3D generation workers:
 
 - FastSAM3D++
 - Hunyuan2.1++
 - Pixal3D
 - Hermite-TRELLIS2++
+
+Asset-processing worker:
+
+- `modal-3d-mesh` (CPU): inspect, cleanup/repair, decimation, QuadriFlow
+  retopology, xatlas UV unwrap and texture rebake. These remain separate
+  operations while sharing one Blender/xatlas runtime.
 
 Optional preprocessing worker:
 
@@ -69,12 +75,54 @@ The **internal model-worker input contract** is:
 The public/source contract is broader: `PNG / JPEG / WebP` up to the configured
 source-size limit. Opaque sources are canonicalized before they reach a model worker.
 
-Each 3D worker exposes only the direct generation method:
+## Generic 3D operation contract
+
+The existing modal-3d.capabilities.v3 generation contract remains stable for
+installed clients. Image-to-3D workers still expose the same canonical RGBA
+input, geometry / textured output aliases, and Model.generate_job entrypoint.
+
+New asset-processing capabilities use the additive modal-3d.operations.v1
+metadata carried by the same capability document:
+
+    capability
+      operation: image_to_3d | segment_parts | retopology | uv | texture | rig | pose | ...
+      inputs:
+        - name: asset
+          kind: mesh | textured_mesh | part_set | rigged_mesh | ...
+      outputs:
+        - name: parts
+          kind: part_set | retopologized_mesh | uv_mesh | rigged_mesh | ...
+      entrypoint:
+        kind: class_method
+        class_name: Model
+        method_name: run_job
+
+Generic operation submission uses named artifact-relative inputs, for example
+{"asset": "fastsam3d-plus-plus/<id>.glb"} or multiple inputs such as
+{"asset": "assets/<id>.glb", "mask": "masks/<id>.png"}. Every path is confined
+below /artifacts; the legacy image generation route remains additionally
+confined to client-inputs/.
+
+This split is deliberate: generation models remain backward compatible while
+P3-SAM, X-Part, retopology, UV, texture, rigging and pose workers can be added
+without pretending that they consume a 1024x1024 image.
+
+Each image-to-3D generation worker exposes only the direct generation method:
 
 ```python
 cls = modal.Cls.from_name("modal-3d-pixal3d", "Model")
 call = cls().generate_job.spawn("client-inputs/<sha256>.png", options)
 # persist call.object_id; restore with modal.FunctionCall.from_id(...)
+```
+
+The CPU asset-processing worker exposes `Model.run_job` instead:
+
+```python
+cls = modal.Cls.from_name("modal-3d-mesh", "Model")
+call = cls().run_job.spawn(
+    {"operation": "retopology", "inputs": {"asset": artifact_descriptor}},
+    {"target_faces": 4000},
+)
 ```
 
 The T4 worker exposes both the legacy byte/mask method and the shared-volume handoff:
@@ -117,6 +165,7 @@ Deploy modules directly; there is no registration step.
 Windows PowerShell:
 
 ```powershell
+./scripts/deploy-worker.ps1 modal_3d/mesh_worker.py
 ./scripts/deploy-worker.ps1 modal_3d/rembg_worker.py
 ./scripts/deploy-worker.ps1 modal_3d/fastsam3d_plus_plus.py
 ./scripts/deploy-worker.ps1 modal_3d/hunyuan2_1_plus_plus.py
@@ -127,6 +176,7 @@ Windows PowerShell:
 Linux/WSL:
 
 ```bash
+bash ./scripts/deploy-worker.sh modal_3d/mesh_worker.py
 bash ./scripts/deploy-worker.sh modal_3d/rembg_worker.py
 bash ./scripts/deploy-worker.sh modal_3d/fastsam3d_plus_plus.py
 bash ./scripts/deploy-worker.sh modal_3d/hunyuan2_1_plus_plus.py

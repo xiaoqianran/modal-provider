@@ -40,6 +40,35 @@ def deployment_manifest() -> dict[str, object]:
                 "weights": [],
             },
             {
+                "app": "modal-3d-p3sam",
+                "secrets": ["huggingface"],
+                "module": "modal_3d.p3sam_worker",
+                "kind": "worker",
+                "models": ["segment_parts"],
+                "revision": revision,
+                "weights": _weights(
+                    "modal-3d-p3sam-weights",
+                    ["p3sam/p3sam.safetensors", "sonata/sonata.pth"],
+                ),
+            },
+            {
+                "app": "modal-3d-xpart",
+                "secrets": ["huggingface"],
+                "module": "modal_3d.xpart_worker",
+                "kind": "worker",
+                "models": ["complete_parts"],
+                "revision": revision,
+                "weights": _weights(
+                    "modal-3d-xpart-weights",
+                    [
+                        "tencent/Hunyuan3D-Part/model/model.safetensors",
+                        "tencent/Hunyuan3D-Part/conditioner/conditioner.safetensors",
+                        "tencent/Hunyuan3D-Part/shapevae/shapevae.safetensors",
+                        "tencent/Hunyuan3D-Part/scheduler/config.json",
+                    ],
+                ),
+            },
+            {
                 "app": "modal-3d-rembg",
                 "module": "modal_3d.rembg_worker",
                 "kind": "preprocess",
