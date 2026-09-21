@@ -33,6 +33,13 @@ def deployment_manifest() -> dict[str, object]:
         "provider": "modal-3d",
         "targets": [
             {
+                "app": "modal-3d-mesh",
+                "module": "modal_3d.mesh_worker",
+                "kind": "worker",
+                "revision": revision,
+                "weights": [],
+            },
+            {
                 "app": "modal-3d-rembg",
                 "module": "modal_3d.rembg_worker",
                 "kind": "preprocess",

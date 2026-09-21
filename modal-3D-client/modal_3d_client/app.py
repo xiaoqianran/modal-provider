@@ -8,7 +8,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from . import capabilities as capability_contract
 from . import constants, demo, modal_session, models
@@ -50,6 +50,19 @@ class Credentials(BaseModel):
     token_secret: SecretStr
 
 
+class OperationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: str
+    inputs: dict[str, dict[str, str]]
+    options: dict[str, object] = Field(default_factory=dict)
+    job_id: str | None = None
+
+
+class RebindRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    call_id: str
+
+
 def create_app(service: JobService | None = None) -> FastAPI:
     app = FastAPI(title="modal-3D Client", version="0.1.0", docs_url=None, redoc_url=None)
 
@@ -66,6 +79,47 @@ def create_app(service: JobService | None = None) -> FastAPI:
 
     def job_service():
         return _service(service)
+
+    @app.exception_handler(ValueError)
+    async def bad_value(request, exc):
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    @app.get("/v1/operations")
+    def operations():
+        from modal_3d.operations import capabilities
+        return {"operations": capabilities()}
+
+    @app.post("/v1/assets")
+    async def upload_mesh(file: Annotated[UploadFile, File()]):
+        from modal_3d.operations import MAX_BYTES
+        data = await file.read(MAX_BYTES + 1)
+        try:
+            return await run_in_threadpool(job_service().operations.upload, data)
+        except modal_session.NotConnectedError as exc:
+            raise HTTPException(409, "Modal connection required") from exc
+
+    @app.post("/v1/operations/jobs")
+    def submit_operation(body: OperationRequest):
+        try:
+            return job_service().operations.submit(body.operation, body.inputs, body.options, body.job_id)
+        except TypeError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(404, "Input artifact or parent job not found") from exc
+
+    @app.post("/v1/operations/jobs/{job_id}/rebind")
+    def rebind_operation(job_id: str, body: RebindRequest):
+        try:
+            return job_service().operations.rebind(job_id, body.call_id)
+        except KeyError as exc:
+            raise HTTPException(404, "Job not found") from exc
+
+    @app.post("/v1/operations/jobs/{job_id}/retry")
+    def retry_operation(job_id: str):
+        try:
+            return job_service().operations.retry(job_id)
+        except KeyError as exc:
+            raise HTTPException(404, "Job not found") from exc
 
     @app.get("/health")
     def health() -> dict[str, object]:
@@ -115,7 +169,11 @@ def create_app(service: JobService | None = None) -> FastAPI:
 
     @app.get("/v1/jobs")
     def list_jobs(limit: int = 50):
-        return {"jobs": job_service().store.list(max(1, min(limit, 200)))}
+        size = max(1, min(limit, 200))
+        jobs = job_service().store.list(size)
+        if isinstance(job_service(), JobService):
+            jobs += job_service().operations.list(size)
+        return {"jobs": sorted(jobs, key=lambda row: row["created_at"], reverse=True)[:size]}
 
     @app.post("/v1/jobs")
     async def submit_job(
@@ -158,9 +216,12 @@ def create_app(service: JobService | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Job not found") from exc
 
     @app.get("/v1/jobs/{job_id}/artifact")
-    def get_artifact(job_id: str):
+    def get_artifact(job_id: str, role: str = "primary-glb"):
         try:
-            descriptor, path = job_service().artifact(job_id)
+            if job_id.startswith("op_"):
+                descriptor, path = job_service().artifact(job_id, role)
+            else:
+                descriptor, path = job_service().artifact(job_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Job not found") from exc
         except RuntimeError as exc:
@@ -169,8 +230,8 @@ def create_app(service: JobService | None = None) -> FastAPI:
             raise HTTPException(status_code=502, detail="Artifact integrity check failed") from exc
         return FileResponse(
             path,
-            media_type="model/gltf-binary",
-            filename=f"{descriptor['id']}.glb",
+            media_type=str(descriptor.get("mime", "model/gltf-binary")),
+            filename=str(descriptor.get("filename", f"{descriptor['id']}.glb")),
             headers={
                 "ETag": f'"{descriptor["sha256"]}"',
                 "X-Artifact-ID": str(descriptor["id"]),

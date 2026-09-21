@@ -108,6 +108,38 @@ class Modal3DProvider:
         options: dict[str, object],
         context: object,
     ) -> dict[str, object]:
+        from modal_3d.operations import SPECS, options_for
+        operation_names = {f"modal-3d.asset.{name}.v1": name for name in SPECS}
+        if operation in operation_names:
+            name = operation_names[operation]
+            try:
+                options_for(name, options)
+                if profile not in (None, "recommended") or set(inputs) != set(SPECS[name]["inputs"]):
+                    raise ValueError("invalid operation profile or inputs")
+                refs = {}
+                resolver = getattr(context, "artifacts", None)
+                if resolver is None:
+                    raise ValueError("artifact resolver missing")
+                for key, source in inputs.items():
+                    if not isinstance(source, dict):
+                        raise TypeError("artifact identity required")
+                    scope = {"owner_client": str(getattr(context, "owner_client", "")),
+                             "owner_origin": str(getattr(context, "owner_origin", ""))}
+                    described = resolver.describe_input(str(source.get("id", "")), **scope)
+                    if (described.mime != "model/gltf-binary" or described.bytes > 512 * 1024 * 1024
+                        or any(source.get(field) != getattr(described, field) for field in ("id", "role", "mime", "hash"))):
+                        raise ValueError("artifact identity mismatch")
+                    artifact_id = "art_" + described.hash.removeprefix("sha256:")
+                    try:
+                        self.jobs.operations.asset(artifact_id)
+                    except KeyError:
+                        local = resolver.resolve_input(described.id, **scope)
+                        self.jobs.operations.upload(local.path.read_bytes(), expected_sha256=described.hash.removeprefix("sha256:"))
+                    refs[key] = {"artifact_id": artifact_id}
+                return _job(self.jobs.operations.submit(name, refs, options,
+                    job_id=_provider_job_id(context, "op")))
+            except (ValueError, TypeError, KeyError, ContractError) as exc:
+                raise ProviderFault("PROVIDER_REQUEST_INVALID", str(exc), 422) from exc
         if operation != OPERATION:
             raise ProviderFault(
                 "PROVIDER_OPERATION_UNSUPPORTED", f"unsupported operation: {operation}", 422
@@ -188,7 +220,10 @@ class Modal3DProvider:
         return _job(self.jobs.cancel(provider_job_id))
 
     def iter_artifact(self, provider_job_id: str, artifact_id: str) -> Iterator[bytes]:
-        descriptor, path = self.jobs.artifact(provider_job_id)
+        if provider_job_id.startswith("op_"):
+            descriptor, path = self.jobs.artifact(provider_job_id, artifact_id)
+        else:
+            descriptor, path = self.jobs.artifact(provider_job_id)
         if descriptor.get("id") != artifact_id:
             raise ProviderFault("PROVIDER_ARTIFACT_NOT_FOUND", "artifact not found", 404)
         yield from _read(path)
@@ -206,6 +241,7 @@ def _descriptor(
     health: str,
     revision: str,
 ) -> dict[str, object]:
+    from .operation_jobs import connector_capabilities
     return {
         "id": "modal-3d",
         "displayName": "Modal 3D",
@@ -254,7 +290,7 @@ def _descriptor(
                 "support": {"cancel": True, "resume": True, "idempotency": True},
                 "artifactTransport": "connector-artifact",
             }
-        ],
+        ] + connector_capabilities(status),
     }
 
 
@@ -274,6 +310,8 @@ def _job(state: dict[str, object]) -> dict[str, object]:
     result = state.get("result")
     artifact = result.get("artifact") if isinstance(result, dict) else None
     artifacts = [dict(artifact)] if isinstance(artifact, dict) else []
+    if isinstance(result, dict) and isinstance(result.get("artifacts"), list):
+        artifacts = [dict(item) for item in result["artifacts"]]
     return {
         "id": state.get("id"),
         "status": state.get("status"),

@@ -31,6 +31,58 @@ CANONICAL_INPUT = {
     "layout": "letterbox",
     "alpha": "channel_required",
 }
+OPERATION_IMAGE_TO_3D = "image_to_3d"
+
+INPUT_KINDS = frozenset(
+    {
+        "image",
+        "multiview_images",
+        "mesh",
+        "textured_mesh",
+        "part_set",
+        "rigged_mesh",
+        "texture_mask",
+        "motion_video",
+    }
+)
+OUTPUT_KINDS = frozenset(
+    {
+        "mesh",
+        "textured_mesh",
+        "part_set",
+        "retopologized_mesh",
+        "uv_mesh",
+        "rigged_mesh",
+        "posed_mesh",
+        "animated_mesh",
+    }
+)
+GLB_ARTIFACT = {"mime": "model/gltf-binary", "extension": ".glb"}
+
+
+def input_descriptor(
+    name: str,
+    kind: str,
+    *,
+    required: bool = True,
+    contract: dict | None = None,
+    artifact: dict | None = None,
+) -> dict:
+    value = {"name": name, "kind": kind, "required": required}
+    if contract is not None:
+        value["contract"] = deepcopy(contract)
+    if artifact is not None:
+        value["artifact"] = deepcopy(artifact)
+    return value
+
+
+def output_descriptor(name: str, kind: str, *, artifact: dict | None = None) -> dict:
+    value = {"name": name, "kind": kind}
+    if artifact is not None:
+        value["artifact"] = deepcopy(artifact)
+    return value
+
+
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
@@ -232,8 +284,7 @@ def validate_glb_quality(path: Path, profile: str) -> dict:
     geometry = [
         primitive
         for primitive in primitives
-        if isinstance(primitive.get("attributes"), dict)
-        and "POSITION" in primitive["attributes"]
+        if isinstance(primitive.get("attributes"), dict) and "POSITION" in primitive["attributes"]
     ]
     if not geometry:
         raise ValueError("GLB quality guard: geometry is missing POSITION data")
@@ -273,11 +324,7 @@ def validate_glb_quality(path: Path, profile: str) -> dict:
                     if isinstance(extension, dict) and "source" in extension:
                         source = extension["source"]
                         break
-        if (
-            not isinstance(source, int)
-            or isinstance(source, bool)
-            or not 0 <= source < len(images)
-        ):
+        if not isinstance(source, int) or isinstance(source, bool) or not 0 <= source < len(images):
             return False
         image = images[source]
         if not isinstance(image, dict):
@@ -343,6 +390,67 @@ def validate_glb_quality(path: Path, profile: str) -> dict:
     }
 
 
+def operation_capability(
+    capability_id: str,
+    name: str,
+    worker_app: str,
+    description: str,
+    operation: str,
+    inputs: list[dict],
+    outputs: list[dict],
+    options: dict,
+    *,
+    warm_seconds: float,
+    cold_start_seconds: float | None = None,
+    entrypoint: dict | None = None,
+    profile: dict | None = None,
+    profile_name: str = "推荐 · 已验证",
+    profile_metadata: dict | None = None,
+    reference_metadata: dict | None = None,
+    deployment: dict | None = None,
+    priority: int = 1000,
+) -> dict:
+    """Build one generic 3D operation capability.
+
+    The operation contract is independent from the legacy image-to-3D fields.
+    Existing generation workers add those aliases through worker_capability.
+    """
+    reference = {"warm_seconds": warm_seconds}
+    if cold_start_seconds is not None:
+        reference["cold_start_seconds"] = cold_start_seconds
+    if reference_metadata:
+        reference.update(deepcopy(reference_metadata))
+
+    recommended_profile = {
+        "id": "recommended",
+        "name": profile_name,
+        "options": profile or {},
+    }
+    if profile_metadata:
+        recommended_profile.update(deepcopy(profile_metadata))
+
+    capability = {
+        "id": capability_id,
+        "name": name,
+        "description": description,
+        "status": "enabled",
+        "worker_app": worker_app,
+        "operation": operation,
+        "inputs": deepcopy(inputs),
+        "outputs": deepcopy(outputs),
+        "profiles": [recommended_profile],
+        "options": options,
+        "priority": priority,
+        "reference": reference,
+    }
+    if entrypoint:
+        capability["entrypoint"] = deepcopy(entrypoint)
+    deployment_metadata = dict(deployment or {})
+    deployment_metadata["adapter_revision"] = WORKER_ADAPTER_REVISION
+    capability["deployment"] = deployment_metadata
+    return capability
+
+
 def worker_capability(
     model_id: str,
     name: str,
@@ -361,46 +469,54 @@ def worker_capability(
     deployment: dict | None = None,
     priority: int = 1000,
 ) -> dict:
-    reference = {"warm_seconds": warm_seconds}
-    if cold_start_seconds is not None:
-        reference["cold_start_seconds"] = cold_start_seconds
-    if reference_metadata:
-        reference.update(deepcopy(reference_metadata))
-
-    recommended_profile = {
-        "id": "recommended",
-        "name": profile_name,
-        "options": profile or {},
-    }
-    if profile_metadata:
-        recommended_profile.update(deepcopy(profile_metadata))
-
-    capability = {
-        "id": model_id,
-        "name": name,
-        "description": description,
-        "status": "enabled",
-        "worker_app": worker_app,
-        "output": output,
-        "artifact": {"mime": "model/gltf-binary", "extension": ".glb"},
-        "input": deepcopy(CANONICAL_INPUT),
-        "profiles": [recommended_profile],
-        "options": options,
-        "priority": priority,
-        "reference": reference,
-    }
+    """Build a legacy-compatible image-to-3D worker capability."""
+    artifact = deepcopy(GLB_ARTIFACT)
+    output_kind = "mesh" if output == "geometry" else "textured_mesh"
+    capability = operation_capability(
+        model_id,
+        name,
+        worker_app,
+        description,
+        OPERATION_IMAGE_TO_3D,
+        [
+            input_descriptor(
+                "image",
+                "image",
+                contract=CANONICAL_INPUT,
+            )
+        ],
+        [output_descriptor("asset", output_kind, artifact=artifact)],
+        options,
+        warm_seconds=warm_seconds,
+        cold_start_seconds=cold_start_seconds,
+        entrypoint=generation_entrypoint,
+        profile=profile,
+        profile_name=profile_name,
+        profile_metadata=profile_metadata,
+        reference_metadata=reference_metadata,
+        deployment=deployment,
+        priority=priority,
+    )
+    capability.update(
+        {
+            "output": output,
+            "artifact": artifact,
+            "input": deepcopy(CANONICAL_INPUT),
+        }
+    )
     if generation_entrypoint:
         capability["generation_entrypoint"] = deepcopy(generation_entrypoint)
-    deployment_metadata = dict(deployment or {})
-    deployment_metadata["adapter_revision"] = WORKER_ADAPTER_REVISION
-    capability["deployment"] = deployment_metadata
     return capability
 
 
 def worker_identity(capability: dict) -> dict:
     """Return the cheap deployment identity checked before any paid GPU call."""
     recommended = next(
-        (profile for profile in capability.get("profiles", []) if profile.get("id") == "recommended"),
+        (
+            profile
+            for profile in capability.get("profiles", [])
+            if profile.get("id") == "recommended"
+        ),
         None,
     )
     if recommended is None:

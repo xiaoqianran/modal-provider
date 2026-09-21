@@ -134,4 +134,7 @@ def capabilities_document() -> dict[str, object]:
         raise CapabilityUnavailable("modal-3D capability document is not installed") from exc
     except json.JSONDecodeError as exc:
         raise IncompatibleCapability("modal-3D capability document is not valid JSON") from exc
-    return _validate_document(payload)
+    from modal_3d.operations import capabilities
+    result = _validate_document(payload)
+    result["operations"] = {"contract": "modal-3d.operations.v1", "capabilities": capabilities()}
+    return result

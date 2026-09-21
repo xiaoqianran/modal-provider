@@ -100,7 +100,8 @@ class Job:
             "status": self.status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-            "result": self.result,
+            "result": {k: v for k, v in self.result.items() if k != "artifact_sources"}
+            if self.result else self.result,
             "error_code": self.error_code,
             "retryable": self.retryable,
             "conditioning": self.conditioning,
@@ -314,8 +315,17 @@ class JobService:
         self._reconcile_wakeup = threading.Event()
         self._reconcile_guard = threading.Lock()
         self._reconcile_thread: threading.Thread | None = None
+        self._operations_service = None
         if auto_reconcile:
             self.start_reconciler()
+
+    @property
+    def operations(self):
+        from .operation_jobs import OperationService
+        with self._reconcile_guard:
+            if self._operations_service is None:
+                self._operations_service = OperationService(self)
+        return self._operations_service
 
     def start_reconciler(self) -> None:
         """Advance durable prepare -> generation transitions independently of HTTP polling."""
@@ -351,6 +361,7 @@ class JobService:
 
     def reconcile_once(self) -> int:
         """Advance every job that still needs a locally-triggered remote stage."""
+        self.operations.reconcile()
         advanced = 0
         for job in self.store.pending_continuations():
             before = (job.prepare_call_id, job.remote_call_id, job.status, job.updated_at)
@@ -739,6 +750,8 @@ class JobService:
         )
 
     def poll(self, job_id: str) -> dict[str, object]:
+        if job_id.startswith("op_"):
+            return self.operations.poll(job_id)
         with self._submission_lock(job_id):
             return self._poll_locked(job_id)
 
@@ -795,7 +808,8 @@ class JobService:
             return self._save(
                 job, status="failed", error_code="artifact.invalid", retryable=False
             ).public()
-        result: dict[str, object] = {"artifact": descriptor}
+        result: dict[str, object] = {"artifact": descriptor,
+            "artifact_sources": {str(descriptor["id"]): {**value["artifact"], "role": "primary-glb"}}}
         return self._save(
             job,
             status="succeeded",
@@ -805,6 +819,8 @@ class JobService:
         ).public()
 
     def cancel(self, job_id: str) -> dict[str, object]:
+        if job_id.startswith("op_"):
+            return self.operations.cancel(job_id)
         with self._submission_lock(job_id):
             return self._cancel_locked(job_id)
 
@@ -858,7 +874,9 @@ class JobService:
             ).public()
         return self._save(job, status="cancel_requested", retryable=True).public()
 
-    def artifact(self, job_id: str) -> tuple[dict[str, object], Path]:
+    def artifact(self, job_id: str, role: str = "primary-glb") -> tuple[dict[str, object], Path]:
+        if job_id.startswith("op_"):
+            return self.operations.artifact(job_id, role)
         state = self.poll(job_id)
         if state["status"] != "succeeded" or not isinstance(state.get("result"), dict):
             raise RuntimeError("job artifact is not ready")

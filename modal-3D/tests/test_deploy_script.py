@@ -18,6 +18,16 @@ class DeployScriptTests(unittest.TestCase):
         deploy = script.index("modal deploy -e main -m $module")
         self.assertLess(prepare, deploy)
         self.assertIn("if ($LASTEXITCODE -ne 0)", script[prepare:deploy])
+        self.assertIn("$hasSyncWeights", script)
+        self.assertIn("if ($hasSyncWeights)", script[prepare - 200:deploy])
+
+    def test_weightless_workers_skip_prepare(self) -> None:
+        powershell = (PROJECT_ROOT / "scripts/deploy-worker.ps1").read_text(encoding="utf-8")
+        shell = (PROJECT_ROOT / "scripts/deploy-worker.sh").read_text(encoding="utf-8")
+        self.assertIn("Select-String -LiteralPath $workerPath", powershell)
+        self.assertIn("def\\s+sync_weights", powershell)
+        self.assertIn("grep -Eq", shell)
+        self.assertIn("sync_weights", shell)
 
     def test_windows_powershell_51_compatible_relative_path(self) -> None:
         script = (PROJECT_ROOT / "scripts/deploy-worker.ps1").read_text(encoding="utf-8")
@@ -69,6 +79,7 @@ class DeployScriptTests(unittest.TestCase):
         prepare = script.index('modal run -e main -m "${module}::sync_weights"')
         deploy = script.index('modal deploy -e main -m "$module"')
         self.assertLess(prepare, deploy)
+        self.assertIn("if grep -Eq", script[:prepare])
         self.assertIn("--isolated", script)
         self.assertIn("--frozen", script)
         self.assertIn("--default-index https://pypi.org/simple", script)

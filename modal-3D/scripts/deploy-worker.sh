@@ -41,5 +41,7 @@ export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
 cd "$repo_root"
-uv "${uv_args[@]}" modal run -e main -m "${module}::sync_weights"
+if grep -Eq '^[[:space:]]*(async[[:space:]]+)?def[[:space:]]+sync_weights[[:space:]]*\(' "$worker_path"; then
+    uv "${uv_args[@]}" modal run -e main -m "${module}::sync_weights"
+fi
 uv "${uv_args[@]}" modal deploy -e main -m "$module"

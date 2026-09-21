@@ -30,12 +30,17 @@ $uvArgs = @(
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
 
+$hasSyncWeights = Select-String -LiteralPath $workerPath -Pattern '^\s*(async\s+)?def\s+sync_weights\s*\(' -Quiet
+
 Push-Location $repoRoot
 try {
-    & uv @uvArgs modal run -e main -m "${module}::sync_weights"
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
+    if ($hasSyncWeights) {
+        & uv @uvArgs modal run -e main -m "${module}::sync_weights"
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
     }
+    # Weightless workers (for example modal-3d-mesh) skip preparation.
     # There is no registry step. Deploy the selected worker module directly;
     # the client resolves generation/mask workers from local static configuration.
     & uv @uvArgs modal deploy -e main -m $module
