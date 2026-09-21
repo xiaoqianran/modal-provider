@@ -1,0 +1,58 @@
+{
+  "captured_at": "live-via-chrome-devtools",
+  "url": "https://www.3daistudio.com/Dashboard",
+  "title": "Dashboard - Manage Your AI-Generated 3D Models, Images & Projects | 3D AI Studio",
+  "toolbar": {
+    "tabs": ["Files", "Projects", "Branches", "Shared"],
+    "actions": ["What's New", "Flow", "MCP", "API", "More"],
+    "notes": ["Shared tab exists on live site", "More menu expands CREATE/CONNECT/INSIGHTS/RESOURCES"]
+  },
+  "files_view": {
+    "projects_panel": {
+      "title": "Projects",
+      "subtitle": "No projects yet - create one with +",
+      "empty_title": "No projects yet",
+      "empty_text": "Create a project to organize your generations.",
+      "actions": ["New"]
+    },
+    "tags_panel": {
+      "title": "Tags",
+      "locked_text": "Organize your files with tags - upgrade to unlock",
+      "actions": ["Manage"],
+      "filter_chips": ["New", "All"]
+    },
+    "feature_section": {
+      "kicker": "Use the sidebar to explore all tools",
+      "title": "From Idea to Print Bed",
+      "subtitle": "Watertight, print-ready models — STL and 3MF out of the box",
+      "cards": [
+        {
+          "badge": "Text to 3D",
+          "title": "Describe a Model",
+          "body": "Type your idea and get a printable 3D model.",
+          "href": "/TextTo3D/app"
+        },
+        {
+          "badge": "Image to 3D",
+          "title": "Photo to Printable",
+          "body": "Upload any image and get a print-ready model with auto-repair.",
+          "href": "/ImageTo3D/app"
+        }
+      ]
+    },
+    "onboarding_steps_visible_on_live": [
+      "generate an image -> /ImageGeneration/generate",
+      "edit & refine -> /ImageGeneration/edit",
+      "Image to 3D -> /ImageTo3D/app"
+    ]
+  },
+  "projects_view": {
+    "tabs": ["My Projects", "Shared Projects", "Collected Projects", "Archived"],
+    "filters": ["All", "Done"],
+    "actions": ["New Project", "Create Project"],
+    "zoom": ["Zoom out (more cards)", "Zoom in (fewer cards)"],
+    "empty_title": "No Projects Yet"
+  },
+  "headings": ["From Idea to Print Bed", "No Projects Yet"],
+  "body_sample": "Files Projects Branches What's New Flow MCP API No projects yet - create one with + New All Organize your files with tags - upgrade to unlock Manage Use the sidebar to explore all tools From Idea to P"
+}

@@ -1,0 +1,196 @@
+{
+  "tool": "playwright",
+  "scope": "Toolbox tools",
+  "captured": {
+    "/Tools/MaterialGenerator": {
+      "title": "AI Material Generator",
+      "subtitle": "Create PBR materials with base color, normal, roughness, metalness & height maps",
+      "tabs": ["Describe Material | Generate material & maps from a prompt", "Extract from Photo | Extract a material from a photo region", "Image to Maps | Predict PBR maps from an existing image"],
+      "presets": ["Brushed Steel","Worn Leather","Mossy Stone","Red Brick","Oak Wood","Concrete"],
+      "options": ["Base Color","Normal","Roughness","Metalness","Height","Upscale (Higher Resolution) Pro"],
+      "labels": ["Creation Method","Material Description","Output Maps"],
+      "placeholder": "Describe the material, e.g. \"brushed copper with green patina\", \"worn concrete with cracks\"",
+      "previewTabs": ["Material Preview","All Maps","Tiling Check"],
+      "action": "Create Material",
+      "extras": ["ADVANCED","Frequently Asked Questions","Try this prompt →"]
+    },
+    "/Tools/SeamlessTextureGenerator": {
+      "title": "Seamless Texture Generator",
+      "subtitle": "Generate seamless, tileable textures with AI-powered PBR material maps",
+      "tabs": ["Text to Material | Generate texture & maps from a prompt", "Image to Material | Predict PBR maps from an image"],
+      "labels": ["Generation Mode","Prompt","PBR Maps","Tiling Mode"],
+      "options": ["Base Color","Normal","Roughness","Metalness","Height","Both","Horizontal","Vertical"],
+      "placeholder": "Describe the texture, e.g. \"weathered red brick wall\", \"polished marble with grey veins\"",
+      "previewTabs": ["Seamless Preview","3D Preview","All Maps"],
+      "action": "Generate Material",
+      "extras": ["Upscale PBR Maps Pro","ADVANCED","FAQ"]
+    },
+    "/Tools/PBRMapGenerator": {
+      "title": "Image to PBR Maps",
+      "subtitle": "Generate normal, roughness, height and more maps from any image",
+      "labels": ["Source Image REQUIRED","Map Type","AI Model"],
+      "options": ["Normal Map","Roughness Map","Height Map","Ambient Occlusion","Metallic Map","Depth Map"],
+      "models": ["Nano Banana 2 10 cr","Gemini Edit 6 cr","Nano Banana Pro 14 cr"],
+      "previewTabs": ["All","Normal","Roughness","Height","Depth","Metallic"],
+      "action": "Generate Normal Map",
+      "uploadHint": "Drag & drop or click to upload PNG, JPG, WebP up to 10MB · Ctrl+V to paste"
+    },
+    "/Tools/CharacterSheetGenerator": {
+      "title": "AI character sheet generator",
+      "subtitle": "Upload one character image and get consistent front, left, right and back views. Split them into separate images, or turn them into a 3D model.",
+      "steps": ["1. Upload a character","2. Generate the views","3. Split or go 3D"],
+      "tagline": "One image in, four views out",
+      "action": "Let's go",
+      "cta_upload": "Choose from Dashboard"
+    },
+    "/Tools/SplitImageIntoParts": {
+      "title": "Split any image into parts with AI",
+      "subtitle": "Upload one image and the AI finds its separable parts, then cuts each one out as its own image.",
+      "steps": ["1. Analyze","2. Review","3. Extract"],
+      "tagline": "One image in, every part out",
+      "action": "Let's go"
+    },
+    "/Tools/PoseTransfer": {
+      "title": "AI Pose Changer",
+      "subtitle": "Change poses in your photos with AI",
+      "labels": ["Source Image","Reference Pose","AI Model","Quality","Resolution","Additional Instructions"],
+      "buttons": ["Choose from Dashboard","Select from Pose Library","Upload Your Own Pose Reference Image","Low","Medium","High","1K","2K","4K"],
+      "action": "Apply Pose"
+    },
+    "/Tools/ImageToPrompt": {
+      "title": "Image to Prompt",
+      "subtitle": "Upload an image to generate a detailed AI-ready text description",
+      "kind": "marketing_upload",
+      "sections": ["How it works","FAQ","Get started"],
+      "uploadHint": "Drop your image here or click to browse PNG, JPG, WebP · Max 5 MB"
+    },
+    "/svgTo3D": {
+      "title": "SVG to 3D",
+      "subtitle": "Transform SVG files into 3D models",
+      "kind": "webgl_upload",
+      "note": "Loading 3D environment..."
+    },
+    "/font3d": {
+      "title": "3D Text Generator",
+      "subtitle": "Turn any font into a 3D model",
+      "kind": "webgl_text",
+      "note": "Loading 3D text environment..."
+    },
+    "/Tools/RiggingTool": {
+      "title": "AI Rigging & Animation",
+      "subtitle": "Upload a GLB model to add AI-powered rigging and animation",
+      "kind": "marketing_upload",
+      "uploadHint": "Drop your GLB file here or click to browse GLB format · Biped · T-pose"
+    },
+    "/Tools/SegmentationTool": {
+      "title": "AI Mesh Segmentation",
+      "subtitle": "Upload a 3D model to automatically split it into logical parts - with optional printable joints",
+      "kind": "marketing_upload"
+    },
+    "/Tools/UVUnfold": {
+      "title": "AI UV Unfold",
+      "subtitle": "Generate clean, optimized UV layouts for your 3D models",
+      "kind": "marketing_upload",
+      "cta_upload": "Choose from Dashboard Pro"
+    },
+    "/Tools/Remesh": {
+      "title": "Remesh 3D Model",
+      "subtitle": "Upload a GLB file to optimize mesh topology and reduce polygon count",
+      "kind": "marketing_upload",
+      "uploadHint": "Drop your GLB file here or click to browse GLB format only"
+    },
+    "/Tools/Viewer3D": {
+      "title": "3D Viewer",
+      "subtitle": "Drop any 3D model to view · FREE · 100% client-side",
+      "kind": "viewer",
+      "cameras": ["F","B","L","R","T","Bo","Iso"],
+      "tabs": ["Model","Upload","Clear","Apply texture image","Display","Environment","Lighting","Camera","Scene","Export"],
+      "options": ["Original","Wireframe","Clay","X-Ray","Normals","Transparent"],
+      "env": ["STUDIO","SUNSET","FOREST","APARTMENT","NIGHT"],
+      "labels": ["OVERRIDE TEXTURE (PNG/JPG)","MATERIAL MODE","BACKGROUND","HDRI PRESET","ENVIRONMENT INTENSITY"],
+      "formats": ["GLB","GLTF","FBX","OBJ","STL"],
+      "action": "Upload a 3D file"
+    },
+    "/Tools/GLBVideoRenderer": {
+      "title": "360 Video Renderer",
+      "subtitle": "Create turntable videos from 3D models · WebM with Alpha",
+      "kind": "model_settings",
+      "labels": ["Resolution","FPS","Duration","Material","Brightness"],
+      "options": {
+        "Resolution": ["480p","720p","1080p","2K","4K"],
+        "FPS": ["24","30","60"],
+        "Duration": ["3s","5s","8s","10s"],
+        "Material": ["Mesh","Color","PBR"]
+      },
+      "action": "Render Video",
+      "previewTabs": ["Console"]
+    },
+    "/Tools/GLBCompression": {
+      "title": "GLB Compressor",
+      "subtitle": "Reduce 3D model file sizes by up to 90% · New Release - In Beta",
+      "kind": "model_settings",
+      "options": ["Balanced","Maximum","Fast","Minimal"],
+      "action": "Compress",
+      "extras": ["Advanced Settings","Feedback","FAQ"]
+    },
+    "/Tools/AddBase": {
+      "title": "Add Base",
+      "subtitle": "Add professional pedestals to your 3D models · New Release - In Beta",
+      "kind": "model_upload",
+      "action": "Add Base",
+      "cta_upload": "Choose from Dashboard Pro"
+    },
+    "/Tools/VertexColor": {
+      "title": "Texture to Vertex Color",
+      "subtitle": "Convert textures to vertex colors for multi-color 3D printing · Free Tool",
+      "kind": "model_upload",
+      "action": "Convert to Vertex Colors",
+      "cta_upload": "Choose from Dashboard Pro"
+    },
+    "/Tools/ThreeDStager": {
+      "title": "GLB Renderer",
+      "subtitle": "Render 3D models online in any scene",
+      "kind": "stager",
+      "labels": ["3D Models 0/5","Background Image Optional","Render Settings","Creativity Level","Render Style","Lighting","Environment","Surface/Ground","Effects","Scene Instructions","AI Model"],
+      "modes": ["Guided","Custom"],
+      "creativity": ["Faithful","Balanced","Creative"],
+      "styles": ["Photorealistic","Cinematic","Product Shot","Architectural","Stylized Art","Anime/Toon","Fantasy","Sci-Fi"],
+      "effects": ["Atmospheric Effects","Depth of Field","Enhanced Reflections","Particles/Dust","Volumetric Light"],
+      "models": ["Nano Banana 2 Fast, high quality","Gemini Edit Fast, balanced quality","Nano Banana Pro Highest quality results"],
+      "action": "Capture & Render"
+    },
+    "/ImageToGaussianSplat": {
+      "title": "Turn Images Into Gaussian Splats",
+      "subtitle": "Upload an image and generate a photorealistic 3D splat you can explore in real time.",
+      "kind": "splat_generate",
+      "action": "Generate Gaussian Splat"
+    },
+    "/GaussianSplatViewer": {
+      "title": "Gaussian Splat Viewer",
+      "subtitle": "Drop a .splat file to view it",
+      "kind": "splat_viewer"
+    },
+    "/Tools/VideoGen": {
+      "title": "AI Video Generation",
+      "subtitle": "Create Stunning Videos from Text & Images",
+      "kind": "marketing",
+      "actions": ["Try Video AI","Start Creating Videos","Try Text to Video","Try Image to Video","Try Reference to Video","Open Image Studio"]
+    },
+    "/Tools/PromptHelper": {
+      "title": "Prompt Helper",
+      "subtitle": "What would you like to create?",
+      "kind": "prompt_helper",
+      "buttons": ["No Project","New Image Prompt","Balanced","Library Beta"],
+      "chips": ["Game character","Stylized weapon","Photorealistic","Isometric room"],
+      "hint": "Describe your idea in plain language - like you're talking to a friend. Bob will build the prompt."
+    },
+    "/Tools/Audio": {
+      "title": "Audio Generation",
+      "subtitle": "Text to speech",
+      "kind": "audio",
+      "labels": ["TEXT TO SPEAK","MODEL","VOICE","LANGUAGE"],
+      "options": ["Multilingual v2 5c · Recommended","v3 Alpha 5c · New","Turbo v2.5 3c · Fast","Flash v2.5 3c · Fastest","Lily","Auto-detect"],
+      "extras": ["Examples"]
+    }
+  }
+}

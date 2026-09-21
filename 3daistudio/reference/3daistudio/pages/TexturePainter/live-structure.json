@@ -1,0 +1,78 @@
+{
+  "captured_at": "live-via-chrome-devtools",
+  "url": "https://www.3daistudio.com/TexturePainter",
+  "sidebar": [
+    "Unlock All Tools",
+    "Ready to Create",
+    "3D AI Studio",
+    "80 Credits",
+    "Dashboard",
+    "Image Studio",
+    "Image to 3D",
+    "Text to 3D",
+    "Texture Generator",
+    "Texture Painter",
+    "Flow NEW",
+    "Learning Studio",
+    "Community Creations",
+    "Toolbox",
+    "Video Studio",
+    "Settings",
+    "Your first printable model",
+    "13% Finish the guide, get 100 free credits",
+    "FIRST STEP Generate your first image"
+  ],
+  "sidebar_structure": {
+    "container": "div.flex.flex-col.h-dvh.border-r.bg-zinc-900/95 (width 300px)",
+    "top_card": {
+      "class": "p-3 > rounded-xl p-4 cursor-pointer border bg-zinc-800/50 border-zinc-700/50",
+      "row1": ["logo img w-7 h-7", "button Unlock All Tools"],
+      "row2": ["status Ready to Create", "text 3D AI Studio", "credits 80 / Credits"]
+    },
+    "nav": {
+      "class": "flex-1 overflow-y-auto overflow-x-visible overscroll-contain sleek-scrollbar px-3",
+      "items": [
+        {"href": "/Dashboard", "text": "Dashboard", "divider_before": false},
+        {"href": "/ImageGeneration/generate", "text": "Image Studio", "divider_before": true},
+        {"href": "/ImageTo3D/app", "text": "Image to 3D", "divider_before": true},
+        {"href": "/TextTo3D/app", "text": "Text to 3D", "divider_before": false},
+        {"href": "/TextureGenerator/app", "text": "Texture Generator", "divider_before": false},
+        {"href": "/TexturePainter", "text": "Texture Painter", "divider_before": false, "active_on_capture": true},
+        {"href": "/Flow/app", "text": "Flow", "badge": "NEW", "divider_before": true},
+        {"href": "/Tools/Tutorials", "text": "Learning Studio", "divider_before": true},
+        {"type": "button", "text": "Community Creations", "expandable": true, "divider_before": false},
+        {"type": "button", "text": "Toolbox", "expandable": true, "divider_before": true},
+        {"href": "/VideoStudio", "text": "Video Studio", "divider_before": false},
+        {"type": "button", "text": "Settings", "divider_before": true}
+      ],
+      "item_class_pattern": "flex items-center border justify-start py-2.5 px-3 my-1.5 rounded-xl cursor-pointer transition-all duration-200 text-zinc-400",
+      "active_class_pattern": "bg-zinc-800 ..."
+    },
+    "onboarding": {
+      "class": "border-t bg-zinc-900/50 border-zinc-800/50 > relative m-2 px-3 py-2.5 rounded-xl border",
+      "title": "Your first printable model",
+      "progress": "13%",
+      "hint": "Finish the guide, get 100 free credits",
+      "cta": {"label": "FIRST STEP", "text": "Generate your first image"}
+    },
+    "profile": {
+      "class": "mt-auto w-full > w-full border-t bg-zinc-900/80 border-zinc-800/50",
+      "username": "seachenxyt",
+      "email": "seachenxyt@gmail.com",
+      "note": "local recreation should use a generic placeholder, not real account"
+    }
+  },
+  "page": {
+    "title": "AI Texture Painter for 3D Models - Paint Textures in 3D | 3D AI Studio",
+    "banners": [
+      "Try Texture AI 2.0 BETA",
+      "This is the legacy version. Our new Texture AI 2.0 offers improved stability, better results, and more features.",
+      "Open Settings → Join Beta → Access new Texture AI 2.0 in the Sidebar on the left",
+      "Texture AI FREE Available with any subscription plan"
+    ],
+    "toolbar": ["Upload", "Save", "Help", "Documentation"],
+    "panel_tabs": ["Model", "Tex 4K", "Res 4K", "Export"],
+    "panel_actions": ["Generate Texture"],
+    "canvas_area": "3D Viewer Paint Preview"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "captured_at": "live-via-chrome-devtools",
+  "url": "https://www.3daistudio.com/ImageGeneration/generate",
+  "title": "AI Image Generator - Text to Image with Flux, ImageGen 4 & More | 3D AI Studio",
+  "layout": {
+    "sidebar_left_panel": {
+      "quick_start": {
+        "title": "Quick Start",
+        "subtitle": "We choose the best model for you",
+        "actions": ["Create an image now", "Edit an image now"],
+        "collapsible": true
+      },
+      "category_header": "Or choose the model yourself",
+      "category_title": "Choose a Category",
+      "categories_vertical": [
+        {"id": "generate", "label": "Generate"},
+        {"id": "edit", "label": "Edit"},
+        {"id": "convert", "label": "Convert"},
+        {"id": "image-reference", "label": "Image Reference"},
+        {"id": "style-reference", "label": "Style Reference"},
+        {"id": "sketch", "label": "Sketch"},
+        {"id": "utilities", "label": "Image Tools", "badge": "NEW"},
+        {"id": "video", "label": "Video"}
+      ],
+      "search_placeholder": "Search tools...",
+      "footer_links": ["Generate guide", "Edit guide"],
+      "panel_collapse": true
+    },
+    "right_grid": {
+      "columns": 2,
+      "featured_badge": "BEST FOR GETTING STARTED",
+      "card_fields": ["name", "description", "badge", "Click to open tool", "href"]
+    }
+  },
+  "generate_tools": [
+    {"name": "Nano Banana 2 Lite - Generate", "slug": "nano-banana-2-lite-inf", "desc": "Google's Gemini 3.1 Flash Lite - Ultra-fast text-to-image generation at low cost", "badges": ["Best/Featured"]},
+    {"name": "ImageGen 3", "slug": "imagegen-3", "desc": "Advanced model for detailed text-to-image creation", "badges": []},
+    {"name": "Nano Banana 2 - Generate", "slug": "nano-banana-2-inf", "desc": "Google's Gemini 3.1 Flash - Fast text-to-image generation with 0.5K–4K resolution", "badges": ["Pro Model"]},
+    {"name": "Nano Banana Pro - Generate", "slug": "nano-banana-pro-inf", "desc": "Google's Gemini 3 Pro - High-quality text-to-image generation with advanced resolution control", "badges": ["Pro Model"]},
+    {"name": "Nano Banana - Generate", "slug": "nano-banana-inf", "desc": "Google's Gemini 2.5 Flash - Fast and affordable text-to-image generation", "badges": []},
+    {"name": "GPT Image 2", "slug": "gpt-image-2", "desc": "OpenAI's GPT Image 2 - Next-gen image generation with variable quality and flexible sizing", "badges": ["Pro Model"]},
+    {"name": "GPT Image 2.5 Flare", "slug": "gpt-image-2-5-flare", "desc": "OpenAI's GPT Image 2.5 Flare - Higher quality than GPT Image 2 at up to 50% lower latency", "badges": ["Pro Model", "New"]},
+    {"name": "GPT Image 2.5 Sunburst", "slug": "gpt-image-2-5-sunburst", "desc": "OpenAI's GPT Image 2.5 Sunburst - Most capable model for premium, detail-critical work (slower)", "badges": ["Pro Model", "New"]},
+    {"name": "SeedDream v5 Lite - Generate", "slug": "seedream-v5-lite-generate", "desc": "ByteDance SeedDream v5 Lite - High-quality 2K-3K image generation with multi-reference blending", "badges": []},
+    {"name": "Seedream 5 Pro", "slug": "seedream-5-pro-generate", "desc": "ByteDance Seedream 5 Pro - Flagship precision creation with complex infographics and native text rendering in 14 languages", "badges": []},
+    {"name": "Flux 2", "slug": "flux2", "desc": "Latest Flux 2 model with native multi-image support, guidance control, and acceleration options", "badges": ["Top Choice", "Fast"]},
+    {"name": "Flux 2 Flex", "slug": "flux2-flex", "desc": "Flux 2 Flex model with advanced guidance control and inference step customization for precise image generation", "badges": ["New"]},
+    {"name": "Flux 2 Pro", "slug": "flux2-pro", "desc": "Flux 2 Pro model optimized for high-quality professional image generation", "badges": ["Pro Model", "New"]},
+    {"name": "ImageGen 3 Fast", "slug": "imagegen-3-fast", "desc": "Faster version of ImageGen 3 with quicker generation times", "badges": []},
+    {"name": "Flux", "slug": "flux", "desc": "Generate images quickly from text prompts", "badges": ["Top Choice"]},
+    {"name": "Flux Pro", "slug": "flux-pro", "desc": "High-quality professional text-to-image generation", "badges": ["Pro Model"]},
+    {"name": "Flux Dev", "slug": "flux-pro-1-1", "desc": "Fast version with enhanced image fidelity", "badges": []},
+    {"name": "GPT-Image-1", "slug": "gpt-image-1", "desc": "OpenAI's latest text-to-image model with variable quality & size", "badges": []}
+  ],
+  "local_diffs": [
+    "Live uses vertical category list in left panel, local uses horizontal tabs",
+    "Live has Quick Start as left panel card, local has full-width banner",
+    "Live generate list is larger than local data.js",
+    "Live featured card has BEST FOR GETTING STARTED",
+    "Live footer has Generate guide / Edit guide"
+  ]
+}

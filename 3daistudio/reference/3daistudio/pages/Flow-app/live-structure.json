@@ -1,0 +1,39 @@
+{
+  "captured_at": "playwright-mcp + chrome-devtools",
+  "url": "https://www.3daistudio.com/Flow/app",
+  "title": "Flow App | 3D AI Flow",
+  "logged_in": true,
+  "banner": {
+    "kicker": "Free · 7-part course",
+    "title": "New to Flow? Start with the full course",
+    "body": "From a blank canvas to reusable AI apps - watch the free 7-part series.",
+    "cta": "Watch the series",
+    "dismiss": "Dismiss tutorial banner"
+  },
+  "toolbar": {
+    "tabs": ["My Canvases", "My Templates", "Public Gallery"],
+    "links": [
+      {"text": "Tutorials", "href": "https://www.youtube.com/playlist?list=PL9V4KpAz06FJkQei8b_cUu7gE-XWljeLj"},
+      {"text": "Docs", "href": "https://docs.3daistudio.com/flow/overview"}
+    ],
+    "buttons": ["Feedback", "Recent (sort)", "Favorites", "New flow"],
+    "search_placeholder": "Search…"
+  },
+  "empty_state": {
+    "title": "Create your first flow",
+    "body": "Build a node-based AI workflow from scratch, or learn the ropes first with our free 7-part video course.",
+    "actions": ["New flow", "Watch the Flow guide"]
+  },
+  "new_flow_dialog": {
+    "options": [
+      {"title": "Blank canvas", "body": "Start empty and build it yourself."},
+      {"title": "Build with AI", "badge": "BETA", "body": "Describe it - Bob builds it for you."},
+      {"title": "My templates", "body": "Reuse one of your saved flows."},
+      {"title": "Public templates", "body": "Start from an official community flow."}
+    ],
+    "actions": ["Close", "Create flow"]
+  },
+  "tools_compared": ["playwright", "chrome-devtools"],
+  "playwright_notes": "a11y snapshot with stable refs; click by ref/target reliable; page.evaluate returns structured JSON; screenshot path under .playwright-mcp; logged-in session available",
+  "chrome_devtools_notes": "same logged-in Chrome user sees; navigate_page/evaluate_script/take_snapshot; screenshot path often restricted by workspace roots; good for inspecting already-open tabs"
+}

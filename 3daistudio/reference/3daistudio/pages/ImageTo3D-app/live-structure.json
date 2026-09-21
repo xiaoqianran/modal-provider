@@ -1,0 +1,51 @@
+{
+  "captured_at": "live-via-chrome-devtools",
+  "url": "https://www.3daistudio.com/ImageTo3D/app",
+  "title": "Image to 3D Workspace | 3D AI Studio",
+  "hero": {
+    "title": "Turn Images Into 3D Assets",
+    "subtitle": "Professional models in seconds, not hours",
+    "kpis": [
+      "Generated in ~90s",
+      "GLB, FBX, STL & more",
+      "Commercial use",
+      "1M+ users"
+    ]
+  },
+  "right_panel": {
+    "header": "IMAGE TO 3D",
+    "header_actions": ["Learn more", "API", "Batch Mode"],
+    "model_picker": "Prism 3.1 · Standard · 35 credits",
+    "quick_models": ["Prism 3.1", "Hunyuan 3.1 Pro", "Tripo P2", "All models"],
+    "upload": {"label": "Upload Image", "required": true, "hint": "Upload an image / Click or drag & drop · Ctrl+V to paste"},
+    "examples": ["Character", "Battle Axe", "Orc Bust", "Sofa", "Turtle"],
+    "examples_prompt": "No image? Try one of these",
+    "controls": [
+      {"label": "Texture Quality", "options": ["Standard", "Ultra", "Max"]},
+      {"label": "Mesh Quality", "options": ["Standard", "Ultra"]},
+      {"label": "Material Type", "options": ["Shaded", "PBR"]}
+    ],
+    "advanced_count": 10,
+    "pro_tip": "Pro Tip: Edit your image first for better results",
+    "cta": "Generate 3D Model",
+    "cta_meta": "40 credits · Est. 3-5 min"
+  },
+  "canvas_side": {
+    "project_chip": "Default Project",
+    "welcome_card": "Welcome Deal · 25% Off the Studio Plan",
+    "example_label": "Image to 3D Example",
+    "hover_hint": "Hover to zoom",
+    "marketing_title": "Turn Images Into 3D Assets",
+    "testimonial": "Completely changed my workflow. What used to take hours now takes seconds.",
+    "cta_unlock": "Unlock All Tools",
+    "guarantee": "7-day money-back guarantee · Cancel anytime"
+  },
+  "local_diffs": [
+    "Live has Default Project chip on canvas",
+    "Live has Learn more / API in panel header",
+    "Live shows 1M+ users KPI",
+    "Live CTA meta includes est. 3-5 min",
+    "Live has Pro Tip row",
+    "Live example thumbs are image cards"
+  ]
+}

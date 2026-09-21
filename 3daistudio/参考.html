@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Community Creations - 3D AI Studio</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  /* 自定义滚动条 */
+  .sleek-scrollbar::-webkit-scrollbar { width: 6px; }
+  .sleek-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .sleek-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(113, 113, 122, 0.3);
+    border-radius: 3px;
+  }
+  .sleek-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(113, 113, 122, 0.5);
+  }
+
+  /* 骨架屏动画 */
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+  /* range 滑块样式 */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: #3f3f46;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #d4d4d8;
+    margin-top: -4px;
+    transition: background 0.15s;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover { background: #ffffff; }
+  input[type="range"]::-moz-range-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: #3f3f46;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: 0;
+    border-radius: 50%;
+    background: #d4d4d8;
+    transition: background 0.15s;
+  }
+  input[type="range"]::-moz-range-thumb:hover { background: #ffffff; }
+
+  /* 侧边栏导航项 hover */
+  .nav-item {
+    transition: all 0.2s;
+  }
+</style>
+</head>
+<body class="bg-zinc-900 text-zinc-300">
+
+<div class="w-full h-full">
+  <div class="flex h-dvh overflow-hidden text-zinc-300 bg-zinc-900">
+
+    <!-- ==================== 左侧边栏 ==================== -->
+    <div class="flex flex-col h-dvh border-r z-50 bg-zinc-900/95 border-zinc-800/50 shadow-2xl" style="width:300px;">
+
+      <!-- 积分卡片 -->
+      <div class="p-3">
+        <div class="rounded-xl p-4 cursor-pointer border bg-zinc-800/50 border-zinc-700/50 hover:bg-zinc-800/80 hover:border-zinc-700/80 shadow-lg hover:shadow-xl transition-all duration-200">
+          <div>
+            <div class="text-center py-2">
+              <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Cpath d='M3 9h18M9 21V9'/%3E%3C/svg%3E" alt="Logo" class="mx-auto mb-2 w-7 h-7 opacity-100" />
+              <p class="text-sm font-medium mb-1 text-zinc-200">0 credits remaining</p>
+              <p class="text-xs mb-4 text-zinc-400">Top up or upgrade to keep going</p>
+              <div class="flex items-center justify-center">
+                <button class="text-xs px-3.5 py-2 rounded-lg flex items-center gap-1.5 border transition-all duration-200 font-medium bg-emerald-600/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-600/20 hover:border-emerald-500/50">
+                  <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" class="w-3.5 h-3.5" width="14" height="14">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+                  </svg>
+                  <span>Get More Credits</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 登录按钮 -->
+      <div class="mt-3 mb-6 mx-3">
+        <button class="w-full py-2.5 px-4 rounded-xl border transition-all duration-200 text-sm font-semibold flex items-center justify-center gap-2 bg-indigo-600 border-indigo-500 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-500/20">
+          <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" x2="9" y1="12" y2="12"></line>
+          </svg>
+          Log In
+        </button>
+      </div>
+
+      <!-- 导航 -->
+      <nav class="flex-1 overflow-y-auto overflow-x-visible overscroll-contain sleek-scrollbar px-3">
+
+        <!-- Dashboard -->
+        <a href="#" class="block">
+          <div class="nav-item flex items-center border justify-start py-2.5 px-3 my-1.5 rounded-xl cursor-pointer text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mr-2.5 text-zinc-300" width="16" height="16">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+              <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+            <span class="text-sm flex-1">Dashboard</span>
+          </div>
+        </a>
+
+        <div class="mx-3 my-1 border-t border-zinc-800"></div>
+
+        <!-- Image Studio -->
+        <a href="#" class="block">
+          <div class="nav-item flex items-center border justify-start py-2.5 px-3 my-1.5 rounded-xl cursor-pointer text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mr-2.5 text-zinc-300" width="16" height="16">
+              <circle cx="5" cy="6" r="3"></circle>
+              <path d="M5 9v12"></path>
+              <path d="m15 9-3-3 3-3"></path>
+              <path d="M12 6h5a2 2 0 0 1 2 2v3"></path>
+              <path d="M19 15v6"></path>
+              <path d="M22 18h-6"></path>
+            </svg>
+            <span class="text-sm flex-1">Image Studio</span>
+          </div>
+        </a>
+
+        <div class="mx-3 my-1 border-t border-zinc-800"></div>
+
+        <!-- Image to 3D -->
+        <a href="#" class="block">
+          <div class="nav-item flex items-center border justify-start py-2.5 px-3 my-1.5 rounded-xl cursor-pointer text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mr-2.5 text-zinc-300" width="16" height="16">
+              <path d="M16 5h6"></path>
+              <path d="M19 2v6"></path>
+              <path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5"></path>
+              <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>
+              <circle cx="9" cy="9" r="2"></circle>
+            </svg>
+            <span class="text-sm flex-1">Image to 3D</span>
+          </div>
+        </a>
+
+        <!-- Text to 3D -->
+        <a href="#" class="block">
+          <div class="nav-item flex items-center border justify-start py-2.5 px-3 my-1.5 rounded-xl cursor-pointer text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mr-2.5 text-zinc-300" width="16" height="16">
+              <path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4"></path>
+              <path d="M14 2v4a2 2 0 0 0 2 2h4"></path>
+              <path d="M2 13v-1h6v1"></path>
+              <path d="M5 12v6"></path>
+              <path d="M4 18h2"></path>
+            </svg>
+            <span class="text-sm flex-1">Text to 3D</span>
+          </div>
+        </a>
+
+        <!-- Texture Generator -->
+        <a href="#" class="block">
+          <div class="nav-item flex items-center border justify-start py-2.5 px-3 my-1.5 rounded-xl cursor-pointer text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+            <svg stroke="currentColor" fill="none" stroke-width="1.5" viewBox="0 0 24 24" class="mr-2.5 text-zinc-300" width="16" height="16">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6.429 9.75 2.25 12l4.179 2.25m0-4.5 5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0L21.75 12l-4.179 2.25m0 0 4.179 2.25L12 21.75 2.25 16.5l4.179-2.25m11.142 0-5.571 3-5.571-3"></path>
+            </svg>
+            <span class="text-sm flex-1">Texture Generator</span>
+          </div>
+        </a>
+
+        <!-- Texture Painter -->
+        <a href="#" class="block">
+          <div class="nav-item flex items-center border justify-start py-2.5 px-3 my-1.5 rounded-xl cursor-pointer text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mr-2.5 text-zinc-300" width="16" height="16">
+              <path d="m14.622 17.897-10.68-2.913"></path>
+              <path d="M18.376 2.622a1 1 0 1 1 3.002 3.002L17.36 9.643a.5.5 0 0 0 0 .707l.944.944a2.41 2.41 0 0 1 0 3.408l-.944.944a.5.5 0 0 1-.707 0L8.354 7.348a.5.5 0 0 1 0-.707l.944-.944a2.41 2.41 0 0 1 3.408 0l.944.944a.5.5 0 0 0 .707 0z"></path>
+              <path d="M9 8c-1.804 2.71-3.97 3.46-6.583 3.948a.507.507 0 0 0-.302.819l7.32 8.883a1 1 0 0 0 1.185.204C12.735 20.405 16 16.792 16 15"></path>
+            </svg>
+            <span class="text-sm flex-1">Texture Painter</span>
+          </div>
+        </a>
+
+        <div class="mx-3 my-1 border-t border-zinc-800"></div>
+
+        <!-- Flow -->
+        <a href="#" class="block">
+          <div class="nav-item flex items-center border justify-start py-2.5 px-3 my-1.5 rounded-xl cursor-pointer text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mr-2.5 text-zinc-300" width="16" height="16">
+              <rect width="8" height="8" x="3" y="3" rx="2"></rect>
+              <path d="M7 11v4a2 2 0 0 0 2 2h4"></path>
+              <rect width="8" height="8" x="13" y="13" rx="2"></rect>
+            </svg>
+            <span class="text-sm flex-1">Flow</span>
+            <span class="ml-auto px-2 py-0.5 text-[9px] font-bold rounded-md border uppercase bg-emerald-600/10 border-emerald-500/30 text-emerald-300">NEW</span>
+          </div>
+        </a>
+
+        <div class="mx-3 my-1 border-t border-zinc-800"></div>
+
+        <!-- Learning Studio -->
+        <a href="#" class="block">
+          <div class="nav-item flex items-center border justify-start py-2.5 px-3 my-1.5 rounded-xl cursor-pointer text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+            <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 256 256" class="mr-2.5 text-zinc-300" width="16" height="16">
+              <path d="M250.82,90.71l-120-64a5.94,5.94,0,0,0-5.64,0l-120,64a6,6,0,0,0,0,10.58L34,116.67v49.62a14,14,0,0,0,3.55,9.32C50.42,189.94,79.29,214,128,214a127.21,127.21,0,0,0,50-9.73V240a6,6,0,0,0,12,0V198.35a113.18,113.18,0,0,0,28.45-22.75,13.91,13.91,0,0,0,3.55-9.31V116.67l28.82-15.38a6,6,0,0,0,0-10.58ZM128,202c-44,0-70-21.56-81.52-34.41a2,2,0,0,1-.48-1.3V123.07l79.18,42.22a6,6,0,0,0,5.64,0L178,140.13v51C165,197.35,148.45,202,128,202Zm82-35.71a2,2,0,0,1-.48,1.3A100.25,100.25,0,0,1,190,184.3V133.73l20-10.66Zm-22.15-45a6.27,6.27,0,0,0-1-.71l-56-29.86a6,6,0,0,0-5.64,10.58L175.25,128,128,153.2,20.75,96,128,38.8,235.25,96Z"></path>
+            </svg>
+            <span class="text-sm flex-1">Learning Studio</span>
+          </div>
+        </a>
+
+        <!-- Community Creations (展开) -->
+        <div class="flex items-center py-2.5 px-3 my-1.5 rounded-xl border cursor-pointer transition-all duration-200 text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+          <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mr-2.5 text-zinc-300" width="16" height="16">
+            <path d="M21 12a9 9 0 1 0 -9.679 8.974"></path>
+            <path d="M3.6 9h16.8"></path>
+            <path d="M3.6 15h6.9"></path>
+            <path d="M11.5 3a17 17 0 0 0 0 18"></path>
+            <path d="M12.5 3a16.983 16.983 0 0 1 2.556 8.136"></path>
+            <path d="M18 22l3.35 -3.284a2.143 2.143 0 0 0 .005 -3.071a2.242 2.242 0 0 0 -3.129 -.006l-.224 .22l-.223 -.22a2.242 2.242 0 0 0 -3.128 -.006a2.143 2.143 0 0 0 -.006 3.071l3.355 3.296z"></path>
+          </svg>
+          <span class="text-sm flex-1">Community Creations</span>
+          <div>
+            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-300" width="14" height="14">
+              <path d="m9 18 6-6-6-6"></path>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 子菜单 -->
+        <div class="ml-5">
+          <a href="#" class="block">
+            <div class="flex items-center py-2 px-3 my-1.5 rounded-lg border transition-all duration-200 bg-zinc-800/70 border-transparent text-white">
+              <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mr-2.5" width="14" height="14">
+                <path d="M21 12v-4.01a1.98 1.98 0 0 0 -1 -1.717l-7 -4.008a2.02 2.02 0 0 0 -2 0l-7 4.008c-.619 .355 -1 1.01 -1 1.718v8.018c0 .709 .381 1.363 1 1.717l7 4.008c.62 .354 1.38 .354 2 0"></path>
+                <path d="M12 22v-10"></path>
+                <path d="M12 12l8.73 -5.04"></path>
+                <path d="M3.27 6.96l8.73 5.04"></path>
+                <path d="M19 22.5a4.75 4.75 0 0 1 3.5 -3.5a4.75 4.75 0 0 1 -3.5 -3.5a4.75 4.75 0 0 1 -3.5 3.5a4.75 4.75 0 0 1 3.5 3.5"></path>
+              </svg>
+              <span class="text-sm">3D Creations</span>
+            </div>
+          </a>
+          <a href="#" class="block">
+            <div class="flex items-center py-2 px-3 my-1.5 rounded-lg border transition-all duration-200 text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+              <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 256 256" class="mr-2.5" width="14" height="14">
+                <path d="M208,28H88A20,20,0,0,0,68,48V60H48A20,20,0,0,0,28,80V208a20,20,0,0,0,20,20H176a20,20,0,0,0,20-20V188h12a20,20,0,0,0,20-20V48A20,20,0,0,0,208,28ZM92,52H204v59.72l-9.86-9.86a20,20,0,0,0-28.28,0L103.72,164H92Zm80,152H52V84H68v84a20,20,0,0,0,20,20h84Zm-34.34-40L180,121.66l24,24V164ZM108,88a20,20,0,1,1,20,20A20,20,0,0,1,108,88Z"></path>
+              </svg>
+              <span class="text-sm">2D Creations</span>
+            </div>
+          </a>
+        </div>
+
+        <div class="mx-3 my-1 border-t border-zinc-800"></div>
+
+        <!-- Toolbox -->
+        <div class="flex items-center py-2.5 px-3 my-1.5 rounded-xl border cursor-pointer transition-all duration-200 text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+          <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mr-2.5 text-zinc-300" width="16" height="16">
+            <path d="M10.7 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v4.1"></path>
+            <path d="m21 21-1.9-1.9"></path>
+            <circle cx="17" cy="17" r="3"></circle>
+          </svg>
+          <span class="text-sm flex-1">Toolbox</span>
+          <div>
+            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-300" width="14" height="14">
+              <path d="m9 18 6-6-6-6"></path>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Video Studio -->
+        <a href="#" class="block">
+          <div class="nav-item flex items-center py-2.5 px-3 my-1.5 rounded-xl border transition-all duration-200 cursor-pointer text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mr-2.5 text-zinc-300" width="16" height="16">
+              <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"></path>
+              <rect x="2" y="6" width="14" height="12" rx="2"></rect>
+            </svg>
+            <span class="text-sm flex-1">Video Studio</span>
+          </div>
+        </a>
+
+        <div class="mx-3 my-1 border-t border-zinc-800"></div>
+
+        <!-- Settings -->
+        <div class="flex items-center py-2.5 px-3 my-1.5 rounded-xl border transition-all duration-200 cursor-pointer text-zinc-400 hover:bg-zinc-800/30 hover:border-zinc-700/30 border-transparent hover:text-zinc-300">
+          <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mr-2.5 text-zinc-300" width="16" height="16">
+            <path d="M20 7h-9"></path>
+            <path d="M14 17H5"></path>
+            <circle cx="17" cy="17" r="3"></circle>
+            <circle cx="7" cy="7" r="3"></circle>
+          </svg>
+          <span class="text-sm">Settings</span>
+        </div>
+      </nav>
+
+      <!-- 底部版本信息 -->
+      <div class="border-t bg-zinc-900/50 border-zinc-800/50">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <a href="#" class="group flex-1 flex items-center gap-2 transition-colors duration-200 text-zinc-400 hover:text-zinc-300">
+            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 flex-shrink-0" width="14" height="14">
+              <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path>
+              <path d="M20 3v4"></path>
+              <path d="M22 5h-4"></path>
+              <path d="M4 17v2"></path>
+              <path d="M5 18H3"></path>
+            </svg>
+            <span class="text-xs font-medium">v6.8.3</span>
+            <span class="text-xs opacity-50">•</span>
+            <span class="text-xs font-medium">What's new</span>
+            <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 24 24" class="w-3 h-3 ml-auto opacity-40 group-hover:opacity-70 transition-opacity" width="14" height="14">
+              <path fill="none" d="M0 0h24v24H0z"></path>
+              <path d="M6 6v2h8.59L5 17.59 6.41 19 16 9.41V18h2V6z"></path>
+            </svg>
+          </a>
+          <div class="h-4 w-px bg-zinc-700/50"></div>
+          <button class="p-1.5 transition-colors duration-200 text-zinc-400 hover:text-zinc-300">
+            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4" width="16" height="16">
+              <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9"></path>
+              <path d="M20 3v4"></path>
+              <path d="M22 5h-4"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 用户信息 -->
+      <div class="mt-auto w-full">
+        <div class="w-full border-t bg-zinc-900/80 border-zinc-800/50">
+          <div class="px-4 py-5">
+            <div class="flex items-center gap-3">
+              <div class="relative cursor-pointer">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center border bg-zinc-800/50 border-zinc-700/50">
+                  <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 448 512" class="text-zinc-400" width="14" height="14">
+                    <path d="M313.6 304c-28.7 0-42.5 16-89.6 16-47.1 0-60.8-16-89.6-16C60.2 304 0 364.2 0 438.4V464c0 26.5 21.5 48 48 48h352c26.5 0 48-21.5 48-48v-25.6c0-74.2-60.2-134.4-134.4-134.4zM400 464H48v-25.6c0-47.6 38.8-86.4 86.4-86.4 14.6 0 38.3 16 89.6 16 51.7 0 74.9-16 89.6-16 47.6 0 86.4 38.8 86.4 86.4V464zM224 288c79.5 0 144-64.5 144-144S303.5 0 224 0 80 64.5 80 144s64.5 144 144 144zm0-240c52.9 0 96 43.1 96 96s-43.1 96-96 96-96-43.1-96-96 43.1-96 96-96z"></path>
+                  </svg>
+                </div>
+                <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 bg-emerald-500 border-zinc-900"></div>
+              </div>
+              <div class="flex-1 min-w-0 cursor-pointer">
+                <div class="text-sm font-medium truncate text-zinc-200">Guest</div>
+                <div class="text-xs truncate text-zinc-400">Not signed in</div>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <button class="p-2 rounded-lg border transition-all duration-200 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 border-transparent hover:border-zinc-700/50">
+                  <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                    <path d="M20 7h-9"></path>
+                    <path d="M14 17H5"></path>
+                    <circle cx="17" cy="17" r="3"></circle>
+                    <circle cx="7" cy="7" r="3"></circle>
+                  </svg>
+                </button>
+                <button class="p-2 rounded-lg border transition-all duration-200 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 border-transparent hover:border-zinc-700/50">
+                  <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                    <path d="m15 18-6-6 6-6"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <!-- ==================== 侧边栏结束 ==================== -->
+
+    <!-- ==================== 主内容区 ==================== -->
+    <main class="flex-1 overflow-auto bg-zinc-900">
+      <div class="min-h-screen flex flex-col border-l border-zinc-50/5 bg-[#111113] text-zinc-200">
+        <div class="mx-auto w-full px-3 py-3 md:px-4 md:py-4">
+
+          <!-- 工具栏 -->
+          <div class="flex flex-wrap items-center gap-2 md:gap-4 mb-3 md:mb-4">
+
+            <!-- 搜索框 -->
+            <div class="flex items-center gap-2 flex-1">
+              <div class="relative flex-1 max-w-none md:max-w-lg">
+                <input type="text" placeholder="Search models..."
+                  class="w-full px-4 py-2 md:py-2.5 pl-10 rounded-lg text-sm transition-all duration-200 border backdrop-blur-xl bg-zinc-900/70 text-white border-white/5 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-white/10" />
+                <div class="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2 text-zinc-400">
+                  <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 512 512" class="w-4 h-4" width="16" height="16">
+                    <path d="M443.5 420.2L336.7 312.4c20.9-26.2 33.5-59.4 33.5-95.5 0-84.5-68.5-153-153.1-153S64 132.5 64 217s68.5 153 153.1 153c36.6 0 70.1-12.8 96.5-34.2l106.1 107.1c3.2 3.4 7.6 5.1 11.9 5.1 4.1 0 8.2-1.5 11.3-4.5 6.6-6.3 6.8-16.7.6-23.3zm-226.4-83.1c-32.1 0-62.3-12.5-85-35.2-22.7-22.7-35.2-52.9-35.2-84.9 0-32.1 12.5-62.3 35.2-84.9 22.7-22.7 52.9-35.2 85-35.2s62.3 12.5 85 35.2c22.7 22.7 35.2 52.9 35.2 84.9 0 32.1-12.5 62.3-35.2 84.9-22.7 22.7-52.9 35.2-85 35.2z"></path>
+                  </svg>
+                </div>
+                <div class="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded-md text-[10px] font-medium border hidden md:flex items-center gap-1 bg-zinc-800 text-zinc-400 border-white/5">
+                  <span class="opacity-80">Ctrl</span>
+                  <span class="opacity-50">+</span>
+                  <span class="px-1 rounded bg-zinc-700">Space</span>
+                </div>
+              </div>
+
+              <!-- Filters -->
+              <div class="relative">
+                <button class="px-2.5 md:px-4 py-2 md:py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium transition-all duration-200 border backdrop-blur-xl bg-zinc-900/70 text-zinc-300 border-white/5 hover:bg-zinc-800/70">
+                  <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4" width="16" height="16">
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                  </svg>
+                  <span class="hidden md:inline">Filters</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 缩放控件 -->
+            <div class="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border backdrop-blur-xl transition-all duration-200 bg-zinc-900/70 border-white/5">
+              <button class="p-1.5 rounded-md transition-all duration-200 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50" title="Zoom out (more cards)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zoom-out w-3.5 h-3.5" aria-hidden="true">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" x2="16.65" y1="21" y2="16.65"></line>
+                  <line x1="8" x2="14" y1="11" y2="11"></line>
+                </svg>
+              </button>
+              <input type="range" min="2" max="5" step="1" value="3" class="w-20" />
+              <button class="p-1.5 rounded-md transition-all duration-200 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50" title="Zoom in (fewer cards)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zoom-in w-3.5 h-3.5" aria-hidden="true">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" x2="16.65" y1="21" y2="16.65"></line>
+                  <line x1="11" x2="11" y1="8" y2="14"></line>
+                  <line x1="8" x2="14" y1="11" y2="11"></line>
+                </svg>
+              </button>
+              <button class="p-1.5 rounded-md transition-all duration-200 ml-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50" title="Reset to default">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw w-3 h-3" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Logo -->
+            <div class="hidden md:block flex-shrink-0">
+              <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/%3E%3C/svg%3E" alt="3D AI Studio" class="w-10 h-10 rounded-xl transition-all duration-200 bg-zinc-800/50 ring-1 ring-white/5 p-1.5" />
+            </div>
+          </div>
+
+          <!-- 卡片网格（骨架屏） -->
+          <div class="grid grid-flow-dense grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 auto-rows-fr">
+
+            <!-- 大卡片 1 -->
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60 xl:col-span-2 xl:row-span-2">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 小卡片 x6 -->
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 大卡片 2 -->
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60 xl:col-span-2 xl:row-span-2">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 小卡片 x2 -->
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 大卡片 3 -->
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60 xl:col-span-2 xl:row-span-2">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 小卡片 x2 -->
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="relative overflow-hidden rounded border backdrop-blur-sm animate-pulse border-zinc-700/40 bg-zinc-800/60">
+              <div class="aspect-square bg-zinc-700/30"></div>
+              <div class="p-2 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-zinc-700/30"></div>
+                <div class="flex justify-between items-center">
+                  <div class="h-3 w-1/4 rounded bg-zinc-700/30"></div>
+                  <div class="flex gap-2">
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                    <div class="w-5 h-5 rounded bg-zinc-700/30"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </main>
+    <!-- ==================== 主内容区结束 ==================== -->
+
+  </div>
+</div>
+
+</body>
+</html>

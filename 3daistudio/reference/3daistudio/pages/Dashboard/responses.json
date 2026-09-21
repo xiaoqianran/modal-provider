@@ -1,0 +1,2592 @@
+[
+  {
+    "url": "https://www.3daistudio.com/",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "document",
+    "contentType": "text/html; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/37a6jd62kymlj.css",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "stylesheet",
+    "contentType": "text/css; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/media/GeistPixel_Square.p.33q_xcn23jal9.woff2",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "font",
+    "contentType": "font/woff2"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/02r07mqafkahu.css",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "stylesheet",
+    "contentType": "text/css; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/14j_fp-om5bgs.css",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "stylesheet",
+    "contentType": "text/css; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/media/GeistPixel_Grid.p.3dz_gw55w4gbf.woff2",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "font",
+    "contentType": "font/woff2"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3q8g_sl60nvn2.css",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "stylesheet",
+    "contentType": "text/css; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/media/GeistPixel_Circle.p.02sdg_xnptuk7.woff2",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "font",
+    "contentType": "font/woff2"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/media/GeistPixel_Triangle.p.2xhobsdltgpc6.woff2",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "font",
+    "contentType": "font/woff2"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/media/GeistPixel_Line.p.2bmehf89j9vyj.woff2",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "font",
+    "contentType": "font/woff2"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/media/GeistMono_Variable.p.11tlzvxxbe5bj.woff2",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "font",
+    "contentType": "font/woff2"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/media/favicon4.33x3ob2cbozby.png",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/png"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/media/Geist_Variable-s.p.111odzyf_79w_.woff2",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "font",
+    "contentType": "font/woff2"
+  },
+  {
+    "url": "https://www.3daistudio.com/Hand_Drawn_Arrows/arrow-3.svg",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/svg+xml"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fwarrior-v2.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fwarhammer.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FNewLandingContent%2FImageTo3DLandscape.png&w=1080&q=95",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fplant.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fplant-clay.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/16xeqdpr_55d5.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3-zcfrcfbata7.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2wobdjm3g5zut.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/343pegp343w8r.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/35ikors3_91ol.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2aez7ergv1ee2.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3mvxpvt_p_ext.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0mfy-4z-_0prd.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2cj9qxckdqsag.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2ke58nnawfrdi.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0unhpe75-dnqy.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3_zszpocjiyyj.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/31dp4cm293hni.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1pwniv-quix86.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/34pe0qo1vbvi5.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1lwxu5du3rdxt.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3_hey3izigu2q.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-0dbbnvy5hulmx.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0bs2yzofqpxl-.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fwarhammer-clay-v2.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/Tool_Preview_Videos/ImageTo3DExample.webm",
+    "status": 206,
+    "method": "GET",
+    "resourceType": "media",
+    "contentType": "video/webm"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FNewLandingContent%2FPreviews%2FOrc.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/avatars/noah.jpg",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/jpeg"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1lj-uofxhe7wm.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/069ugd1c5_scr.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0eyw0l3nwyubi.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/137wpctydwh-k.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/39wism_tk76w-.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1acselz10q0te.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2b5yyxjj3wq34.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/28kmb43mz30qv.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1hvgesxvf24h0.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0t82liuc8fa11.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0_wna7pc63w1s.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/11-a_5g047bhl.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/09k1f38_jbdma.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3d6iyqcq6c7d6.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3yb2n3ofzgwrj.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1ee2tgpwggya_.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1q2-evd_7xk7p.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/39easu5scc7p_.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2-0hgpoje25jz.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/OqsSdLv6nQZSehHoVuFTC/_ssgManifest.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/OqsSdLv6nQZSehHoVuFTC/_clientMiddlewareManifest.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/OqsSdLv6nQZSehHoVuFTC/_buildManifest.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2n2dnnap_zsi-.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1uugaesxw82-6.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-2kfg47-tl35fu.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2o72-f77bzr9f.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2j5gxklnu3jt2.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/009hod6bpnmsa.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2v7p0_230okba.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0lspqx6thmwgi.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fwarrior-clay-v2.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fowl.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fsneaker.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Frocket.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fwatchtower.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fwatchtower-clay.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Finputs%2Fwarrior-input-v3.webp&w=128&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fdragon-head-clay-v2.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fowl-clay.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FDashboardImagePreview%2Fpfp4.jpg&w=32&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fsneaker-clay.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FDashboardImagePreview%2Fpfp3.jpg&w=32&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FDashboardImagePreview%2Fpfp2.jpg&w=32&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FNewLandingContent%2FBrands%2FTrustPilot3D.png&w=32&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fdragon-head-v2.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Frocket-clay-v2.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FNewLandingContent%2FPreviews%2FRemesh.png&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fcartoon-dragon.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FNewLandingContent%2FBrands%2FSparkles.png&w=32&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FNewLandingContent%2FPreviews%2FAxe.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FNewLandingContent%2FPreviews%2FAxeInput2.png&w=96&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FNewLandingContent%2FPreviews%2FHeadInput2.webp&w=96&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FNewLandingContent%2FPreviews%2FRemeshInput.webp&w=96&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FNewLandingContent%2FPreviews%2FHead.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FDashboardImagePreview%2Fpfp1.jpg&w=32&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FLandingHeroContent%2Fsmall%2Fcartoon-dragon-clay.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://fonts.googleapis.com/css2?family=Caveat:wght@500&display=swap",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "stylesheet",
+    "contentType": "text/css; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/233otl6pk-ghh.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0t7l-4qi6o8wu.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0rx3bwerakp77.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0_bmz3rwj10zu.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3-0lvxofrehx9.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://accounts.google.com/gsi/client",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2eyotpt1hx4nl.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2rkxn1-dwk4o6.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3ths9c15pqvnv.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2we0rggbp8_xk.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2f57l0bqmtour.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1d2v5pnbrdr_y.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1pj3r9jze5y3i.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3potgi83l0h2k.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3hzjgn3_vefoc.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/07v-g-t7te9d3.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2F3D_Generation_Thumbnails%2FExamplesInput%2FPrism3_1_Output%2FThumbnails_No_Bg%2F4.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2F3D_Generation_Thumbnails%2FExamplesInput%2FPrism3_1_Output%2FThumbnails_No_Bg%2F1.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2F3D_Generation_Thumbnails%2FExamplesInput%2FPrism3_1_Output%2FThumbnails_No_Bg%2F2.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2F3D_Generation_Thumbnails%2FExamplesInput%2FPrism3_1_Output%2FThumbnails_No_Bg%2F6.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2F3D_Generation_Thumbnails%2FExamplesInput%2FPrism3_1_Output%2FThumbnails_No_Bg%2F3.webp&w=640&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/index.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/TextureGenerator.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/TextTo3DGuide.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0e1ij1j2lij5n.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1y1uby3jwes73.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3yqgwrm6xv6c1.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/ImageTo3DGuide.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/Flow.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0orv1q293jtan.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0lg2vn6jn7z16.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/Dashboard.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/ImageTo3D.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/ImageGeneration.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": "application/json; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1l_8f40pgf7vq.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2sxq841k6b8ce.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2l_cuib8wutzf.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2bqlf8zn8t-0j.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/NewLandingContent/Previews/OrcPreview-900px.webm",
+    "status": 206,
+    "method": "GET",
+    "resourceType": "media",
+    "contentType": "video/webm"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/Platform.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/TextTo3D.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/Tools.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/Tools/Remesh.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/NewLandingContent/Previews/HeadPreview-900px.webm",
+    "status": 206,
+    "method": "GET",
+    "resourceType": "media",
+    "contentType": "video/webm"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0w447kwt0cnzl.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3fjylky2i13wv.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2rxka17nam0sm.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0t0o4h_4-r6ia.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/NewLandingContent/Previews/AxePreview-900px.webm",
+    "status": 206,
+    "method": "GET",
+    "resourceType": "media",
+    "contentType": "video/webm"
+  },
+  {
+    "url": "https://www.3daistudio.com/NewLandingContent/Previews/Remesh_new_small.webm",
+    "status": 206,
+    "method": "GET",
+    "resourceType": "media",
+    "contentType": "video/webm"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1y1uby3jwes73.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0fk6k8dpgk-wb.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/29e7riv9hoocw.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1jzf7lzpwscnq.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2g8j9b-yovho9.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3xx4uu6w2_563.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-1ob0n4ea6maq9.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1ircoezpy1-83.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3yqgwrm6xv6c1.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0orv1q293jtan.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0lg2vn6jn7z16.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1l_8f40pgf7vq.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0mv9kb0mabo9u.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-25craaozbffn7.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/43ltfma_0mwpg.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1_49230il0r3p.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-0ogvo2y8kl5hn.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-3up0mk9wtw1kj.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/08ko5l-_lvti8.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3avonlhz7no8_.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1lr8sxqfvd3e-.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1joq41sn4x1sl.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/22_onzx9sq_u2.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2jmh8a6h5mwrt.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0md82iqey0nfv.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/32zw6448770h4.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3ep0gg45rlkly.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0zlhxzc_8uvay.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2yenleygq2v02.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0imtpew_ecnhy.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/4089h-lasxo91.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0-yi48mndyxle.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/41onoobyqg1mt.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/29pcpevsw0u4i.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/01khm9loe3_hs.css",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "stylesheet",
+    "contentType": "text/css; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2626v5upncjtf.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3rql7uyt_v9dh.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/38axmvzfd_wcg.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/10so-z1whkjyp.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/28wxn75ecnw36.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3fo80by9fb8i1.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2cfauudiim3o2.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2ovp1vr9pg4_3.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0ptu--x987mv8.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/07kmp7x_dr-yo.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0ea-2206wkr6o.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/252s-a13h5692.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3kdv_tb6-9abo.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2-86rggg-wy6x.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3o5-srd7e-71q.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/17u_mg0m1egyf.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/37jeasm-sifie.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2vzo3io9n1c1c.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0velflo93s7yt.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2i-msy36f7n8o.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/15pakln8__uia.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2ya-i-bu9zorp.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-2jrh35l8iyp0m.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3akcbjrzac15c.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1h-q6rtgz5e3x.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1h77y6l9m_v0t.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0sxhyy0a9czso.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2to6uxfg3thp0.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1pxf5jbamhxnh.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2tg5__yjveki1.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1_zw0_tm0vuym.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0xkman89oouz9.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0o7arnxx_gir9.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2sxq841k6b8ce.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2l_cuib8wutzf.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0w447kwt0cnzl.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3fjylky2i13wv.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2rxka17nam0sm.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0t0o4h_4-r6ia.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3c8a1ql9zwr_f.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/vendor/draco/gltf/draco_decoder.wasm",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": "application/wasm"
+  },
+  {
+    "url": "https://www.3daistudio.com/vendor/draco/gltf/draco_wasm_wrapper.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-1dyzbujp7rrqo.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/20h364f7q_up6.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0bohz4jjp157k.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2pyaixu_2skpu.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0poh_aiape7y3.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1ug8ermn847ni.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-1wldj02fl268l.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/11ty3nlftphac.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0t-pkl10ceqq2.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-3ub8qo1q-m4i3.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/22tz7h26slcio.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-1an0c48e09axy.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3lybaacg516vi.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0ey727w3vvcir.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1w6z226aq0835.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1taopui4ro_pn.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/10_1eejfp6m33.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-3qp8e7md6ccg1.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1cgxamzsvp7-5.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3i6zbsanxhzx0.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-1v0f650xhose2.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3mcz6okjb0qnb.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0cg_kxkmlh1o-.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://s.3daistudio.com/api/maintenance/status/?_t=1790008226962",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "xhr",
+    "contentType": "application/json"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2q7tiv42zm3p_.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1-rf8qsc7qmzk.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/221ku7v_ll-1j.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/ImageTo3D/app.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/favicon4small.png",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/png"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FGoogleLogo.png&w=32&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2Ffavicon4.png&w=64&q=75",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/VideoStudio.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/TexturePainter.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/Datenschutz.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/ImageGeneration/generate.json?category=generate",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": "application/json; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/TextTo3D/app.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/Flow/app.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/Updates.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/AGB.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/Tools/Tutorials.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/TextureGenerator/app.json",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": ""
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/33zysgb5sz1o-.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://s.3daistudio.com/teams/tags/?scope=personal&limit=14&order=recent",
+    "status": 401,
+    "method": "GET",
+    "resourceType": "xhr",
+    "contentType": "application/json"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2g7c-nl3ukjh_.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2g7c-nl3ukjh_.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3r_36m7pwl9c6.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3w0d2vtwd50kk.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/13wlfvcud6cyl.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/261h947pj6yfv.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3r_36m7pwl9c6.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3w0d2vtwd50kk.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/13wlfvcud6cyl.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/261h947pj6yfv.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3r5y0___idl7u.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1cpqci3jxvgs-.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2szs0v35o9hr-.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/10_8cepg4c34t.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0f5xo0uq2m47c.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3tbgfsubw3a_x.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "other",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3r5y0___idl7u.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1cpqci3jxvgs-.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2szs0v35o9hr-.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/10_8cepg4c34t.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0f5xo0uq2m47c.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3tbgfsubw3a_x.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2qxb2lxfzjn27.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/05s9altqscvof.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/29ijy49r1hbsu.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/39cx7vnyt7j9n.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3b28ll83qf18z.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0hsizpmnp6yvk.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/151v5pluomhk6.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-3wqt0fzv2tgp4.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3jku1nz2yx7me.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/21ax8ny3ewbpz.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-3ggf2youv9vnc.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2ct3x4sob382r.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0svxusav3d3-u.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/33mglsiufpa79.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-2t88omyld2pph.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1lx94zgwfh3q9.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3n6wje1w-qwfn.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2_sch55ml99tk.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3os_xf0-cpy6w.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/23k071yj6z0q0.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-24sxp6b4kmsht.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0v77c2er_36a0.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-2o_qfbcfihhdn.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-0-xwz54jvdqzy.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1_int8n-3y6k_.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-0my1fkstq-8_d.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2umtrqp8weccd.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3osh_xn3d7-ul.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0cvfs3druryv5.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/14prjmtw1_lav.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0k5gz40n0fj6_.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3kjnuht3iws5q.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-2q6kjbrxsp7ft.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://s.3daistudio.com/projects/",
+    "status": 401,
+    "method": "GET",
+    "resourceType": "xhr",
+    "contentType": "application/json"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1imn-h2gldiud.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://s.3daistudio.com/projects/recent-projects/?limit=12&preview_count=4",
+    "status": 401,
+    "method": "GET",
+    "resourceType": "xhr",
+    "contentType": "application/json"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1os58b76tzhkn.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/29gl8nba0p6no.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0pgr1n62rtq-p.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0acwb20yd7241.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1o7rih-mackkp.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3mhl74ssm0_z4.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1vej2cjrq9avc.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1_rtnyzik8uy9.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1rwd6lzo921xz.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-1tkcsjzuazyky.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-27475miwd2iou.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/3a5g_rt6hj31-.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2m0fe_ta6_f08.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/turbopack-0jz8jiy66nful.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2glxa-h40o5db.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/2wu0diop_435n.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/08f3dhym4ueb4.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/0rxun9lpd20wt.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/1pwlbi-_l41v9.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/static/immutable/chunks/43r78pl_subs5.js",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "script",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://s.3daistudio.com/account/passkey/login/options/",
+    "status": 200,
+    "method": "POST",
+    "resourceType": "xhr",
+    "contentType": "application/json"
+  },
+  {
+    "url": "https://s.3daistudio.com/projects/all-generations/?page=1&page_size=10&file_format=&search=&date_from=&date_to=&hours_ago=&used_model=&creator_email=&tag=&tags=&tag_mode=any&untagged=&show_files_in_folders=true",
+    "status": 401,
+    "method": "GET",
+    "resourceType": "xhr",
+    "contentType": "application/json"
+  },
+  {
+    "url": "https://fonts.gstatic.com/s/caveat/v23/WnznHAc5bAfYB2QRah7pcpNvOx-pjcB9eIWpYQ.woff2",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "font",
+    "contentType": "font/woff2"
+  },
+  {
+    "url": "https://www.3daistudio.com/RemeshExampleImages/Small/stone-warrior-original.png",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/png"
+  },
+  {
+    "url": "https://www.3daistudio.com/Image_Studio_Onboarding/Edit_Slide/compressed/transform_into_an_epic_fantasy_hero_orna_NanoBanana2_Edi_642681b64a28.webp",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/webp"
+  },
+  {
+    "url": "https://www.3daistudio.com/Hand_Drawn_Arrows/arrow-15.svg",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/svg+xml"
+  },
+  {
+    "url": "https://www.3daistudio.com/Image_Studio_Onboarding/Edit_Slide/compressed/casual_photorealistic_photo_of_a_young_m_NanoBanana2_5165c1e1397f_thumb.webp",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/webp"
+  },
+  {
+    "url": "https://www.3daistudio.com/RemeshExampleImages/Small/stone-warrior-wireframe.png",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/png"
+  },
+  {
+    "url": "https://www.3daistudio.com/Image_Studio_Onboarding/Generate__Slide/compressed/baby_yeti_playing_in_snow_Pixar_style_so_NanoBanana2_1b4cc9d95f8c_1.webp",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/webp"
+  },
+  {
+    "url": "https://www.3daistudio.com/Image_Studio_Onboarding/Edit_Slide/compressed/transform_this_guy_into_tabletop_miniatu_NanoBanana2_Edi_79e44320659a_1.webp",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/webp"
+  },
+  {
+    "url": "https://www.3daistudio.com/Image_Studio_Onboarding/Edit_Slide/compressed/casual_selfie_style_photo_of_a_smiling_y_NanoBanana2_788608b8ad7c_thumb.webp",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/webp"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FRemeshExampleImages%2FSmall%2Ftiger-gladiator-original.png&w=640&q=90",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FRemeshExampleImages%2FSmall%2Fstone-warrior-original.png&w=640&q=90",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/Image_Studio_Onboarding/Generate__Slide/compressed/stylized_3D_legendary_broadsword_ornate_NanoBanana2_4256577dbec9.webp",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/webp"
+  },
+  {
+    "url": "https://www.3daistudio.com/RemeshExampleImages/Small/tiger-gladiator-original.png",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/png"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FRemeshExampleImages%2FSmall%2Fstone-warrior-wireframe.png&w=640&q=90",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/Image_Studio_Onboarding/Generate__Slide/compressed/fierce_dragon_warrior_stylized_3D_Pixar_NanoBanana2_5556584e715c_1.webp",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/webp"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/image?url=%2FRemeshExampleImages%2FSmall%2Ftiger-gladiator-wireframe.png&w=640&q=90",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/avif"
+  },
+  {
+    "url": "https://www.3daistudio.com/RemeshExampleImages/Small/tiger-gladiator-wireframe.png",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "image",
+    "contentType": "image/png"
+  },
+  {
+    "url": "https://www.3daistudio.com/_next/data/OqsSdLv6nQZSehHoVuFTC/ImageGeneration/edit.json?category=edit",
+    "status": 200,
+    "method": "GET",
+    "resourceType": "fetch",
+    "contentType": "application/json; charset=utf-8"
+  },
+  {
+    "url": "https://s.3daistudio.com/projects/all-generations/?page=1&page_size=10&file_format=&search=&date_from=&date_to=&hours_ago=&used_model=&creator_email=&tag=&tags=&tag_mode=any&untagged=&show_files_in_folders=true",
+    "status": 401,
+    "method": "GET",
+    "resourceType": "xhr",
+    "contentType": "application/json"
+  },
+  {
+    "url": "https://s.3daistudio.com/projects/all-generations/?page=1&page_size=10&file_format=&search=&date_from=&date_to=&hours_ago=&used_model=&creator_email=&tag=&tags=&tag_mode=any&untagged=&show_files_in_folders=true",
+    "status": 401,
+    "method": "GET",
+    "resourceType": "xhr",
+    "contentType": "application/json"
+  },
+  {
+    "url": "https://s.3daistudio.com/account/gernerate_otp/",
+    "status": 200,
+    "method": "POST",
+    "resourceType": "xhr",
+    "contentType": "application/json"
+  }
+]

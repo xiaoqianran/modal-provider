@@ -1,0 +1,35 @@
+{
+  "tool": "playwright",
+  "mode": "SPA fetch + client navigation + tool detail click-through",
+  "note": "SSR/HTML fetch of logged-in Next.js pages; Flow/TexturePainter/Community are client-heavy",
+  "routes": [
+    {"path":"/Dashboard","status":200,"summary":"Files/Projects/Branches/Shared, tags, feature cards"},
+    {"path":"/ImageGeneration/generate","status":200,"summary":"18 generate tools, vertical categories, Quick Start"},
+    {"path":"/ImageGeneration/edit","status":200,"summary":"GPT/Nano/Gemini/Flux edit tools"},
+    {"path":"/ImageGeneration/convert","status":200,"summary":"Convert Anything, Pose Generator, styles"},
+    {"path":"/ImageGeneration/image-reference","status":200,"summary":"Nano Reference, Character Sheet..."},
+    {"path":"/ImageGeneration/style-reference","status":200,"summary":"Custom + example styles"},
+    {"path":"/ImageGeneration/sketch","status":200,"summary":"Sketch → Image, Paint & Transform"},
+    {"path":"/ImageGeneration/utilities","status":200,"summary":"Remove BG, Upscale, Crop, Restore Lighting"},
+    {"path":"/ImageGeneration/video","status":200,"summary":"Legacy video tools + moved-to-Video-Studio notice"},
+    {"path":"/ImageGeneration/generate/nano-banana-2-lite-inf","status":200,"summary":"Tool detail: prompt, examples, style addons, 1-4 images, ADVANCED 3, Generate"},
+    {"path":"/ImageTo3D/app","status":200,"summary":"Default Project, model picker, examples, qualities, ADVANCED 10"},
+    {"path":"/TextTo3D/app","status":200,"summary":"Prompt examples knight/axe/fox/orc, ADVANCED 9"},
+    {"path":"/TextureGenerator/app","status":200,"summary":"Engines Forge/Prism/Meshy..., prompt types Text/Image/Multi-View"},
+    {"path":"/TexturePainter","status":200,"summary":"Legacy Texture AI painter client UI"},
+    {"path":"/Flow/app","status":200,"summary":"Course banner, canvases/templates/gallery, New flow dialog options"},
+    {"path":"/Tools/Tutorials","status":200,"summary":"62 tutorials, filters, Flow parts 1-7, courses"},
+    {"path":"/VideoStudio","status":200,"summary":"Image/Text/Reference/Tools tabs, Veo 3.1 Fast, AR Auto/16:9/9:16"},
+    {"path":"/Tools/CommunityCreations","status":200,"summary":"3D community gallery + Filters"},
+    {"path":"/Tools/CommunityGenerations","status":200,"summary":"2D community gallery + Filters"},
+    {"path":"/Updates","status":200,"summary":"Changelog versions 6.8.x / 6.7.x"},
+    {"path":"/Platform","status":200,"summary":"API platform hero + FAQ"},
+    {"path":"/ModelComparison","status":200,"summary":"38 models, family filters, best models"}
+  ],
+  "tailwind_migration": {
+    "packages": ["tailwindcss","@tailwindcss/vite"],
+    "vite_config": "vite.config.js plugins react+tailwindcss",
+    "entry": "src/tailwind.css imported by main.jsx",
+    "rewritten": ["layout.jsx","pages-dashboard.jsx","pages-image.jsx","pages-3d.jsx","pages-misc.jsx","pages-tools.jsx","settings.jsx","components.jsx"]
+  }
+}
