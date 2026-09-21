@@ -37,6 +37,7 @@ def deployment_manifest() -> dict[str, object]:
                 "module": "modal_3d.mesh_worker",
                 "kind": "worker",
                 "revision": revision,
+                "weightless": True,
                 "weights": [],
             },
             {

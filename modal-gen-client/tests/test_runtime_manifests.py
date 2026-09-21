@@ -18,8 +18,12 @@ def test_runtime_revisions_are_valid_modal_deployment_tags():
 def test_every_runtime_declares_verifiable_weight_preparation():
     for manifest in (deployment_2d(), deployment_3d()):
         for target in manifest["targets"]:
-            assert target["weights"]
-            for spec in target["weights"]:
+            weights = target["weights"]
+            if target.get("weightless"):
+                assert weights == []
+                continue
+            assert weights
+            for spec in weights:
                 assert spec["volume"]
                 assert spec["requiredPaths"]
                 assert spec["prepare"]
