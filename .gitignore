@@ -1,2 +1,5 @@
 *.egg-info/
+.codegraph/
+*.log
+3daistudio/repomix-output.txt
 

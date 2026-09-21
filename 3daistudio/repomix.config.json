@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/yamadashy/repomix/main/schema.json",
+  "output": {
+    "filePath": "repomix-output.txt",
+    "style": "plain",
+    "headerText": "3daistudio local recreation — effective source pack (Vite + React + Tailwind + three/R3F)",
+    "instructionFilePath": "",
+    "showLineNumbers": false,
+    "removeComments": false,
+    "copyToClipboard": false
+  },
+  "include": [
+    "src/**/*",
+    "package.json",
+    "vite.config.js",
+    "index.html",
+    "README.md",
+    "CODEGRAPH.md",
+    "API-INTEGRATION.md"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "node_modules/**",
+      "dist/**",
+      "crawler/**",
+      "reference/**",
+      "package-lock.json",
+      "*.log",
+      "repomix-output*",
+      "参考.html"
+    ]
+  },
+  "security": {
+    "enableCheck": true,
+    "excludeFiles": []
+  }
+}

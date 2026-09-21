@@ -4,8 +4,8 @@ import {OrbitControls,ContactShadows,Center,useGLTF} from "@react-three/drei";
 
 /* Official 3DAI studio-like palette (sampled from live site) */
 const CANVAS_BG = "#1a1a1a";
-const MESH_MAIN = "#8db4e8";      // indigo-blue selection/accent
-const MESH_ALT  = "#e8ba3f";      // amber/gold badge accent
+const MESH_MAIN = "#8db4e8";
+const MESH_ALT  = "#e8ba3f";
 const GRID_A    = "#3f4244";
 const GRID_B    = "#2d2f30";
 
@@ -38,37 +38,47 @@ function PlaceholderMesh({textMode=false,wireframe=false}){
   );
 }
 
-export function Viewport3D({url=null,textMode=false,hint,subhint,className="",wireframe=false,showGrid=true,showHelpers=true}){
+/**
+ * 3D viewport. Parent MUST have a real height (flex-1 / h-full / fixed).
+ * Canvas fills the wrapper via absolute inset-0 to avoid the 150px R3F default.
+ */
+export function Viewport3D({url=null,textMode=false,hint,subhint,className="",wireframe=false,showGrid=true,showHelpers=true,style}){
   return (
-    <div className={"relative h-full min-h-[280px] w-full overflow-hidden rounded-xl border border-zinc-700/50 bg-[#1a1a1a] "+className}>
-      <Canvas
-        dpr={[1,2]}
-        camera={{position:[2.5,1.7,3.0],fov:45,near:0.1,far:80}}
-        gl={{antialias:true}}
-        onCreated={({gl})=>{gl.setClearColor(CANVAS_BG);}}
-      >
-        <color attach="background" args={[CANVAS_BG]}/>
-        <fog attach="fog" args={[CANVAS_BG, 8, 22]}/>
-        <ambientLight intensity={0.5}/>
-        <directionalLight position={[4,6,3]} intensity={1.05} color="#f5f0e8"/>
-        <directionalLight position={[-4,2,-2]} intensity={0.28} color="#9aa4b2"/>
-        <hemisphereLight args={["#c2c0b9","#1a1a1a",0.4]}/>
-        <Suspense fallback={null}>
-          <Center>
-            {url?<GltfModel url={url}/>:<PlaceholderMesh textMode={textMode} wireframe={wireframe}/>}
-          </Center>
-        </Suspense>
-        {showHelpers&&<ContactShadows position={[0,-1.05,0]} opacity={0.5} scale={12} blur={2.5} far={4} color="#000000"/>}
-        {showGrid&&<gridHelper args={[14,28,GRID_A,GRID_B]}/>}
-        <OrbitControls
-          makeDefault
-          enableDamping
-          dampingFactor={0.08}
-          minDistance={1.2}
-          maxDistance={14}
-          maxPolarAngle={Math.PI*0.49}
-        />
-      </Canvas>
+    <div
+      className={"relative h-full w-full min-h-[240px] overflow-hidden rounded-xl border border-zinc-700/50 bg-[#1a1a1a] "+className}
+      style={style}
+    >
+      <div className="absolute inset-0">
+        <Canvas
+          dpr={[1,2]}
+          camera={{position:[2.5,1.7,3.0],fov:45,near:0.1,far:80}}
+          gl={{antialias:true}}
+          onCreated={({gl})=>{gl.setClearColor(CANVAS_BG);}}
+          style={{width:"100%",height:"100%",display:"block"}}
+        >
+          <color attach="background" args={[CANVAS_BG]}/>
+          <fog attach="fog" args={[CANVAS_BG, 8, 22]}/>
+          <ambientLight intensity={0.5}/>
+          <directionalLight position={[4,6,3]} intensity={1.05} color="#f5f0e8"/>
+          <directionalLight position={[-4,2,-2]} intensity={0.28} color="#9aa4b2"/>
+          <hemisphereLight args={["#c2c0b9","#1a1a1a",0.4]}/>
+          <Suspense fallback={null}>
+            <Center>
+              {url?<GltfModel url={url}/>:<PlaceholderMesh textMode={textMode} wireframe={wireframe}/>}
+            </Center>
+          </Suspense>
+          {showHelpers&&<ContactShadows position={[0,-1.05,0]} opacity={0.5} scale={12} blur={2.5} far={4} color="#000000"/>}
+          {showGrid&&<gridHelper args={[14,28,GRID_A,GRID_B]}/>}
+          <OrbitControls
+            makeDefault
+            enableDamping
+            dampingFactor={0.08}
+            minDistance={1.2}
+            maxDistance={14}
+            maxPolarAngle={Math.PI*0.49}
+          />
+        </Canvas>
+      </div>
       {hint&&(
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex flex-col items-center gap-1 text-center">
           <b className="text-xs text-zinc-300">{hint}</b>
@@ -82,7 +92,19 @@ export function Viewport3D({url=null,textMode=false,hint,subhint,className="",wi
   );
 }
 
-export function Viewport3DUpload({textMode=false,emptyHint,emptySub,withToggles=false}){
+/** Optional toolbar overlay for tool pages (Upload / Save …). */
+export function ViewportToolbar({children,className=""}){
+  return (
+    <div className={"pointer-events-auto absolute left-3 top-3 z-10 flex flex-wrap gap-1.5 "+className}>
+      {children}
+    </div>
+  );
+}
+
+export function Viewport3DUpload({
+  textMode=false, emptyHint, emptySub, withToggles=false,
+  compact=false, hideChromeToggles=false, toolbar=null, onFileLoaded
+}){
   const [url,setUrl]=React.useState(null);
   const [name,setName]=React.useState("");
   const [wireframe,setWireframe]=React.useState(false);
@@ -97,27 +119,42 @@ export function Viewport3DUpload({textMode=false,emptyHint,emptySub,withToggles=
     urlRef.current=next;
     setUrl(next);
     setName(file.name);
+    onFileLoaded?.(next, file.name);
   };
-  return (
-    <div className="flex h-full min-h-[360px] flex-col gap-2">
-      {withToggles&&(
-        <div className="flex flex-wrap gap-1.5">
-          <button type="button" onClick={()=>setWireframe(v=>!v)} className={"rounded-lg border px-2.5 py-1.5 text-xs "+(wireframe?"border-indigo-500/40 bg-indigo-500/15 text-indigo-200":"border-zinc-700/50 text-zinc-400")}>Wireframe</button>
-          <button type="button" onClick={()=>setShowGrid(v=>!v)} className={"rounded-lg border px-2.5 py-1.5 text-xs "+(showGrid?"border-indigo-500/40 bg-indigo-500/15 text-indigo-200":"border-zinc-700/50 text-zinc-400")}>Grid</button>
-        </div>
-      )}
-      <Viewport3D
-        url={url}
-        textMode={textMode}
-        wireframe={wireframe}
-        showGrid={showGrid}
-        hint={url?name:emptyHint}
-        subhint={url?"Drag to orbit · scroll to zoom":emptySub}
-      />
-      <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-zinc-700/60 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100">
-        Upload GLB / GLTF preview
+
+  const toggles=(!hideChromeToggles && withToggles) && (
+    <div className="pointer-events-auto absolute left-3 top-3 z-10 flex flex-wrap gap-1.5">
+      <button type="button" onClick={()=>setWireframe(v=>!v)} className={"rounded-lg border px-2.5 py-1.5 text-xs backdrop-blur "+(wireframe?"border-indigo-500/40 bg-indigo-500/15 text-indigo-200":"border-zinc-700/50 bg-zinc-900/70 text-zinc-400")}>Wireframe</button>
+      <button type="button" onClick={()=>setShowGrid(v=>!v)} className={"rounded-lg border px-2.5 py-1.5 text-xs backdrop-blur "+(showGrid?"border-indigo-500/40 bg-indigo-500/15 text-indigo-200":"border-zinc-700/50 bg-zinc-900/70 text-zinc-400")}>Grid</button>
+      <label className="inline-flex cursor-pointer items-center rounded-lg border border-zinc-700/50 bg-zinc-900/70 px-2.5 py-1.5 text-xs text-zinc-300 backdrop-blur">
+        Upload
         <input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" className="hidden" onChange={onFile}/>
       </label>
+    </div>
+  );
+
+  return (
+    <div className={"relative flex h-full w-full min-h-[240px] flex-col "+(compact?"gap-0":"gap-2")}>
+      <div className="relative min-h-0 flex-1">
+        <Viewport3D
+          url={url}
+          textMode={textMode}
+          wireframe={wireframe}
+          showGrid={showGrid}
+          hint={url?name:emptyHint}
+          subhint={url?"Drag to orbit · scroll to zoom":emptySub}
+          className="!rounded-none !border-0"
+          style={{height:"100%"}}
+        />
+        {toggles}
+        {toolbar}
+      </div>
+      {!compact&&(
+        <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-zinc-700/60 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100">
+          Upload GLB / GLTF preview
+          <input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" className="hidden" onChange={onFile}/>
+        </label>
+      )}
     </div>
   );
 }
