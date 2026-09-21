@@ -162,7 +162,7 @@ runtime_image = (
     .run_commands(
         f"curl -fL '{PAINT_BUNDLE_URL}' -o /tmp/paint-bundle.zip && "
         "mkdir -p /tmp/paint-bundle && unzip -q /tmp/paint-bundle.zip -d /tmp/paint-bundle && "
-        "uv pip install --system --no-deps /tmp/paint-bundle/wheels/*.whl",
+        "python -m pip install --no-deps /tmp/paint-bundle/wheels/*.whl",
         f"git clone https://github.com/{FORK}.git {SRC} && git -C {SRC} checkout {FORK_COMMIT}",
         "python -c \"from pathlib import Path; p=Path('/tmp/hunyuan-paint-profile.patch'); p.write_bytes(p.read_bytes().replace(bytes((13, 10)), bytes((10,))))\"",
         f"git -C {SRC} apply --check /tmp/hunyuan-paint-profile.patch && git -C {SRC} apply /tmp/hunyuan-paint-profile.patch",

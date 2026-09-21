@@ -8,7 +8,7 @@ from .operations import REVISION
 app = modal.App("modal-3d-mesh")
 image = (modal.Image.debian_slim(python_version="3.11")
          .apt_install("libgl1", "libegl1", "libxrender1", "libxi6", "libxfixes3", "libxkbcommon0", "libsm6")
-         .pip_install("bpy==4.2.0", "numpy==1.26.4", "xatlas==0.0.9", "Pillow==11.3.0")
+         .pip_install("bpy==4.2.0", "numpy==1.26.4", "xatlas==0.0.9", "Pillow==11.3.0", "trimesh==4.8.3")
          .add_local_python_source("modal_3d"))
 artifacts = modal.Volume.from_name(ARTIFACT_VOLUME, create_if_missing=True)
 

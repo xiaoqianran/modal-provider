@@ -19,6 +19,7 @@ from modal.exception import NotFoundError, OutputExpiredError
 from modal_3d.operation_runner import validate_file
 from modal_3d.operations import (
     MAX_BYTES,
+    MIMES,
     RESULT_CONTRACT,
     SPECS,
     capabilities,
@@ -26,6 +27,7 @@ from modal_3d.operations import (
     request_key,
     required_roles_for,
     revision_for,
+    input_mimes_for,
     validate_descriptor,
     worker_for,
 )
@@ -98,21 +100,27 @@ class OperationService:
             raise KeyError(artifact_id)
         return validate_descriptor(json.loads(row[0]))
 
-    def upload(self, data: bytes, *, expected_sha256=None):
+    def upload(self, data: bytes, *, expected_sha256=None, mime="model/gltf-binary",
+               role="primary-glb", filename=None):
         if not data or len(data) > MAX_BYTES:
-            raise ContractError("mesh must be between 1 byte and 512 MiB")
+            raise ContractError("artifact must be between 1 byte and 512 MiB")
+        suffix_by_mime = {v: k for k, v in MIMES.items()}
+        if mime not in suffix_by_mime:
+            raise ContractError(f"unsupported artifact MIME: {mime}")
         digest = hashlib.sha256(data).hexdigest()
         if expected_sha256 is not None and digest != expected_sha256:
-            raise ContractError("mesh SHA256 mismatch")
+            raise ContractError("artifact SHA256 mismatch")
         with tempfile.TemporaryDirectory() as tmp:
-            file = Path(tmp) / "input.glb"
+            suffix = suffix_by_mime[mime]
+            file = Path(tmp) / f"input{suffix}"
             file.write_bytes(data)
-            validate_file(file, "model/gltf-binary")
-        path = f"mesh-inputs/{digest}.glb"
+            validate_file(file, mime)
+        path = (f"mesh-inputs/{digest}.glb" if mime == "model/gltf-binary"
+                else f"operation-inputs/{digest}{suffix}")
         with artifacts._volume().batch_upload(force=True) as upload:
             upload.put_file(io.BytesIO(data), path)
-        return self.register({"sha256": digest, "bytes": len(data), "mime": "model/gltf-binary",
-                              "role": "primary-glb", "path": path, "filename": "input.glb"})
+        return self.register({"sha256": digest, "bytes": len(data), "mime": mime,
+                              "role": role, "path": path, "filename": filename or f"input{suffix}"})
 
     def submit(self, operation, inputs, options=None, job_id=None):
         from .jobs import _now
@@ -123,13 +131,14 @@ class OperationService:
         if not re.fullmatch(r"op_[A-Za-z0-9_-]{1,150}", local_id):
             raise ValueError("operation job_id must start with op_ and be URL-safe")
         dependencies = []
-        for ref in inputs.values():
+        expected_mimes = input_mimes_for(operation)
+        for name, ref in inputs.items():
             if not isinstance(ref, dict):
                 raise TypeError("input must reference artifact_id or job_id + role")
             if set(ref) == {"artifact_id"}:
                 desc = self.asset(ref["artifact_id"])
-                if desc["mime"] != "model/gltf-binary":
-                    raise ValueError("operation needs GLB inputs")
+                if desc["mime"] != expected_mimes[name]:
+                    raise ValueError(f"{name} must be {expected_mimes[name]}")
             elif set(ref) <= {"job_id", "role"} and ref.get("job_id") and ref.get("role"):
                 parent = ref["job_id"]
                 if parent == local_id:
@@ -184,6 +193,8 @@ class OperationService:
             if len(matched) != 1:
                 raise ValueError(f"parent artifact role not found: {ref['role']}")
             resolved[name] = validate_descriptor(matched[0])
+            if resolved[name]["mime"] != input_mimes_for(state["operation"])[name]:
+                raise ValueError(f"parent artifact MIME mismatch: {name}")
         return resolved
 
     def poll(self, job_id):
@@ -338,21 +349,24 @@ def connector_capabilities(status):
     result = []
     for cap in capabilities():
         op = cap["id"]
-        ref = {"type": "object", "required": ["id", "role", "mime", "hash"],
-               "additionalProperties": False, "properties": {
-                   "id": {"type": "string", "minLength": 1}, "role": {"type": "string"},
-                   "mime": {"const": "model/gltf-binary"},
-                   "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}}
+        input_mimes = input_mimes_for(op)
+        refs = {name: {"type": "object", "required": ["id", "role", "mime", "hash"],
+                "additionalProperties": False, "properties": {
+                    "id": {"type": "string", "minLength": 1}, "role": {"type": "string"},
+                    "mime": {"const": mime},
+                    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}}
+                for name, mime in input_mimes.items()}
+        required = required_roles_for(op)
         result.append({"operation": cap["operation"], "version": "1", "displayName": cap["name"],
             "category": "asset-processing", "status": status,
             "input": {"types": ["mesh"], "schema": {"type": "object", "additionalProperties": False,
-                "required": SPECS[op]["inputs"], "properties": {k: ref for k in SPECS[op]["inputs"]}},
+                "required": SPECS[op]["inputs"], "properties": refs},
                 "limits": {"maxSourceBytes": MAX_BYTES}},
-            "output": {"roles": ["primary-glb", "editable-source", "quality-report"],
-                       "required": ["primary-glb", "quality-report"], "optional": ["editable-source"]},
+            "output": {"roles": required, "required": required, "optional": []},
             "profiles": {"recommended": {}},
             "optionsSchema": {"type": "object", "additionalProperties": False, "properties": SPECS[op]["options"]},
-            "execution": {"async": True, "durationClass": "long", "costClass": "cpu"},
+            "execution": {"async": True, "durationClass": "long",
+                          "costClass": cap["execution"]["resource"]},
             "prerequisites": {"authMode": "connector-session", "connection": True},
             "support": {"cancel": True, "resume": True, "idempotency": True},
             "artifactTransport": "connector-artifact"})

@@ -60,7 +60,11 @@ def service(tmp_path: Path) -> jobs.JobService:
 
 
 def descriptor(sha: str, *, role: str, mime: str = "model/gltf-binary", size: int = 16):
-    suffix = ".json" if mime == "application/json" else ".glb"
+    suffix = {
+        "application/json": ".json",
+        "image/png": ".png",
+        "model/gltf-binary": ".glb",
+    }.get(mime, ".bin")
     return {
         "sha256": sha,
         "bytes": size,
@@ -262,4 +266,67 @@ def test_same_operation_job_id_rejects_changed_identity(tmp_path, monkeypatch):
             {"asset": {"artifact_id": registered["id"]}},
             {"target_faces": 200},
             job_id="op_identity",
+        )
+
+
+def test_filter_parts_accepts_json_sidecars(tmp_path, monkeypatch):
+    svc = service(tmp_path)
+    asset = svc.operations.register(descriptor("b" * 64, role="primary-glb"))
+    manifest = svc.operations.register(
+        descriptor("c" * 64, role="parts-manifest", mime="application/json")
+    )
+    labels = svc.operations.register(
+        descriptor("d" * 64, role="face-labels", mime="application/json")
+    )
+    method = RemoteMethod(SpawnCall("fc-filter"))
+    bind_remote(monkeypatch, method)
+
+    result = svc.operations.submit(
+        "filter_parts",
+        {
+            "asset": {"artifact_id": asset["id"]},
+            "parts_manifest": {"artifact_id": manifest["id"]},
+            "face_labels": {"artifact_id": labels["id"]},
+        },
+        {"part_indices": [0, 1], "mode": "keep"},
+        job_id="op_filter_parts",
+    )
+
+    assert result["status"] == "running"
+    assert method.calls == 1
+
+
+def test_texture_generate_requires_png_reference(tmp_path, monkeypatch):
+    svc = service(tmp_path)
+    asset = svc.operations.register(descriptor("e" * 64, role="primary-glb"))
+    image = svc.operations.register(
+        descriptor("f" * 64, role="reference-image", mime="image/png")
+    )
+    method = RemoteMethod(SpawnCall("fc-paint"))
+    bind_remote(monkeypatch, method)
+
+    result = svc.operations.submit(
+        "texture_generate",
+        {
+            "asset": {"artifact_id": asset["id"]},
+            "reference_image": {"artifact_id": image["id"]},
+        },
+        {"preserve_geometry": True},
+        job_id="op_texture_generate",
+    )
+    assert result["status"] == "running"
+    assert method.calls == 1
+
+    wrong = svc.operations.register(
+        descriptor("0" * 64, role="reference-image", mime="model/gltf-binary")
+    )
+    with pytest.raises(ValueError, match="reference_image must be image/png"):
+        svc.operations.submit(
+            "texture_generate",
+            {
+                "asset": {"artifact_id": asset["id"]},
+                "reference_image": {"artifact_id": wrong["id"]},
+            },
+            {"preserve_geometry": True},
+            job_id="op_texture_bad_mime",
         )

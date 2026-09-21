@@ -17,6 +17,59 @@ import xatlas
 from mathutils.bvhtree import BVHTree
 
 
+def filter_parts(asset_path, manifest_path, labels_path, options, output):
+    import trimesh
+
+    mesh = trimesh.load(asset_path, force="mesh", process=False)
+    if not isinstance(mesh, trimesh.Trimesh):
+        raise ValueError("filter_parts requires one triangle mesh")
+    labels_doc = json.loads(Path(labels_path).read_text(encoding="utf-8"))
+    manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    labels = np.asarray(labels_doc.get("labels"), dtype=np.int64)
+    if labels_doc.get("schema") != "modal-3d.face-labels.v1" or len(labels) != len(mesh.faces):
+        raise ValueError("face labels do not align with mesh faces")
+    parts = manifest.get("parts")
+    if manifest.get("schema") != "modal-3d.part-set.v1" or not isinstance(parts, list):
+        raise ValueError("invalid PartSet manifest")
+    ordinals = set(options["part_indices"])
+    if any(index >= len(parts) for index in ordinals):
+        raise ValueError(f"part index out of range for {len(parts)} parts")
+    selected = {int(parts[index]["source_label"]) for index in ordinals}
+    available = set(int(x) for x in np.unique(labels) if x >= 0)
+    missing = selected - available
+    if missing:
+        raise ValueError(f"unknown part indices: {sorted(missing)}")
+    mask = np.isin(labels, list(selected))
+    if options["mode"] == "exclude":
+        mask = ~mask
+    indices = np.flatnonzero(mask)
+    if not len(indices):
+        raise ValueError("part selection produced an empty mesh")
+    result = mesh.submesh([indices], append=True, repair=False)
+    if not isinstance(result, trimesh.Trimesh) or not len(result.faces):
+        raise ValueError("part selection produced an invalid mesh")
+    result.export(output / "asset.glb")
+    report = {
+        "schema": "modal-3d.quality-report.v1",
+        "operation": "filter_parts",
+        "mode": options["mode"],
+        "selected_part_indices": sorted(ordinals),
+        "selected_source_labels": sorted(selected),
+        "source_faces": int(len(mesh.faces)),
+        "output_faces": int(len(result.faces)),
+        "source_space": "unchanged",
+        "face_mapping_source": "modal-3d.face-labels.v1",
+    }
+    (output / "quality.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    (output / "runtime.json").write_text(json.dumps({
+        "artifacts": [
+            {"role": "primary-glb", "file": "asset.glb"},
+            {"role": "quality-report", "file": "quality.json"},
+        ],
+        "metrics": report,
+    }), encoding="utf-8")
+
+
 def activate(obj):
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
@@ -286,6 +339,9 @@ def main(request):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     output, operation, options = Path(request["output"]), request["operation"], request["options"]
     inputs = request["inputs"]
+    if operation == "filter_parts":
+        filter_parts(inputs["asset"], inputs["parts_manifest"], inputs["face_labels"], options, output)
+        return
     objects = load(inputs.get("asset", inputs.get("target")))
     before = stats(objects)
     original = surface_tree(objects)

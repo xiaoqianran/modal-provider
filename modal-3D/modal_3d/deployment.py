@@ -70,6 +70,21 @@ def deployment_manifest() -> dict[str, object]:
                 ),
             },
             {
+                "app": "modal-3d-hunyuan-paint",
+                "secrets": ["huggingface"],
+                "module": "modal_3d.hunyuan_paint_worker",
+                "kind": "worker",
+                "models": ["texture_generate"],
+                "revision": revision,
+                "weights": _weights(
+                    "modal-3d-hunyuan-paint-weights",
+                    [
+                        "Hunyuan3D-2.1/hunyuan3d-paintpbr-v2-1/model_index.json",
+                        "RealESRGAN_x4plus.pth",
+                    ],
+                ),
+            },
+            {
                 "app": "modal-3d-rembg",
                 "module": "modal_3d.rembg_worker",
                 "kind": "preprocess",

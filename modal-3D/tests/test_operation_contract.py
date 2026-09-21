@@ -16,6 +16,7 @@ from modal_3d.operations import (
     capabilities as operation_capabilities,
 )
 from modal_3d.operations import (
+    input_mimes_for,
     required_roles_for,
     revision_for,
     worker_for,
@@ -50,6 +51,35 @@ class OperationContractTests(unittest.TestCase):
         self.assertEqual(
             required_roles_for("complete_parts"),
             ["primary-glb", "assembly-preview", "quality-report"],
+        )
+
+    def test_filter_parts_declares_manifest_and_face_label_json_inputs(self):
+        self.assertEqual(
+            input_mimes_for("filter_parts"),
+            {
+                "asset": "model/gltf-binary",
+                "parts_manifest": "application/json",
+                "face_labels": "application/json",
+            },
+        )
+        self.assertEqual(
+            required_roles_for("filter_parts"),
+            ["primary-glb", "quality-report"],
+        )
+
+    def test_texture_generate_routes_to_paint_worker_and_png_reference(self):
+        capability = next(
+            item for item in operation_capabilities() if item["id"] == "texture_generate"
+        )
+        self.assertEqual(worker_for("texture_generate"), "modal-3d-hunyuan-paint")
+        self.assertEqual(capability["execution"]["resource"], "gpu")
+        self.assertEqual(
+            input_mimes_for("texture_generate"),
+            {"asset": "model/gltf-binary", "reference_image": "image/png"},
+        )
+        self.assertEqual(
+            required_roles_for("texture_generate"),
+            ["primary-glb", "material-report", "quality-report"],
         )
 
     def test_existing_generation_worker_keeps_legacy_contract_and_gains_operation_shape(self):

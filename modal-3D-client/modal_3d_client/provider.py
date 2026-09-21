@@ -108,7 +108,7 @@ class Modal3DProvider:
         options: dict[str, object],
         context: object,
     ) -> dict[str, object]:
-        from modal_3d.operations import SPECS, options_for
+        from modal_3d.operations import MAX_BYTES, SPECS, input_mimes_for, options_for
         operation_names = {f"modal-3d.asset.{name}.v1": name for name in SPECS}
         if operation in operation_names:
             name = operation_names[operation]
@@ -117,6 +117,7 @@ class Modal3DProvider:
                 if profile not in (None, "recommended") or set(inputs) != set(SPECS[name]["inputs"]):
                     raise ValueError("invalid operation profile or inputs")
                 refs = {}
+                expected_mimes = input_mimes_for(name)
                 resolver = getattr(context, "artifacts", None)
                 if resolver is None:
                     raise ValueError("artifact resolver missing")
@@ -126,7 +127,7 @@ class Modal3DProvider:
                     scope = {"owner_client": str(getattr(context, "owner_client", "")),
                              "owner_origin": str(getattr(context, "owner_origin", ""))}
                     described = resolver.describe_input(str(source.get("id", "")), **scope)
-                    if (described.mime != "model/gltf-binary" or described.bytes > 512 * 1024 * 1024
+                    if (described.mime != expected_mimes[key] or described.bytes > MAX_BYTES
                         or any(source.get(field) != getattr(described, field) for field in ("id", "role", "mime", "hash"))):
                         raise ValueError("artifact identity mismatch")
                     artifact_id = "art_" + described.hash.removeprefix("sha256:")
@@ -134,7 +135,13 @@ class Modal3DProvider:
                         self.jobs.operations.asset(artifact_id)
                     except KeyError:
                         local = resolver.resolve_input(described.id, **scope)
-                        self.jobs.operations.upload(local.path.read_bytes(), expected_sha256=described.hash.removeprefix("sha256:"))
+                        self.jobs.operations.upload(
+                            local.path.read_bytes(),
+                            expected_sha256=described.hash.removeprefix("sha256:"),
+                            mime=described.mime,
+                            role=described.role,
+                            filename=Path(local.path).name,
+                        )
                     refs[key] = {"artifact_id": artifact_id}
                 return _job(self.jobs.operations.submit(name, refs, options,
                     job_id=_provider_job_id(context, "op")))

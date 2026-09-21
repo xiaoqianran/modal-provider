@@ -20,6 +20,7 @@ from .operations import (
     options_for,
     request_key,
     revision_for,
+    input_mimes_for,
     validate_descriptor,
 )
 
@@ -75,10 +76,11 @@ def run_operation_job(volume, operation, inputs, options=None, *, root="/artifac
     root.mkdir(parents=True, exist_ok=True)
     volume.reload()
     checked, paths = {}, {}
+    expected_mimes = input_mimes_for(operation)
     for name, value in inputs.items():
         desc = validate_descriptor(value)
-        if desc["mime"] != MIMES[".glb"]:
-            raise ValueError("P1 input must be a self-contained static GLB")
+        if desc["mime"] != expected_mimes[name]:
+            raise ValueError(f"{operation} input {name} must be {expected_mimes[name]}")
         path = confined(root, desc["path"])
         validate_file(path, desc["mime"])
         if path.stat().st_size != desc["bytes"] or digest_file(path) != desc["sha256"]:

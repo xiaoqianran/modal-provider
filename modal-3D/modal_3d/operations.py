@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 REVISION = "mesh-operations.v1-bpy420-xatlas009-r5"
 P3SAM_REVISION = "p3sam.e96be065-w67717446-sonata-df998974-v1"
 XPART_REVISION = "xpart-lite.e96be065-hf67717446-v1"
+HUNYUAN_PAINT_REVISION = "hunyuan3d-paint-v2.1-0b946776-l40s-v1"
 RESULT_CONTRACT = "modal-3d.operation-result.v1"
 MAX_BYTES = 512 * 1024 * 1024
 MIMES = {".glb": "model/gltf-binary", ".obj": "model/obj", ".blend": "application/x-blender",
@@ -19,6 +20,15 @@ MIMES = {".glb": "model/gltf-binary", ".obj": "model/obj", ".blend": "applicatio
 def number(default, minimum, maximum, integer=False):
     return {"type": "integer" if integer else "number", "default": default,
             "minimum": minimum, "maximum": maximum}
+
+
+def enum(default, values):
+    return {"type": "string", "default": default, "enum": list(values)}
+
+
+def integer_array(default, minimum=0, maximum=255, max_items=256):
+    return {"type": "array", "default": list(default), "minItems": 1, "maxItems": max_items,
+            "items": {"type": "integer", "minimum": minimum, "maximum": maximum}}
 
 
 UV_OPTIONS = {"resolution": number(1024, 64, 4096, True),
@@ -73,6 +83,29 @@ SPECS = {
         "resource": "gpu",
         "required_roles": ["primary-glb", "assembly-preview", "quality-report"],
     },
+    "filter_parts": {
+        "label": "Select / merge / exclude parts",
+        "inputs": ["asset", "parts_manifest", "face_labels"],
+        "input_mimes": {"asset": MIMES[".glb"], "parts_manifest": MIMES[".json"],
+                        "face_labels": MIMES[".json"]},
+        "options": {
+            "part_indices": integer_array([0]),
+            "mode": enum("keep", ["keep", "exclude"]),
+        },
+        "required_roles": ["primary-glb", "quality-report"],
+    },
+    "texture_generate": {
+        "label": "Hunyuan3D-Paint 2.1 reference texture",
+        "inputs": ["asset", "reference_image"],
+        "input_mimes": {"asset": MIMES[".glb"], "reference_image": MIMES[".png"]},
+        "options": {
+            "preserve_geometry": {"type": "boolean", "default": True},
+        },
+        "worker_app": "modal-3d-hunyuan-paint",
+        "revision": HUNYUAN_PAINT_REVISION,
+        "resource": "gpu",
+        "required_roles": ["primary-glb", "material-report", "quality-report"],
+    },
 }
 
 def spec_for(operation):
@@ -94,6 +127,12 @@ def required_roles_for(operation):
     return list(spec_for(operation).get("required_roles", ["primary-glb", "quality-report"]))
 
 
+def input_mimes_for(operation):
+    spec = spec_for(operation)
+    declared = spec.get("input_mimes", {})
+    return {name: declared.get(name, MIMES[".glb"]) for name in spec["inputs"]}
+
+
 def options_for(operation, options=None):
     spec_for(operation)
     if options is not None and not isinstance(options, dict):
@@ -107,10 +146,22 @@ def options_for(operation, options=None):
     for name, value in result.items():
         schema = schemas[name]
         kind = schema["type"]
-        valid = (type(value) is bool if kind == "boolean" else
-                 type(value) is int if kind == "integer" else
-                 type(value) in (int, float) and math.isfinite(value))
-        if not valid or (kind != "boolean" and not schema["minimum"] <= value <= schema["maximum"]):
+        if kind == "boolean":
+            valid = type(value) is bool
+        elif kind == "integer":
+            valid = type(value) is int and schema["minimum"] <= value <= schema["maximum"]
+        elif kind == "number":
+            valid = type(value) in (int, float) and math.isfinite(value) and schema["minimum"] <= value <= schema["maximum"]
+        elif kind == "string":
+            valid = isinstance(value, str) and value in schema.get("enum", [value])
+        elif kind == "array":
+            items = schema["items"]
+            valid = (isinstance(value, list) and schema["minItems"] <= len(value) <= schema["maxItems"]
+                     and len(set(value)) == len(value)
+                     and all(type(item) is int and items["minimum"] <= item <= items["maximum"] for item in value))
+        else:
+            valid = False
+        if not valid:
             raise ValueError(f"invalid option {name}: expected {schema}")
     if "resolution" in result and result["padding"] * 4 >= result["resolution"]:
         raise ValueError("padding must be less than one quarter of resolution")

@@ -94,9 +94,16 @@ def create_app(service: JobService | None = None) -> FastAPI:
         from modal_3d.operations import MAX_BYTES
         data = await file.read(MAX_BYTES + 1)
         try:
-            return await run_in_threadpool(job_service().operations.upload, data)
+            mime = file.content_type or "model/gltf-binary"
+            role = "reference-image" if mime == "image/png" else "primary-glb"
+            return await run_in_threadpool(
+                job_service().operations.upload, data,
+                mime=mime, role=role, filename=file.filename,
+            )
         except modal_session.NotConnectedError as exc:
             raise HTTPException(409, "Modal connection required") from exc
+        except (ContractError, ValueError) as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @app.post("/v1/operations/jobs")
     def submit_operation(body: OperationRequest):
