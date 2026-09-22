@@ -3,7 +3,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
-    if (!env.STUDIO_API_ORIGIN || !env.STUDIO_EDGE_SECRET) return Response.json({message: "Studio gateway not configured"}, {status: 503});
+    if (!env.STUDIO_API_ORIGIN) return Response.json({message: "Studio gateway not configured"}, {status: 503});
     const assertion = request.headers.get("cf-access-jwt-assertion");
     if (!assertion) return Response.json({message: "Sign in through Cloudflare Access"}, {status: 401});
     const origin = new URL(env.STUDIO_API_ORIGIN);
@@ -13,7 +13,7 @@ export default {
       if (request.headers.has(name)) headers.set(name, request.headers.get(name));
     }
     headers.set("cf-access-jwt-assertion", assertion);
-    headers.set("x-studio-edge-secret", env.STUDIO_EDGE_SECRET);
+    if (env.STUDIO_EDGE_SECRET) headers.set("x-studio-edge-secret", env.STUDIO_EDGE_SECRET);
     origin.pathname = url.pathname; origin.search = url.search;
     try {
       const response = await fetch(origin, {method: request.method, headers,

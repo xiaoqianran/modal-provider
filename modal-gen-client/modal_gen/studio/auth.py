@@ -19,6 +19,7 @@ class StudioAuth:
         self.issuer = os.getenv("STUDIO_ACCESS_ISSUER", "").rstrip("/")
         self.audience = os.getenv("STUDIO_ACCESS_AUD", "")
         self.edge_secret = os.getenv("STUDIO_EDGE_SECRET", "")
+        self.require_edge_secret = os.getenv("STUDIO_REQUIRE_EDGE_SECRET", "1") == "1"
         self.origins = set(filter(None, os.getenv("STUDIO_ALLOWED_ORIGINS", "").split(",")))
         if self.mode == "development":
             if len(self.token) < 24:
@@ -27,8 +28,10 @@ class StudioAuth:
         elif self.mode == "access":
             if not self.issuer.startswith("https://") or not self.audience:
                 raise ValueError("Configure STUDIO_ACCESS_ISSUER and STUDIO_ACCESS_AUD")
-            if len(self.edge_secret) < 32 or not self.origins:
-                raise ValueError("Configure STUDIO_EDGE_SECRET and STUDIO_ALLOWED_ORIGINS")
+            if self.require_edge_secret and len(self.edge_secret) < 32:
+                raise ValueError("Configure STUDIO_EDGE_SECRET")
+            if not self.origins:
+                raise ValueError("Configure STUDIO_ALLOWED_ORIGINS")
             self.keys = jwt.PyJWKClient(f"{self.issuer}/cdn-cgi/access/certs")
         else:
             raise ValueError("STUDIO_AUTH_MODE must be access or development")
@@ -47,7 +50,7 @@ class StudioAuth:
             ):
                 raise ConnectorError("STUDIO_AUTH", "Studio authentication required", 401)
             return "studio-local-user"
-        if not hmac.compare_digest(
+        if self.require_edge_secret and not hmac.compare_digest(
             request.headers.get("x-studio-edge-secret", ""), self.edge_secret
         ):
             raise ConnectorError("STUDIO_AUTH", "Untrusted gateway", 401)
