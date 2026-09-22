@@ -13,12 +13,16 @@ dependencies = [
     "modal-world",
     "modal-build",
     "uvicorn>=0.35,<1",
+    "PyJWT[crypto]>=2.10,<3",
+    "boto3>=1.35,<2",
+    "jsonschema>=4.23,<5",
 ]
 
 [project.scripts]
 modal-gen = "modal_gen.launcher:main"
 modal-gen-agent = "modal_gen.server:main"
 modal-gen-ui = "modal_gen.ui.server:main"
+modal-studio = "modal_gen.studio.app:main"
 
 [dependency-groups]
 dev = ["pytest>=8,<10", "ruff>=0.12,<1"]

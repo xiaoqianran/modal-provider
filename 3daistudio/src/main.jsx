@@ -3,7 +3,7 @@ import {createRoot} from "react-dom/client";
 import {BrowserRouter,Route,Routes} from "react-router-dom";
 import "./tailwind.css";
 import {AppLayout} from "./layout.jsx";
-import {Dashboard} from "./pages-dashboard.jsx";
+import {StudioDashboard as Dashboard, StudioWorkbench} from "./studio-pages.jsx";
 import {ImageStudio,ToolDetail} from "./pages-image.jsx";
 import {ThreeDWorkspace,TextureGenerator,TexturePainter} from "./pages-3d.jsx";
 import {CommunityPage,ToolboxPage,SVGTool,SplatPage} from "./pages-tools.jsx";
@@ -16,13 +16,16 @@ function App(){
       <Route path="/" element={<Dashboard/>}/>
       <Route path="/Dashboard" element={<Dashboard/>}/>
       <Route path="/ImageGeneration" element={<ImageStudio/>}/>
+      <Route path="/Studio/operations" element={<StudioWorkbench/>}/>
+      <Route path="/ImageGeneration/generate" element={<StudioWorkbench mode="image"/>}/>
+      <Route path="/ImageGeneration/generate/:tool" element={<StudioWorkbench mode="image"/>}/>
       <Route path="/ImageGeneration/:category" element={<ImageStudio/>}/>
       <Route path="/ImageGeneration/:category/:tool" element={<ToolDetail/>}/>
       <Route path="/ImageTo3D/app" element={<ThreeDWorkspace mode="image"/>}/>
       <Route path="/ImageTo3D" element={<ThreeDWorkspace mode="image"/>}/>
-      <Route path="/TextTo3D/app" element={<ThreeDWorkspace mode="text"/>}/>
-      <Route path="/TextTo3D" element={<ThreeDWorkspace mode="text"/>}/>
-      <Route path="/TextureGenerator/app" element={<TextureGenerator/>}/>
+      <Route path="/TextTo3D/app" element={<StudioWorkbench mode="text"/>}/>
+      <Route path="/TextTo3D" element={<StudioWorkbench mode="text"/>}/>
+      <Route path="/TextureGenerator/app" element={<StudioWorkbench/>}/>
       <Route path="/TexturePainter" element={<TexturePainter/>}/>
       <Route path="/Flow/app" element={<FlowPage/>}/>
       <Route path="/Flow/editor" element={<FlowEditor/>}/>

@@ -69,7 +69,7 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
     if (referenceUrlRef.current) URL.revokeObjectURL(referenceUrlRef.current);
   }, []);
 
-  const supported = (operation) => !available.length || available.includes(operation);
+  const supported = (operation) => available.includes(operation);
   const running = Boolean(activeOperation);
 
   const setReference = (file) => {

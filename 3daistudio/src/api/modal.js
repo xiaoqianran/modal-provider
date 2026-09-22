@@ -1,148 +1,90 @@
-/**
- * Thin client for modal-provider sidecars (modal-2D-client / modal-3D-client).
- * See API-INTEGRATION.md in the 3daistudio project root.
- */
-const base3d = () => (import.meta.env.VITE_MODAL_3D_URL || "http://127.0.0.1:3213").replace(/\/$/, "");
-const base2d = () => (import.meta.env.VITE_MODAL_2D_URL || "http://127.0.0.1:8022").replace(/\/$/, "");
-const sessionHeader = () => {
-  const t = import.meta.env.VITE_MODAL_3D_SESSION || import.meta.env.VITE_MODAL_SESSION;
-  return t ? { "X-Modal-3D-Session": t } : {};
-};
-
-async function jsonOrThrow(res) {
-  if (!res.ok) {
-    let detail = res.statusText;
-    try { detail = (await res.json()).detail || detail; } catch {}
-    const err = new Error(detail);
-    err.status = res.status;
-    throw err;
+/** Same-origin Studio API; Modal credentials never enter the browser. */
+const BASE = "/api/v1";
+export const TEXT_IMAGE = "modal-2d.image.text_to_image.v1";
+export const IMAGE_3D = "modal-3d.asset.image_to_3d.v1";
+export const terminal = job => ["succeeded", "failed", "cancelled", "expired", "submission_unknown"].includes(job.status);
+export const errorMessage = error => typeof error === "string" ? error : error?.message || error?.code || "Request failed";
+export async function api(path, options = {}) {
+  const response = await fetch(BASE + path, {credentials: "same-origin", ...options});
+  if (!response.ok) {
+    let message = `Studio API returned ${response.status}`;
+    try { const body = await response.json(); message = errorMessage(body.detail || body); } catch {}
+    throw new Error(message);
   }
-  return res.json();
+  return response.json();
 }
-
+export const listCapabilities3d = () => api("/capabilities");
+export const capabilities = snapshot => (snapshot.providers || []).flatMap(p => (p.capabilities || []).map(c => ({...c, provider: p.id, available: p.status === "available" && c.status === "available"})));
 export async function health3d() {
-  const res = await fetch(`${base3d()}/health`, { headers: sessionHeader() });
-  return jsonOrThrow(res);
+  return {modal_connected: capabilities(await listCapabilities3d()).some(c => c.operation === IMAGE_3D && c.available)};
 }
-
 export async function listModels3d() {
-  const res = await fetch(`${base3d()}/v1/models`, { headers: sessionHeader() });
-  return jsonOrThrow(res);
+  const cap = capabilities(await listCapabilities3d()).find(c => c.operation === IMAGE_3D);
+  return {models: (cap?.input?.schema?.properties?.model?.enum || []).map(id => ({id, name: id, status: cap.available ? "enabled" : "disabled", profiles: Object.keys(cap.profiles || {}).map(id => ({id, name: id}))}))};
 }
-
-export async function listCapabilities3d() {
-  const res = await fetch(`${base3d()}/v1/capabilities`, { headers: sessionHeader() });
-  return jsonOrThrow(res);
-}
-
 export async function listOperations3d() {
-  const res = await fetch(`${base3d()}/v1/operations`, { headers: sessionHeader() });
-  return jsonOrThrow(res);
+  return {operations: capabilities(await listCapabilities3d()).filter(c => c.available && c.category === "asset-processing").map(c => ({...c, id: c.operation.split(".").at(-2)}))};
 }
-
-export async function uploadAsset3d(file) {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch(`${base3d()}/v1/assets`, {
-    method: "POST",
-    body: fd,
-    headers: sessionHeader(),
-  });
-  return jsonOrThrow(res);
+async function pngFile(file) {
+  if (!file.type.startsWith("image/") || file.type === "image/png") return file;
+  const bitmap = await createImageBitmap(file);
+  try {
+    if (bitmap.width * bitmap.height > 32000000) throw new Error("Image is too large");
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width; canvas.height = bitmap.height;
+    canvas.getContext("2d").drawImage(bitmap, 0, 0);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("Could not convert image to PNG");
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".png", {type: "image/png"});
+  } finally { bitmap.close(); }
 }
-
-export async function submitOperation3d({ operation, inputs, options = {}, jobId }) {
-  const res = await fetch(`${base3d()}/v1/operations/jobs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...sessionHeader() },
-    body: JSON.stringify({
-      operation,
-      inputs,
-      options,
-      ...(jobId ? { job_id: jobId } : {}),
-    }),
-  });
-  return jsonOrThrow(res);
+export async function uploadAsset3d(file, projectId) {
+  file = await pngFile(file);
+  const mime = file.name.toLowerCase().endsWith(".glb") ? "model/gltf-binary" : file.type;
+  const params = new URLSearchParams({name: file.name});
+  if (projectId) params.set("projectId", projectId);
+  return (await api(`/uploads?${params}`, {method: "POST", headers: {"Content-Type": mime}, body: file})).asset;
 }
-
-export async function submitImageTo3d({ file, model, profile = "recommended", seed = 42, jobId }) {
-  const fd = new FormData();
-  fd.append("file", file);
-  fd.append("model", model);
-  fd.append("profile", profile);
-  fd.append("seed", String(seed));
-  if (jobId) fd.append("job_id", jobId);
-  const res = await fetch(`${base3d()}/v1/jobs`, { method: "POST", body: fd, headers: sessionHeader() });
-  return jsonOrThrow(res);
+export async function submitJob(spec, key = crypto.randomUUID()) {
+  const options = {method: "POST", headers: {"Content-Type": "application/json", "Idempotency-Key": key}, body: JSON.stringify(spec)};
+  try { return (await api("/jobs", options)).job; }
+  catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    return (await api("/jobs", options)).job;
+  }
 }
-
-export function jobArtifactRef(jobId, role = "primary-glb") {
-  return { job_id: jobId, role };
+export function submitOperation3d({operation, inputs, options = {}, jobId}) {
+  return submitJob({operation: `modal-3d.asset.${operation}.v1`, inputs, options}, jobId);
 }
-
-export async function getJob3d(jobId) {
-  const res = await fetch(`${base3d()}/v1/jobs/${encodeURIComponent(jobId)}`, { headers: sessionHeader() });
-  return jsonOrThrow(res);
+export async function submitImageTo3d({file, model, profile = "recommended", seed = 42, jobId}) {
+  const asset = await uploadAsset3d(file);
+  return submitJob({operation: IMAGE_3D, inputs: {sourceArtifact: {artifact_id: asset.id}, model, seed}, profile}, jobId);
 }
-
+export const jobArtifactRef = (jobId, role = "primary-glb") => ({job_id: jobId, role});
+export const getJob3d = async id => (await api(`/jobs/${encodeURIComponent(id)}`)).job;
+export const cancelJob = async id => (await api(`/jobs/${encodeURIComponent(id)}/cancel`, {method: "POST"})).job;
+export const assetContentUrl = id => `${BASE}/assets/${encodeURIComponent(id)}/content`;
 export async function fetchArtifactBlob3d(jobId, role = "primary-glb") {
-  const res = await fetch(`${base3d()}/v1/jobs/${encodeURIComponent(jobId)}/artifact?role=${encodeURIComponent(role)}`, {
-    headers: sessionHeader(),
-  });
-  if (!res.ok) throw new Error(`artifact ${res.status}`);
-  return res.blob();
+  const job = await getJob3d(jobId);
+  const artifact = job.result?.artifacts?.find(a => a.role === role);
+  if (!artifact) throw new Error(`No ${role} artifact in this task`);
+  const response = await fetch(assetContentUrl(artifact.id), {credentials: "same-origin"});
+  if (!response.ok) throw new Error(`Artifact download failed (${response.status})`);
+  return response.blob();
 }
-
-export async function connectModal3d(tokenId, tokenSecret) {
-  const res = await fetch(`${base3d()}/modal/connect`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...sessionHeader() },
-    body: JSON.stringify({ token_id: tokenId, token_secret: tokenSecret }),
-  });
-  return jsonOrThrow(res);
-}
-
-/** Poll until terminal status or timeout. */
-export async function pollJob3d(
-  jobId,
-  { intervalMs = 2000, timeoutMs = 10 * 60 * 1000, onUpdate, signal } = {},
-) {
-  const t0 = Date.now();
+export async function pollJob3d(id, {intervalMs = 2000, timeoutMs = 3600000, onUpdate, signal} = {}) {
+  const started = Date.now();
   for (;;) {
-    if (signal?.aborted) throw new DOMException("Polling aborted", "AbortError");
-    const job = await getJob3d(jobId);
+    signal?.throwIfAborted();
+    const job = await getJob3d(id);
     onUpdate?.(job);
-    const status = String(job.status || job.state || "").toLowerCase();
-    if (["succeeded", "failed", "cancelled", "canceled", "expired", "submission_unknown"].includes(status)) return job;
-    if (Date.now() - t0 > timeoutMs) throw new Error(`job ${jobId} timeout`);
+    if (terminal(job)) return job;
+    if (Date.now() - started > timeoutMs) throw new Error("Task still running. Follow it in Dashboard.");
     await new Promise((resolve, reject) => {
-      const id = setTimeout(resolve, intervalMs);
-      if (signal) {
-        signal.addEventListener("abort", () => {
-          clearTimeout(id);
-          reject(new DOMException("Polling aborted", "AbortError"));
-        }, { once: true });
-      }
+      const abort = () => {clearTimeout(timer); reject(new DOMException("Aborted", "AbortError"));};
+      const timer = setTimeout(() => {signal?.removeEventListener("abort", abort); resolve();}, intervalMs);
+      signal?.addEventListener("abort", abort, {once: true});
     });
   }
 }
-
-export async function generateImage2d({ prompt, model, ...rest }) {
-  const res = await fetch(`${base2d()}/v1/jobs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...sessionHeader() },
-    body: JSON.stringify({ prompt, model, ...rest }),
-  });
-  return jsonOrThrow(res);
-}
-
-/** Map UI model labels → sidecar model ids (extend from GET /v1/models). */
-export const MODEL_ALIASES = {
-  "Prism 3.1": "prism-3.1",
-  "Hunyuan 3.1 Pro": "hunyuan-3.1-pro",
-  "Tripo P2": "tripo-p2",
-};
-
-export function resolveModelId(uiName) {
-  return MODEL_ALIASES[uiName] || uiName;
-}
+export const generateImage2d = inputs => submitJob({operation: TEXT_IMAGE, inputs});

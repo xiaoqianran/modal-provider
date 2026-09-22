@@ -4,3 +4,8 @@ dist/
 crawler/.profile/
 reference/3daistudio/network.har
 *.log
+.env
+.env.*
+!.env.example
+.dev.vars
+.wrangler/

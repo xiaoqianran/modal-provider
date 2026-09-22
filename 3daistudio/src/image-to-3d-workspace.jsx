@@ -10,6 +10,7 @@ import {
   listModels3d,
   pollJob3d,
   submitImageTo3d,
+  errorMessage,
 } from "./api/modal.js";
 
 const FALLBACK_MODEL = {
@@ -32,7 +33,7 @@ function modelProfiles(model) {
 
 function terminalError(job) {
   if (!job) return "3D generation failed";
-  return job.error || job.detail || job.error_code || `Job ended with status: ${job.status || job.state || "unknown"}`;
+  return errorMessage(job.error || job.detail || job.error_code || `Job ended with status: ${job.status || job.state || "unknown"}`);
 }
 
 function ProviderModelPicker({models, selectedId, onSelect, onClose}) {
@@ -42,7 +43,7 @@ function ProviderModelPicker({models, selectedId, onSelect, onClose}) {
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
             <div className="text-sm font-semibold text-zinc-100">modal-provider models</div>
-            <div className="text-xs text-zinc-500">Loaded from modal-3D-client /v1/models</div>
+            <div className="text-xs text-zinc-500">Available generation models</div>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1 text-zinc-400 hover:text-zinc-100">
             <X size={16}/>
@@ -109,15 +110,15 @@ export function ImageTo3DWorkspace() {
     try {
       const [health, payload] = await Promise.all([health3d(), listModels3d()]);
       const enabled = (payload.models || []).filter((model) => model.status !== "disabled");
+      setModels(enabled);
       if (enabled.length) {
-        setModels(enabled);
         setSelectedId((current) => enabled.some((m) => m.id === current) ? current : enabled[0].id);
       }
       setProviderState(health.modal_connected === false ? "disconnected" : "ready");
       setError("");
     } catch (err) {
       setProviderState("offline");
-      setError(`modal-3D-client unavailable: ${err.message}`);
+      setError(`Studio unavailable: ${err.message}`);
     }
   }, []);
 
@@ -222,7 +223,7 @@ export function ImageTo3DWorkspace() {
     : providerState === "disconnected"
       ? "Modal credentials required"
       : providerState === "offline"
-        ? "Sidecar offline"
+        ? "Studio offline"
         : "Checking provider…";
 
   return (
@@ -363,7 +364,7 @@ export function ImageTo3DWorkspace() {
             </div>
           )}
 
-          <Btn primary className="w-full !py-2.5" disabled={running || !sourceFile} onClick={runGenerate}>
+          <Btn primary className="w-full !py-2.5" disabled={running || !sourceFile || providerState !== "ready" || !models.length} onClick={runGenerate}>
             {running ? "Generating…" : artifactUrl ? "Generate Again" : "Generate 3D Model"}
             <span className="text-[10px] opacity-80">
               {providerState === "disconnected" ? "Connect Modal credentials in modal-3D-client" : "Real modal-provider job"}

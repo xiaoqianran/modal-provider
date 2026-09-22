@@ -71,8 +71,10 @@ class ArtifactService:
         role: str = "primary-image",
         mime: str = "image/png",
         expected_hash: str | None = None,
+        allow_mesh: bool = False,
     ) -> dict[str, object]:
-        if role != "primary-image" or mime != "image/png":
+        mesh = allow_mesh and role == "primary-glb" and mime == "model/gltf-binary"
+        if not mesh and (role != "primary-image" or mime != "image/png"):
             raise ConnectorError(
                 "ARTIFACT_UPLOAD_UNSUPPORTED",
                 "当前只接受 primary-image / image/png 本地输入",
@@ -80,9 +82,9 @@ class ArtifactService:
             )
         if not isinstance(data, bytes) or not data:
             raise ConnectorError("ARTIFACT_UPLOAD_INVALID", "上传 Artifact 不能为空", 422)
-        if len(data) > MAX_INPUT_ARTIFACT_BYTES:
+        if len(data) > (MAX_ARTIFACT_BYTES if mesh else MAX_INPUT_ARTIFACT_BYTES):
             raise ConnectorError("ARTIFACT_SIZE_INVALID", "上传图片超过 20 MiB", 413)
-        if data[:8] != _PNG_SIGNATURE:
+        if not mesh and data[:8] != _PNG_SIGNATURE:
             raise ConnectorError("ARTIFACT_INTEGRITY_FAILED", "上传内容不是有效 PNG", 422)
         digest = f"sha256:{hashlib.sha256(data).hexdigest()}"
         if expected_hash and expected_hash != digest:
