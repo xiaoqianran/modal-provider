@@ -142,6 +142,12 @@ GPU 离线加载。选 `part-0000` 的首次 smoke（10 steps / 256）成功：
 
 ### P3：独立贴图与重生成
 
+状态：✅ Hunyuan3D-Paint texture-only 主后端已远端闭环。2026-09-22 在 L40S 上以
+Hunyuan3D-2mv 的 280,368-face GLB + front PNG 实测 `preserve_geometry=true`：
+输出仍为 280,368 faces，topology_preserved=true，paint 100.31s / worker total 109.82s，
+输出 15.5 MB textured GLB。公开权重改为匿名 CPU provisioning，不再无必要依赖 Modal
+`huggingface` Secret。MVPaint 仍作为实验适配线，不阻塞生产贴图主线。
+
 建议服务：`modal-3d-hunyuan-paint`；`modal-3d-mvpaint` 待实验通过。
 
 - 抽取 Paint-only 加载/推理，复用现有安装补丁与权重准备逻辑。

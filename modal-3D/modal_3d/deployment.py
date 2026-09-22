@@ -71,7 +71,6 @@ def deployment_manifest() -> dict[str, object]:
             },
             {
                 "app": "modal-3d-hunyuan-paint",
-                "secrets": ["huggingface"],
                 "module": "modal_3d.hunyuan_paint_worker",
                 "kind": "worker",
                 "models": ["texture_generate"],

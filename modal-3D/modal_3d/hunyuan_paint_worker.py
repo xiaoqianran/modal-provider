@@ -52,7 +52,6 @@ artifacts = modal.Volume.from_name(ARTIFACT_VOLUME, create_if_missing=True)
     memory=16384,
     timeout=60 * 60,
     max_containers=1,
-    secrets=[modal.Secret.from_name("huggingface")],
 )
 def sync_weights() -> dict:
     from huggingface_hub import snapshot_download
