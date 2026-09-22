@@ -9,6 +9,8 @@ This is a development affordance only; it never touches the Modal SDK.
 """
 
 import hashlib
+import json
+import struct
 import tempfile
 import threading
 import time
@@ -130,9 +132,79 @@ def capability_document() -> dict:
 
 
 def _minimal_glb(seed: bytes) -> bytes:
-    body = seed + b"\x00" * 40
-    total = 12 + len(body)
-    return b"glTF" + (2).to_bytes(4, "little") + total.to_bytes(4, "little") + body
+    """Return a small but standards-compliant GLB that Three.js can render."""
+
+    scale = 0.7 + ((seed[0] if seed else 0) / 255.0) * 0.3
+    positions = (
+        (-scale, -scale, scale),
+        (scale, -scale, scale),
+        (0.0, scale, 0.0),
+        (0.0, -scale, -scale),
+    )
+    indices = (0, 1, 2, 1, 3, 2, 3, 0, 2, 0, 3, 1)
+    binary = b"".join(struct.pack("<3f", *row) for row in positions)
+    binary += struct.pack("<12H", *indices)
+
+    document = {
+        "asset": {"version": "2.0", "generator": "modal-3d-client-demo"},
+        "scene": 0,
+        "scenes": [{"nodes": [0]}],
+        "nodes": [{"mesh": 0}],
+        "meshes": [
+            {
+                "primitives": [
+                    {
+                        "attributes": {"POSITION": 0},
+                        "indices": 1,
+                        "material": 0,
+                    }
+                ]
+            }
+        ],
+        "materials": [
+            {
+                "pbrMetallicRoughness": {
+                    "baseColorFactor": [0.35, 0.58, 0.9, 1.0],
+                    "metallicFactor": 0.15,
+                    "roughnessFactor": 0.55,
+                }
+            }
+        ],
+        "buffers": [{"byteLength": len(binary)}],
+        "bufferViews": [
+            {"buffer": 0, "byteOffset": 0, "byteLength": 48, "target": 34962},
+            {"buffer": 0, "byteOffset": 48, "byteLength": 24, "target": 34963},
+        ],
+        "accessors": [
+            {
+                "bufferView": 0,
+                "componentType": 5126,
+                "count": 4,
+                "type": "VEC3",
+                "min": [-scale, -scale, -scale],
+                "max": [scale, scale, scale],
+            },
+            {
+                "bufferView": 1,
+                "componentType": 5123,
+                "count": 12,
+                "type": "SCALAR",
+                "min": [0],
+                "max": [3],
+            },
+        ],
+    }
+    json_chunk = json.dumps(document, separators=(",", ":")).encode("utf-8")
+    json_chunk += b" " * ((4 - len(json_chunk) % 4) % 4)
+    binary += b"\x00" * ((4 - len(binary) % 4) % 4)
+
+    body = (
+        struct.pack("<I4s", len(json_chunk), b"JSON")
+        + json_chunk
+        + struct.pack("<I4s", len(binary), b"BIN\x00")
+        + binary
+    )
+    return b"glTF" + struct.pack("<II", 2, 12 + len(body)) + body
 
 
 @dataclass
@@ -211,8 +283,8 @@ class DemoJobService:
             job = self._jobs.get(job_id)
             if job is None or job.status in {"cancel_requested", "cancelled"}:
                 return
-            artifact_sha = hashlib.sha256(sha.encode()).hexdigest()
-            glb = _minimal_glb(artifact_sha.encode()[:24])
+            glb = _minimal_glb(sha.encode()[:24])
+            artifact_sha = hashlib.sha256(glb).hexdigest()
             self._artifacts[job_id] = glb
             job.status = "succeeded"
             job.updated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

@@ -20,7 +20,7 @@
 
 ## 已有 HTTP 契约（对接面）
 
-### modal-3D-client（默认 CORS `*`，端口约 3212/3213 UI）
+### modal-3D-client（默认 CORS `*`，端口 3213）
 
 ```text
 GET  /health
@@ -72,7 +72,7 @@ operation 包括 `uv_unwrap`、`inspect_mesh`、`filter_parts`、`texture_genera
   hooks/useGenerateJob  submit → poll → artifact URL/blob
   three-viewport        GET artifact blob → useGLTF
 
-modal-2D-client :80xx   modal-3D-client :3212
+modal-2D-client :3212   modal-3D-client :3213
         │                      │
         └──────── Modal GPU ───┘
 ```
@@ -90,7 +90,7 @@ modal-2D-client :80xx   modal-3D-client :3212
 ```bash
 # modal-3D-client
 cd ../modal-3D-client
-MODAL_3D_CLIENT_DEMO=1 MODAL_3D_CLIENT_PORT=3212 uv run python -m modal_3d_client
+MODAL_3D_CLIENT_DEMO=1 MODAL_3D_CLIENT_PORT=3213 uv run python -m modal_3d_client
 # 真实 Modal 时去掉 DEMO，并 /modal/connect 填 token
 ```
 

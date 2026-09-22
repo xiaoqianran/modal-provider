@@ -130,11 +130,11 @@ def create_app(service: JobService | None = None) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict[str, object]:
-        return {"ok": True, "modal_connected": modal_session.connected()}
+        return {"ok": True, "modal_connected": _demo_enabled() or modal_session.connected()}
 
     @app.get("/modal/status")
     def modal_status() -> dict[str, bool]:
-        return {"connected": modal_session.connected()}
+        return {"connected": _demo_enabled() or modal_session.connected()}
 
     @app.post("/modal/connect")
     def modal_connect(body: Credentials) -> dict[str, bool]:

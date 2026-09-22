@@ -103,10 +103,13 @@ export function ViewportToolbar({children,className=""}){
 
 export function Viewport3DUpload({
   textMode=false, emptyHint, emptySub, withToggles=false,
-  compact=false, hideChromeToggles=false, toolbar=null, onFileLoaded
+  compact=false, hideChromeToggles=false, toolbar=null, onFileLoaded,
+  externalUrl=null, externalName=""
 }){
   const [url,setUrl]=React.useState(null);
   const [name,setName]=React.useState("");
+  const activeUrl = externalUrl || url;
+  const activeName = externalUrl ? (externalName || "Generated GLB") : name;
   const [wireframe,setWireframe]=React.useState(false);
   const [showGrid,setShowGrid]=React.useState(true);
   const urlRef=React.useRef(null);
@@ -137,12 +140,12 @@ export function Viewport3DUpload({
     <div className={"relative flex h-full w-full min-h-[240px] flex-col "+(compact?"gap-0":"gap-2")}>
       <div className="relative min-h-0 flex-1">
         <Viewport3D
-          url={url}
+          url={activeUrl}
           textMode={textMode}
           wireframe={wireframe}
           showGrid={showGrid}
-          hint={url?name:emptyHint}
-          subhint={url?"Drag to orbit · scroll to zoom":emptySub}
+          hint={activeUrl?activeName:emptyHint}
+          subhint={activeUrl?"Drag to orbit · scroll to zoom":emptySub}
           className="!rounded-none !border-0"
           style={{height:"100%"}}
         />

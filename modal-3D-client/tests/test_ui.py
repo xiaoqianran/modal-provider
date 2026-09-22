@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import time
+
 from fastapi.testclient import TestClient
 
 from modal_3d_client.app import create_app, mount_ui
@@ -98,11 +101,37 @@ def test_demo_service_resolves_jobs_in_memory():
     assert cancelled["status"] == "cancelled"
 
 
+def test_demo_artifact_is_valid_glb_with_matching_digest():
+    svc = DemoJobService()
+    png = b"\x89PNG\r\n\x1a\n" + b"\x01" * 64
+    submitted = svc.submit(png, model="fastsam3d-plus-plus", profile="recommended", seed=42)
+
+    deadline = time.monotonic() + 2.0
+    state = svc.poll(submitted["id"])
+    while state["status"] != "succeeded" and time.monotonic() < deadline:
+        time.sleep(0.05)
+        state = svc.poll(submitted["id"])
+
+    assert state["status"] == "succeeded"
+    descriptor, path = svc.artifact(submitted["id"])
+    data = path.read_bytes()
+    assert data[:4] == b"glTF"
+    assert int.from_bytes(data[4:8], "little") == 2
+    assert int.from_bytes(data[8:12], "little") == len(data)
+    assert data[16:20] == b"JSON"
+    assert hashlib.sha256(data).hexdigest() == descriptor["sha256"]
+
+
 def test_demo_app_endpoints_round_trip(monkeypatch):
     monkeypatch.setenv("MODAL_3D_CLIENT_DEMO", "1")
     app = create_app()
     mount_ui(app)
     client = TestClient(app)
+
+    health = client.get("/health")
+    assert health.status_code == 200
+    assert health.json()["modal_connected"] is True
+    assert client.get("/modal/status").json()["connected"] is True
 
     models = client.get("/v1/models")
     assert models.status_code == 200

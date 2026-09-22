@@ -2,7 +2,7 @@
  * Thin client for modal-provider sidecars (modal-2D-client / modal-3D-client).
  * See API-INTEGRATION.md in the 3daistudio project root.
  */
-const base3d = () => (import.meta.env.VITE_MODAL_3D_URL || "http://127.0.0.1:3212").replace(/\/$/, "");
+const base3d = () => (import.meta.env.VITE_MODAL_3D_URL || "http://127.0.0.1:3213").replace(/\/$/, "");
 const base2d = () => (import.meta.env.VITE_MODAL_2D_URL || "http://127.0.0.1:8022").replace(/\/$/, "");
 const sessionHeader = () => {
   const t = import.meta.env.VITE_MODAL_3D_SESSION || import.meta.env.VITE_MODAL_SESSION;
@@ -69,14 +69,27 @@ export async function connectModal3d(tokenId, tokenSecret) {
 }
 
 /** Poll until terminal status or timeout. */
-export async function pollJob3d(jobId, { intervalMs = 2000, timeoutMs = 10 * 60 * 1000 } = {}) {
+export async function pollJob3d(
+  jobId,
+  { intervalMs = 2000, timeoutMs = 10 * 60 * 1000, onUpdate, signal } = {},
+) {
   const t0 = Date.now();
   for (;;) {
+    if (signal?.aborted) throw new DOMException("Polling aborted", "AbortError");
     const job = await getJob3d(jobId);
-    const status = job.status || job.state;
-    if (["succeeded", "failed", "cancelled", "canceled"].includes(status)) return job;
+    onUpdate?.(job);
+    const status = String(job.status || job.state || "").toLowerCase();
+    if (["succeeded", "failed", "cancelled", "canceled", "expired", "submission_unknown"].includes(status)) return job;
     if (Date.now() - t0 > timeoutMs) throw new Error(`job ${jobId} timeout`);
-    await new Promise((r) => setTimeout(r, intervalMs));
+    await new Promise((resolve, reject) => {
+      const id = setTimeout(resolve, intervalMs);
+      if (signal) {
+        signal.addEventListener("abort", () => {
+          clearTimeout(id);
+          reject(new DOMException("Polling aborted", "AbortError"));
+        }, { once: true });
+      }
+    });
   }
 }
 

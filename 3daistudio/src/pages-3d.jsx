@@ -3,6 +3,7 @@ import {ChevronDown,Palette,Upload,X} from "lucide-react";
 import {Badge,Btn,ChipRow,PanelLabel,SettingRow,Toggle} from "./components.jsx";
 import {modelCatalog} from "./data.js";
 import {Viewport3DUpload} from "./three-viewport.jsx";
+import {ImageTo3DWorkspace} from "./image-to-3d-workspace.jsx";
 
 function ModelPicker({onClose}){
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -28,6 +29,10 @@ function ModelPicker({onClose}){
 }
 
 export function ThreeDWorkspace({mode}){
+  return mode==="image" ? <ImageTo3DWorkspace/> : <LegacyThreeDWorkspace mode={mode}/>;
+}
+
+function LegacyThreeDWorkspace({mode}){
   const img=mode==="image";
   const [picker,setPicker]=useState(false);
   const [advanced,setAdvanced]=useState(false);
