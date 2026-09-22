@@ -25,7 +25,7 @@ from .operations import (
 )
 
 
-def validate_file(path, mime):
+def validate_file(path, mime, *, glb_mode="static"):
     path = Path(path)
     if not path.is_file() or not 0 < path.stat().st_size <= MAX_BYTES:
         raise ValueError("artifact is absent, empty or oversized")
@@ -37,8 +37,34 @@ def validate_file(path, mime):
         for row in doc.get("buffers", []) + doc.get("images", []):
             if row.get("uri") and not row["uri"].startswith("data:"):
                 raise ValueError("external GLB resources are unsupported; embed all resources")
-        if doc.get("skins") or doc.get("animations"):
-            raise ValueError("P1 accepts static assets; rigged/animated assets require explicit unbinding")
+        skins = doc.get("skins") or []
+        animations = doc.get("animations") or []
+        if glb_mode == "static":
+            if skins or animations:
+                raise ValueError("static GLB must not contain skins or animations")
+        elif glb_mode in {"rigged", "posed"}:
+            if not skins:
+                raise ValueError(f"{glb_mode} GLB must contain at least one skin")
+            nodes = doc.get("nodes") or []
+            for skin in skins:
+                joints = skin.get("joints") or []
+                if not joints or any(type(index) is not int or index < 0 or index >= len(nodes) for index in joints):
+                    raise ValueError("GLB skin contains invalid joints")
+            primitives = [
+                primitive
+                for mesh in doc.get("meshes", [])
+                for primitive in mesh.get("primitives", [])
+            ]
+            if not any(
+                "JOINTS_0" in (primitive.get("attributes") or {})
+                and "WEIGHTS_0" in (primitive.get("attributes") or {})
+                for primitive in primitives
+            ):
+                raise ValueError("rigged GLB has no JOINTS_0/WEIGHTS_0 vertex attributes")
+            if glb_mode == "posed" and animations:
+                raise ValueError("pose snapshot must not include animation tracks")
+        elif glb_mode != "any":
+            raise ValueError(f"unknown GLB validation mode: {glb_mode}")
     elif mime == MIMES[".json"]:
         json.loads(path.read_text(encoding="utf-8"))
     elif mime == MIMES[".png"]:

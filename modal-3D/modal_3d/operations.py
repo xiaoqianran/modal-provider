@@ -12,6 +12,8 @@ P3SAM_REVISION = "p3sam.e96be065-w67717446-sonata-df998974-v1"
 XPART_REVISION = "xpart-lite.e96be065-hf67717446-v1"
 HUNYUAN_PAINT_REVISION = "hunyuan3d-paint-v2.1-0b946776-l40s-v1"
 HUNYUAN2MV_REVISION = "hunyuan3d-2mv-srcf8db6309-hf3a761b53-l40s-v1"
+TOKENRIG_REVISION = "skintokens-273b691d-tokenrig-v1"
+POSE_REVISION = "blender-pose-v1"
 RESULT_CONTRACT = "modal-3d.operation-result.v1"
 MAX_BYTES = 512 * 1024 * 1024
 MIMES = {".glb": "model/gltf-binary", ".obj": "model/obj", ".blend": "application/x-blender",
@@ -133,6 +135,35 @@ SPECS = {
         "revision": HUNYUAN2MV_REVISION,
         "resource": "gpu",
         "required_roles": ["primary-glb", "quality-report"],
+    },
+    "rig": {
+        "label": "TokenRig automatic rigging",
+        "inputs": ["asset"],
+        "options": {
+            "top_k": number(5, 1, 200, True),
+            "top_p": number(0.95, 0.1, 1.0),
+            "temperature": number(1.0, 0.1, 2.0),
+            "repetition_penalty": number(2.0, 0.5, 3.0),
+            "num_beams": number(10, 1, 20, True),
+            "preserve_texture_and_scale": {"type": "boolean", "default": True},
+            "postprocess_skin": {"type": "boolean", "default": False},
+        },
+        "worker_app": "modal-3d-tokenrig",
+        "revision": TOKENRIG_REVISION,
+        "resource": "gpu",
+        "required_roles": ["primary-glb", "rig-report", "quality-report"],
+    },
+    "pose": {
+        "label": "Blender rig pose",
+        "inputs": ["asset"],
+        "options": {
+            "preset": enum("t_pose", ["t_pose", "a_pose", "rest"]),
+            "skeleton_profile": enum("auto", ["auto", "mixamo", "vroid"]),
+        },
+        "worker_app": "modal-3d-pose",
+        "revision": POSE_REVISION,
+        "resource": "cpu",
+        "required_roles": ["primary-glb", "pose-report", "quality-report"],
     },
 }
 

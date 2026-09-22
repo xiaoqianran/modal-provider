@@ -116,7 +116,7 @@ class OperationService:
             suffix = suffix_by_mime[mime]
             file = Path(tmp) / f"input{suffix}"
             file.write_bytes(data)
-            validate_file(file, mime)
+            validate_file(file, mime, glb_mode="any" if mime == "model/gltf-binary" else "static")
         path = (f"mesh-inputs/{digest}.glb" if mime == "model/gltf-binary"
                 else f"operation-inputs/{digest}{suffix}")
         with artifacts._volume().batch_upload(force=True) as upload:
@@ -339,13 +339,21 @@ class OperationService:
                         stream.write(chunk)
                 if total != desc["bytes"] or artifacts._sha256_file(temporary) != desc["sha256"]:
                     raise ContractError("artifact integrity mismatch")
-                validate_file(temporary, desc["mime"])
+                validate_file(
+                    temporary,
+                    desc["mime"],
+                    glb_mode="any" if desc["mime"] == "model/gltf-binary" else "static",
+                )
                 os.replace(temporary, destination)
             finally:
                 temporary.unlink(missing_ok=True)
         if destination.stat().st_size != desc["bytes"] or artifacts._sha256_file(destination) != desc["sha256"]:
             raise ContractError("cached artifact integrity mismatch")
-        validate_file(destination, desc["mime"])
+        validate_file(
+            destination,
+            desc["mime"],
+            glb_mode="any" if desc["mime"] == "model/gltf-binary" else "static",
+        )
         return {k: v for k, v in desc.items() if k != "path"}, destination
 
     def reconcile(self):

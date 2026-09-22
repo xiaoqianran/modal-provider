@@ -99,6 +99,30 @@ def deployment_manifest() -> dict[str, object]:
                 ),
             },
             {
+                "app": "modal-3d-tokenrig",
+                "module": "modal_3d.tokenrig_worker",
+                "kind": "worker",
+                "models": ["rig"],
+                "revision": revision,
+                "weights": _weights(
+                    "modal-3d-tokenrig-weights",
+                    [
+                        "tokenrig/experiments/skin_vae_2_10_32768/last.ckpt",
+                        "tokenrig/experiments/articulation_xl_quantization_256_token_4/grpo_1400.ckpt",
+                        "tokenrig/models/Qwen3-0.6B/config.json",
+                    ],
+                ),
+            },
+            {
+                "app": "modal-3d-pose",
+                "module": "modal_3d.pose_worker",
+                "kind": "worker",
+                "models": ["pose"],
+                "revision": revision,
+                "weightless": True,
+                "weights": [],
+            },
+            {
                 "app": "modal-3d-rembg",
                 "module": "modal_3d.rembg_worker",
                 "kind": "preprocess",
