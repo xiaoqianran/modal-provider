@@ -1,5 +1,13 @@
 *.egg-info/
+__pycache__/
+*.py[cod]
 .codegraph/
 *.log
 3daistudio/repomix-output.txt
 
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
