@@ -28,7 +28,6 @@ image = (
         "modal[api-proxy-support]>=1.5,<2",
         "uvicorn>=0.35,<1",
         "PyJWT[crypto]>=2.10,<3",
-        "boto3>=1.35,<2",
         "jsonschema>=4.23,<5",
         "pydantic>=2.11,<3",
         "numpy>=2,<3",
@@ -77,6 +76,7 @@ app = modal.App(APP_NAME)
     image=image,
     volumes={DATA_DIR: data},
     timeout=3600,
+    max_containers=1,
     scaledown_window=300,
 )
 @modal.asgi_app()
@@ -85,4 +85,4 @@ def web():
     os.environ.setdefault("STUDIO_CONNECT_MODAL", "1")
     from modal_gen.studio.app import create_app
 
-    return create_app()
+    return create_app(persist=data.commit)

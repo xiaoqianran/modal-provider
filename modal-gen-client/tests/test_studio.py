@@ -215,15 +215,11 @@ def test_access_requires_valid_signature_audience_and_gateway(monkeypatch):
             auth.owner(bad)
 
 
-def test_archive_failure_does_not_mark_task_complete(studio):
-    class Archive:
-        def put(self, *args):
-            raise RuntimeError("storage unavailable")
-
-    studio.archive = Archive()
-    job = studio.submit("alice", image_spec(), "archive-key")
+def test_studio_asset_persistence_has_no_r2_credential_dependency(studio, monkeypatch):
+    monkeypatch.setenv("STUDIO_R2_BUCKET", "must-not-be-read")
+    monkeypatch.setenv("STUDIO_R2_ACCESS_KEY_ID", "must-not-be-read")
+    monkeypatch.setenv("STUDIO_R2_SECRET_ACCESS_KEY", "must-not-be-read")
+    job = studio.submit("alice", image_spec(), "edge-archive-key")
     done = finish(studio, job)
-    assert done["status"] != "succeeded"
-    assert studio.store.list("asset", "alice") == []
-    studio.archive = None
-    assert finish(studio, job)["status"] == "succeeded"
+    assert done["status"] == "succeeded"
+    assert studio.store.list("asset", "alice")

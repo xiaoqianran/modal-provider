@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from ..app import _json_body, _read_bounded_body, build_runtime
 from ..errors import ConnectorError
@@ -13,7 +13,7 @@ from .auth import StudioAuth
 from .service import StudioService
 
 
-def create_app(service=None, auth=None, *, background=True):
+def create_app(service=None, auth=None, *, background=True, persist=None):
     auth = auth or StudioAuth()
 
     @asynccontextmanager
@@ -24,7 +24,7 @@ def create_app(service=None, auth=None, *, background=True):
             if os.getenv("STUDIO_CONNECT_MODAL", "1") == "1":
                 await runtime.deployments.connect_default_async()
                 await runtime.capabilities.connect_all_default_async()
-            service = StudioService.configured(runtime)
+            service = StudioService.configured(runtime, persist=persist)
         if background:
             service.start()
         try:
@@ -135,11 +135,6 @@ def create_app(service=None, auth=None, *, background=True):
 
     @app.get("/api/v1/assets/{asset_id}/content")
     def content(asset_id: str, request: Request):
-        asset = service.owned("asset", request.state.owner, asset_id)
-        if service.archive and asset["archived"]:
-            return RedirectResponse(
-                service.archive.url(request.state.owner, asset), status_code=307
-            )
         artifact, path = service.open_asset(request.state.owner, asset_id)
         return FileResponse(path, media_type=artifact["mime"])
 

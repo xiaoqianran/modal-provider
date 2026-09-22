@@ -12,7 +12,7 @@ import jsonschema
 
 from ..errors import ConnectorError
 from ..identity import idempotency_key, request_hash, safe_json
-from .storage import R2Archive, StudioStore
+from .storage import StudioStore
 
 LOG = logging.getLogger(__name__)
 ORIGIN = "https://studio.internal"
@@ -36,20 +36,19 @@ def fail(code, message, status=422):
 class StudioService:
     """Durable intent queue. Run exactly one process against its persistent data directory."""
 
-    def __init__(self, runtime, path, archive=None):
+    def __init__(self, runtime, path, persist=None):
         self.hub = runtime
         self.store = StudioStore(path)
-        self.archive = archive
+        self.persist = persist or (lambda: None)
         self.lock = threading.RLock()
         self.stop = threading.Event()
         self.worker = None
 
     @classmethod
-    def configured(cls, runtime):
+    def configured(cls, runtime, persist=None):
         from ..paths import data_dir
 
-        archive = R2Archive() if os.getenv("STUDIO_R2_BUCKET") else None
-        return cls(runtime, data_dir() / "studio.sqlite3", archive)
+        return cls(runtime, data_dir() / "studio.sqlite3", persist=persist)
 
     def session(self, owner, snapshot=None):
         result = {"client_identity": owner, "origin": ORIGIN}
@@ -68,7 +67,7 @@ class StudioService:
     def project(self, owner, name):
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 120:
             fail("STUDIO_PROJECT", "Project name must be 1–120 characters")
-        return self.store.save(
+        project = self.store.save(
             "project",
             owner,
             {
@@ -77,6 +76,8 @@ class StudioService:
                 "createdAt": now(),
             },
         )
+        self.persist()
+        return project
 
     def _project(self, owner, project_id):
         if project_id:
@@ -92,6 +93,7 @@ class StudioService:
                     "createdAt": now(),
                 },
             )
+            self.persist()
         return default_id
 
     def record_asset(self, owner, artifact, *, name, project_id, job_id=None, parents=None):
@@ -99,11 +101,9 @@ class StudioService:
         existing = self.store.get("asset", owner, artifact["id"])
         if existing:
             return existing
-        artifact, path = self.hub.artifacts.open(
+        artifact, _path = self.hub.artifacts.open(
             artifact["id"], owner_client=owner, owner_origin=ORIGIN
         )
-        if self.archive:
-            self.archive.put(owner, artifact, path)
         parents = parents or []
         root = artifact["id"]
         for parent_id in parents:
@@ -111,7 +111,7 @@ class StudioService:
             if parent["role"] == artifact["role"] == "primary-glb":
                 root = parent["assetId"]
                 break
-        return self.store.save(
+        asset = self.store.save(
             "asset",
             owner,
             {
@@ -122,9 +122,10 @@ class StudioService:
                 "jobId": job_id,
                 "parents": parents,
                 "createdAt": now(),
-                "archived": bool(self.archive),
             },
         )
+        self.persist()
+        return asset
 
     def upload(self, owner, data, mime, name, project_id=None):
         project_id = self._project(owner, project_id)
@@ -141,10 +142,7 @@ class StudioService:
         return self.record_asset(owner, artifact, name=name, project_id=project_id)
 
     def open_asset(self, owner, asset_id):
-        asset = self.owned("asset", owner, asset_id)
-        path = self.hub.artifacts._cache_path(asset)
-        if not path.is_file() and asset["archived"] and self.archive:
-            self.archive.restore(owner, asset, path)
+        self.owned("asset", owner, asset_id)
         return self.hub.artifacts.open(asset_id, owner_client=owner, owner_origin=ORIGIN)
 
     def reference(self, owner, value):
@@ -217,6 +215,7 @@ class StudioService:
                 "cancelRequested": False,
             }
             prior_digest, job_id = self.store.reserve(owner, key, digest, job)
+            self.persist()
             if digest != prior_digest:
                 fail("STUDIO_IDEMPOTENCY", "This key already belongs to a different request", 409)
             return self.owned("job", owner, job_id)
@@ -236,6 +235,7 @@ class StudioService:
     def save_job(self, owner, job):
         job["updatedAt"] = now()
         self.store.save("job", owner, job)
+        self.persist()
 
     def _step_spec(self, job):
         spec = job["spec"]

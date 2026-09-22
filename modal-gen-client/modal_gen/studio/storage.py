@@ -1,9 +1,8 @@
-"""Single-instance product persistence and optional immutable R2 archive."""
+"""Single-instance product persistence for Studio metadata and intent state."""
 
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from contextlib import contextmanager
 
@@ -79,55 +78,3 @@ class StudioStore:
                 ("job", job["id"], owner, job["createdAt"], json.dumps(job)),
             )
         return digest, job["id"]
-
-
-class R2Archive:
-    def __init__(self):
-        import boto3
-        from botocore.config import Config
-
-        self.bucket = os.environ["STUDIO_R2_BUCKET"]
-        self.client = boto3.client(
-            "s3",
-            endpoint_url=os.environ["STUDIO_R2_ENDPOINT"],
-            region_name="auto",
-            aws_access_key_id=os.environ["STUDIO_R2_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["STUDIO_R2_SECRET_ACCESS_KEY"],
-            config=Config(signature_version="s3v4"),
-        )
-
-    @staticmethod
-    def key(owner, artifact):
-        return f"studio/{owner}/{artifact['id']}/{artifact['hash'][7:]}"
-
-    def put(self, owner, artifact, path):
-        self.client.upload_file(
-            str(path),
-            self.bucket,
-            self.key(owner, artifact),
-            ExtraArgs={"ContentType": artifact["mime"]},
-        )
-
-    def restore(self, owner, artifact, path):
-        import tempfile
-        from pathlib import Path
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd, name = tempfile.mkstemp(dir=path.parent, prefix=".r2-")
-        os.close(fd)
-        temporary = Path(name)
-        try:
-            self.client.download_file(self.bucket, self.key(owner, artifact), str(temporary))
-            from ..artifacts import ArtifactService
-
-            ArtifactService._validate_file(temporary, artifact)
-            os.replace(temporary, path)
-        finally:
-            temporary.unlink(missing_ok=True)
-
-    def url(self, owner, artifact):
-        return self.client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": self.bucket, "Key": self.key(owner, artifact)},
-            ExpiresIn=300,
-        )
