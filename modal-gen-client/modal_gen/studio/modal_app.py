@@ -48,15 +48,17 @@ image = (
     .add_local_dir(
         ROOT / "modal-gen-client", "/opt/src/modal-gen-client", copy=True, ignore=SOURCE_IGNORE
     )
-    .env({
-        "STUDIO_AUTH_MODE": "access",
-        "STUDIO_ACCESS_ISSUER": "https://seachen.cloudflareaccess.com",
-        "STUDIO_ACCESS_AUD": "bc0778bfd5613aecb806ad1f1055f3f591c2ec5ed5a2aa7a9f06cb2c09ce2a56",
-        "STUDIO_ALLOWED_ORIGINS": "https://modal-studio.wangran.workers.dev",
-        "STUDIO_REQUIRE_EDGE_SECRET": "0",
-        "STUDIO_CONNECT_MODAL": "1",
-        "MODAL_GEN_DATA_DIR": DATA_DIR,
-    })
+    .env(
+        {
+            "STUDIO_AUTH_MODE": "access",
+            "STUDIO_ACCESS_ISSUER": "https://seachen.cloudflareaccess.com",
+            "STUDIO_ACCESS_AUD": "bc0778bfd5613aecb806ad1f1055f3f591c2ec5ed5a2aa7a9f06cb2c09ce2a56",
+            "STUDIO_ALLOWED_ORIGINS": "https://modal-studio.wangran.workers.dev",
+            "STUDIO_REQUIRE_EDGE_SECRET": "0",
+            "STUDIO_CONNECT_MODAL": "1",
+            "MODAL_GEN_DATA_DIR": DATA_DIR,
+        }
+    )
     .run_commands(
         "python -m pip install --no-deps /opt/src/modal-2D",
         "python -m pip install --no-deps /opt/src/modal-3D",
