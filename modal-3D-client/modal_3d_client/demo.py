@@ -18,6 +18,15 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from modal_3d.operations import (
+    MAX_BYTES,
+    MIMES,
+    SPECS,
+    input_mimes_for,
+    options_for,
+    required_roles_for,
+)
+
 from .constants import (
     CANONICAL_SIZE,
     CLIENT_INPUT_PREFIX,
@@ -240,6 +249,213 @@ class _Job:
         }
 
 
+class _DemoOperationService:
+    """In-memory operation transport for offline Asset Contract/UI smoke tests."""
+
+    def __init__(self, jobs: DemoJobService) -> None:
+        self.jobs = jobs
+        self._jobs: dict[str, dict] = {}
+        self._assets: dict[str, dict] = {}
+        self._bytes: dict[str, bytes] = {}
+        self._lock = threading.RLock()
+
+    @staticmethod
+    def _now() -> str:
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    @staticmethod
+    def _public(state: dict) -> dict:
+        return json.loads(json.dumps(state))
+
+    def _register_bytes(self, data: bytes, *, mime: str, role: str, filename: str) -> dict:
+        digest = hashlib.sha256(data).hexdigest()
+        descriptor = {
+            "id": f"art_{digest}",
+            "sha256": digest,
+            "bytes": len(data),
+            "mime": mime,
+            "role": role,
+            "filename": filename,
+        }
+        with self._lock:
+            self._assets[descriptor["id"]] = descriptor
+            self._bytes[descriptor["id"]] = data
+        return dict(descriptor)
+
+    def upload(
+        self,
+        data: bytes,
+        *,
+        expected_sha256: str | None = None,
+        mime: str = "model/gltf-binary",
+        role: str = "primary-glb",
+        filename: str | None = None,
+    ) -> dict:
+        if not data or len(data) > MAX_BYTES:
+            raise ValueError("artifact must be between 1 byte and 512 MiB")
+        suffix_by_mime = {value: suffix for suffix, value in MIMES.items()}
+        if mime not in suffix_by_mime:
+            raise ValueError(f"unsupported artifact MIME: {mime}")
+        digest = hashlib.sha256(data).hexdigest()
+        if expected_sha256 is not None and digest != expected_sha256:
+            raise ValueError("artifact SHA256 mismatch")
+        suffix = suffix_by_mime[mime]
+        return self._register_bytes(
+            data,
+            mime=mime,
+            role=role,
+            filename=filename or f"input{suffix}",
+        )
+
+    def _resolve_ref(self, ref: dict) -> tuple[dict, bytes]:
+        if set(ref) == {"artifact_id"}:
+            artifact_id = ref["artifact_id"]
+            with self._lock:
+                descriptor = self._assets.get(artifact_id)
+                data = self._bytes.get(artifact_id)
+            if descriptor is None or data is None:
+                raise KeyError(artifact_id)
+            return dict(descriptor), data
+        if set(ref) <= {"job_id", "role"} and ref.get("job_id") and ref.get("role"):
+            descriptor, path = self.jobs.artifact(ref["job_id"], ref["role"])
+            return dict(descriptor), path.read_bytes()
+        raise ValueError("invalid artifact reference")
+
+    def submit(self, operation: str, inputs: dict, options=None, job_id: str | None = None) -> dict:
+        if operation not in SPECS:
+            raise ValueError(f"unsupported operation: {operation}")
+        normalized_options = options_for(operation, options)
+        if not isinstance(inputs, dict) or set(inputs) != set(SPECS[operation]["inputs"]):
+            raise ValueError("inputs do not match operation")
+
+        expected_mimes = input_mimes_for(operation)
+        dependencies: list[str] = []
+        for name, ref in inputs.items():
+            if not isinstance(ref, dict):
+                raise TypeError("input must reference artifact_id or job_id + role")
+            descriptor, _ = self._resolve_ref(ref)
+            if descriptor["mime"] != expected_mimes[name]:
+                raise ValueError(f"{name} must be {expected_mimes[name]}")
+            if ref.get("job_id"):
+                dependencies.append(ref["job_id"])
+
+        local_id = job_id or f"op_{uuid.uuid4().hex}"
+        if not local_id.startswith("op_"):
+            raise ValueError("operation job_id must start with op_")
+        now = self._now()
+        state = {
+            "id": local_id,
+            "operation": operation,
+            "model": operation,
+            "status": "running",
+            "inputs": inputs,
+            "options": normalized_options,
+            "dependencies": sorted(set(dependencies)),
+            "created_at": now,
+            "updated_at": now,
+            "result": None,
+            "error_code": None,
+            "retryable": False,
+        }
+        with self._lock:
+            existing = self._jobs.get(local_id)
+            if existing is not None:
+                if (
+                    existing["operation"] != operation
+                    or existing["inputs"] != inputs
+                    or existing["options"] != normalized_options
+                ):
+                    raise ValueError("job_id already used with different inputs/options")
+                return self._public(existing)
+            self._jobs[local_id] = state
+        threading.Timer(0.15, self._complete, args=(local_id,)).start()
+        return self._public(state)
+
+    def _complete(self, job_id: str) -> None:
+        with self._lock:
+            state = self._jobs.get(job_id)
+            if state is None or state["status"] == "cancelled":
+                return
+            operation = state["operation"]
+            inputs = dict(state["inputs"])
+
+        source_ref = inputs.get("asset") or next(iter(inputs.values()))
+        _, source_bytes = self._resolve_ref(source_ref)
+        glb = source_bytes if source_bytes.startswith(b"glTF") else _minimal_glb(source_bytes[:24])
+        artifacts: list[dict] = []
+        for role in required_roles_for(operation):
+            if role == "primary-glb":
+                data = glb
+                mime = "model/gltf-binary"
+                filename = f"{operation}-{job_id}.glb"
+            else:
+                data = json.dumps(
+                    {"demo": True, "operation": operation, "job_id": job_id, "role": role},
+                    sort_keys=True,
+                ).encode("utf-8")
+                mime = "application/json"
+                filename = f"{role}.json"
+            artifacts.append(
+                self._register_bytes(data, mime=mime, role=role, filename=filename)
+            )
+
+        with self._lock:
+            state = self._jobs.get(job_id)
+            if state is None or state["status"] == "cancelled":
+                return
+            state["status"] = "succeeded"
+            state["updated_at"] = self._now()
+            state["result"] = {
+                "artifacts": artifacts,
+                "metrics": {"demo": True},
+                "timing": {"total_s": 0.15},
+            }
+
+    def poll(self, job_id: str) -> dict:
+        with self._lock:
+            state = self._jobs.get(job_id)
+            if state is None:
+                raise KeyError(job_id)
+            return self._public(state)
+
+    def list(self, limit: int = 50) -> list[dict]:
+        with self._lock:
+            states = sorted(
+                self._jobs.values(), key=lambda row: row["created_at"], reverse=True
+            )
+            return [self._public(row) for row in states[:limit]]
+
+    def cancel(self, job_id: str) -> dict:
+        with self._lock:
+            state = self._jobs.get(job_id)
+            if state is None:
+                raise KeyError(job_id)
+            if state["status"] != "succeeded":
+                state["status"] = "cancelled"
+                state["updated_at"] = self._now()
+            return self._public(state)
+
+    def artifact(self, job_id: str, role: str = "primary-glb") -> tuple[dict, Path]:
+        state = self.poll(job_id)
+        if state["status"] != "succeeded" or not state.get("result"):
+            raise RuntimeError("job artifact is not ready")
+        descriptor = next(
+            (
+                row
+                for row in state["result"]["artifacts"]
+                if row["role"] == role or row["id"] == role
+            ),
+            None,
+        )
+        if descriptor is None:
+            raise KeyError(role)
+        data = self._bytes[descriptor["id"]]
+        suffix = {value: key for key, value in MIMES.items()}[descriptor["mime"]]
+        path = self.jobs._tmpdir / f"{job_id}-{descriptor['role']}{suffix}"
+        path.write_bytes(data)
+        return dict(descriptor), path
+
+
 class DemoJobService:
     """Drop-in replacement for ``jobs.JobService`` used by the demo app."""
 
@@ -249,6 +465,7 @@ class DemoJobService:
         self._artifacts: dict[str, bytes] = {}
         self._tmpdir = Path(tempfile.mkdtemp(prefix="modal-3d-demo-"))
         self.store = _DemoStore(self)
+        self.operations = _DemoOperationService(self)
 
     def submit(
         self,
@@ -307,6 +524,8 @@ class DemoJobService:
             job.retryable = False
 
     def poll(self, job_id: str) -> dict:
+        if job_id.startswith("op_"):
+            return self.operations.poll(job_id)
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
@@ -314,6 +533,8 @@ class DemoJobService:
             return job.public()
 
     def cancel(self, job_id: str) -> dict:
+        if job_id.startswith("op_"):
+            return self.operations.cancel(job_id)
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
@@ -323,7 +544,9 @@ class DemoJobService:
             job.retryable = False
             return job.public()
 
-    def artifact(self, job_id: str) -> tuple[dict, Path]:
+    def artifact(self, job_id: str, role: str = "primary-glb") -> tuple[dict, Path]:
+        if job_id.startswith("op_"):
+            return self.operations.artifact(job_id, role)
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:

@@ -2,8 +2,10 @@ import React from "react";
 import {ChevronDown,Download,RefreshCw,Upload,X} from "lucide-react";
 import {Badge,Btn,PanelLabel} from "./components.jsx";
 import {Viewport3DUpload} from "./three-viewport.jsx";
+import {AssetOperationsPanel} from "./asset-operations.jsx";
 import {
   fetchArtifactBlob3d,
+  jobArtifactRef,
   health3d,
   listModels3d,
   pollJob3d,
@@ -79,6 +81,8 @@ export function ImageTo3DWorkspace() {
   const [sourceUrl, setSourceUrl] = React.useState(null);
   const [artifactUrl, setArtifactUrl] = React.useState(null);
   const [artifactName, setArtifactName] = React.useState("");
+  const [currentAssetRef, setCurrentAssetRef] = React.useState(null);
+  const [generationJobId, setGenerationJobId] = React.useState(null);
   const [providerState, setProviderState] = React.useState("checking");
   const [job, setJob] = React.useState(null);
   const [phase, setPhase] = React.useState("idle");
@@ -151,6 +155,8 @@ export function ImageTo3DWorkspace() {
     replaceObjectUrl(sourceUrlRef, setSourceUrl, file);
     replaceObjectUrl(artifactUrlRef, setArtifactUrl, null);
     setArtifactName("");
+    setCurrentAssetRef(null);
+    setGenerationJobId(null);
     setJob(null);
     setPhase("idle");
     setError("");
@@ -191,6 +197,8 @@ export function ImageTo3DWorkspace() {
       const blob = await fetchArtifactBlob3d(submitted.id, "primary-glb");
       replaceObjectUrl(artifactUrlRef, setArtifactUrl, blob);
       setArtifactName(`${selectedModel.name || selectedModel.id}-${submitted.id}.glb`);
+      setCurrentAssetRef(jobArtifactRef(submitted.id, "primary-glb"));
+      setGenerationJobId(submitted.id);
       setPhase("done");
       setProviderState("ready");
     } catch (err) {
@@ -198,6 +206,14 @@ export function ImageTo3DWorkspace() {
       setError(err.message || String(err));
     }
   };
+
+  const handleOperationArtifact = React.useCallback(({jobId, role, blob, name}) => {
+    replaceObjectUrl(artifactUrlRef, setArtifactUrl, blob);
+    setArtifactName(name);
+    setCurrentAssetRef(jobArtifactRef(jobId, role));
+    setPhase("done");
+    setError("");
+  }, [replaceObjectUrl]);
 
   const jobStatus = job?.status || job?.state;
   const referenceSeconds = selectedModel.reference?.e2e_seconds;
@@ -353,6 +369,15 @@ export function ImageTo3DWorkspace() {
               {providerState === "disconnected" ? "Connect Modal credentials in modal-3D-client" : "Real modal-provider job"}
             </span>
           </Btn>
+
+          {currentAssetRef && (
+            <AssetOperationsPanel
+              key={generationJobId || "asset-operations"}
+              assetRef={currentAssetRef}
+              assetLabel={artifactName}
+              onArtifactReady={handleOperationArtifact}
+            />
+          )}
         </aside>
       </div>
 

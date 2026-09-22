@@ -178,7 +178,7 @@ def create_app(service: JobService | None = None) -> FastAPI:
     def list_jobs(limit: int = 50):
         size = max(1, min(limit, 200))
         jobs = job_service().store.list(size)
-        if isinstance(job_service(), JobService):
+        if hasattr(job_service(), "operations"):
             jobs += job_service().operations.list(size)
         return {"jobs": sorted(jobs, key=lambda row: row["created_at"], reverse=True)[:size]}
 

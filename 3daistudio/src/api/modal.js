@@ -35,6 +35,36 @@ export async function listCapabilities3d() {
   return jsonOrThrow(res);
 }
 
+export async function listOperations3d() {
+  const res = await fetch(`${base3d()}/v1/operations`, { headers: sessionHeader() });
+  return jsonOrThrow(res);
+}
+
+export async function uploadAsset3d(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${base3d()}/v1/assets`, {
+    method: "POST",
+    body: fd,
+    headers: sessionHeader(),
+  });
+  return jsonOrThrow(res);
+}
+
+export async function submitOperation3d({ operation, inputs, options = {}, jobId }) {
+  const res = await fetch(`${base3d()}/v1/operations/jobs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...sessionHeader() },
+    body: JSON.stringify({
+      operation,
+      inputs,
+      options,
+      ...(jobId ? { job_id: jobId } : {}),
+    }),
+  });
+  return jsonOrThrow(res);
+}
+
 export async function submitImageTo3d({ file, model, profile = "recommended", seed = 42, jobId }) {
   const fd = new FormData();
   fd.append("file", file);
@@ -44,6 +74,10 @@ export async function submitImageTo3d({ file, model, profile = "recommended", se
   if (jobId) fd.append("job_id", jobId);
   const res = await fetch(`${base3d()}/v1/jobs`, { method: "POST", body: fd, headers: sessionHeader() });
   return jsonOrThrow(res);
+}
+
+export function jobArtifactRef(jobId, role = "primary-glb") {
+  return { job_id: jobId, role };
 }
 
 export async function getJob3d(jobId) {

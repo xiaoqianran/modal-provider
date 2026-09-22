@@ -72,6 +72,11 @@ SPECS = {
     "complete_parts": {
         "label": "X-Part lite part completion",
         "inputs": ["asset", "parts_manifest", "face_labels"],
+        "input_mimes": {
+            "asset": MIMES[".glb"],
+            "parts_manifest": MIMES[".json"],
+            "face_labels": MIMES[".json"],
+        },
         "options": {
             "part_index": number(0, 0, 255, True),
             "seed": number(42, 0, 2147483647, True),
