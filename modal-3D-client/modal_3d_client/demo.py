@@ -25,6 +25,7 @@ from modal_3d.operations import (
     input_mimes_for,
     options_for,
     required_roles_for,
+    validate_input_names,
 )
 
 from .constants import (
@@ -325,8 +326,7 @@ class _DemoOperationService:
         if operation not in SPECS:
             raise ValueError(f"unsupported operation: {operation}")
         normalized_options = options_for(operation, options)
-        if not isinstance(inputs, dict) or set(inputs) != set(SPECS[operation]["inputs"]):
-            raise ValueError("inputs do not match operation")
+        inputs = validate_input_names(operation, inputs)
 
         expected_mimes = input_mimes_for(operation)
         dependencies: list[str] = []

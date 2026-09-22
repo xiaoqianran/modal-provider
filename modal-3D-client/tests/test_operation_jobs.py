@@ -30,6 +30,14 @@ class ResultCall:
         return self.value
 
 
+class FailingCall:
+    def __init__(self, error):
+        self.error = error
+
+    def get(self, timeout=0):
+        raise self.error
+
+
 class RemoteMethod:
     def __init__(self, outcome):
         self.outcome = outcome
@@ -135,6 +143,32 @@ def test_unknown_submission_never_blindly_respawns(tmp_path, monkeypatch):
     assert again["status"] == "submission_unknown"
     assert again["retryable"] is False
     assert method.calls == 1
+
+
+def test_remote_python_exception_becomes_failed_job(tmp_path, monkeypatch):
+    svc = service(tmp_path)
+    asset = descriptor("a" * 64, role="primary-glb")
+    registered = svc.operations.register(asset)
+    method = RemoteMethod(SpawnCall("fc-runtime-error"))
+    bind_remote(monkeypatch, method)
+
+    submitted = svc.operations.submit(
+        "inspect_mesh",
+        {"asset": {"artifact_id": registered["id"]}},
+        job_id="op_runtime_error",
+    )
+    assert submitted["status"] == "running"
+    monkeypatch.setattr(
+        operation_jobs.modal.FunctionCall,
+        "from_id",
+        lambda *args, **kwargs: FailingCall(RuntimeError("worker exploded")),
+    )
+
+    failed = svc.operations.poll("op_runtime_error")
+    assert failed["status"] == "failed"
+    assert failed["error_code"] == "remote.execution_failed"
+    assert failed["retryable"] is True
+    assert failed["error"] == "worker exploded"
 
 
 def test_operation_collects_and_registers_multiple_artifacts(tmp_path, monkeypatch):

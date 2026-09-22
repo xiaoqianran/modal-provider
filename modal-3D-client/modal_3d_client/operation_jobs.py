@@ -26,9 +26,11 @@ from modal_3d.operations import (
     input_mimes_for,
     options_for,
     request_key,
+    required_inputs_for,
     required_roles_for,
     revision_for,
     validate_descriptor,
+    validate_input_names,
     worker_for,
 )
 
@@ -125,8 +127,7 @@ class OperationService:
     def submit(self, operation, inputs, options=None, job_id=None):
         from .jobs import _now
         options = options_for(operation, options)
-        if not isinstance(inputs, dict) or set(inputs) != set(SPECS[operation]["inputs"]):
-            raise ValueError("inputs do not match operation")
+        inputs = validate_input_names(operation, inputs)
         local_id = job_id or f"op_{uuid.uuid4().hex}"
         if not re.fullmatch(r"op_[A-Za-z0-9_-]{1,150}", local_id):
             raise ValueError("operation job_id must start with op_ and be URL-safe")
@@ -254,6 +255,18 @@ class OperationService:
             except ModalError as exc:
                 state.update(status="failed", error_code="remote.execution_failed", error=str(exc)[-2000:], retryable=True)
                 return self._save(state)
+            except Exception as exc:  # noqa: BLE001 - remote exceptions preserve their Python type
+                # Modal may deserialize an exception raised by the worker as its
+                # original Python type (for example RuntimeError), rather than
+                # wrapping it in ModalError. Keep that remote failure inside the
+                # durable job state instead of leaking it through the HTTP API.
+                state.update(
+                    status="failed",
+                    error_code="remote.execution_failed",
+                    error=str(exc)[-2000:],
+                    retryable=True,
+                )
+                return self._save(state)
             try:
                 if (value.get("contract") != RESULT_CONTRACT or value.get("revision") != state["revision"]
                     or value.get("operation") != state["operation"] or value.get("request_key") != state["request_key"]):
@@ -360,7 +373,7 @@ def connector_capabilities(status):
         result.append({"operation": cap["operation"], "version": "1", "displayName": cap["name"],
             "category": "asset-processing", "status": status,
             "input": {"types": ["mesh"], "schema": {"type": "object", "additionalProperties": False,
-                "required": SPECS[op]["inputs"], "properties": refs},
+                "required": required_inputs_for(op), "properties": refs},
                 "limits": {"maxSourceBytes": MAX_BYTES}},
             "output": {"roles": required, "required": required, "optional": []},
             "profiles": {"recommended": {}},

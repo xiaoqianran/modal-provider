@@ -11,6 +11,7 @@ REVISION = "mesh-operations.v1-bpy420-xatlas009-r5"
 P3SAM_REVISION = "p3sam.e96be065-w67717446-sonata-df998974-v1"
 XPART_REVISION = "xpart-lite.e96be065-hf67717446-v1"
 HUNYUAN_PAINT_REVISION = "hunyuan3d-paint-v2.1-0b946776-l40s-v1"
+HUNYUAN2MV_REVISION = "hunyuan3d-2mv-srcf8db6309-hf3a761b53-l40s-v1"
 RESULT_CONTRACT = "modal-3d.operation-result.v1"
 MAX_BYTES = 512 * 1024 * 1024
 MIMES = {".glb": "model/gltf-binary", ".obj": "model/obj", ".blend": "application/x-blender",
@@ -111,6 +112,28 @@ SPECS = {
         "resource": "gpu",
         "required_roles": ["primary-glb", "material-report", "quality-report"],
     },
+    "multiview_to_3d": {
+        "label": "Hunyuan3D-2mv multi-view to 3D",
+        "inputs": ["front", "back", "left", "right"],
+        "required_inputs": ["front"],
+        "input_mimes": {
+            "front": MIMES[".png"],
+            "back": MIMES[".png"],
+            "left": MIMES[".png"],
+            "right": MIMES[".png"],
+        },
+        "options": {
+            "seed": number(12345, 0, 2147483647, True),
+            "num_inference_steps": number(50, 1, 100, True),
+            "guidance_scale": number(5.0, 0.0, 30.0),
+            "octree_resolution": number(380, 128, 512, True),
+            "num_chunks": number(20000, 1000, 5000000, True),
+        },
+        "worker_app": "modal-3d-hunyuan2mv",
+        "revision": HUNYUAN2MV_REVISION,
+        "resource": "gpu",
+        "required_roles": ["primary-glb", "quality-report"],
+    },
 }
 
 def spec_for(operation):
@@ -130,6 +153,30 @@ def worker_for(operation):
 
 def required_roles_for(operation):
     return list(spec_for(operation).get("required_roles", ["primary-glb", "quality-report"]))
+
+
+def required_inputs_for(operation):
+    spec = spec_for(operation)
+    return list(spec.get("required_inputs", spec["inputs"]))
+
+
+def validate_input_names(operation, inputs):
+    if not isinstance(inputs, dict):
+        raise TypeError("inputs must be an object")
+    spec = spec_for(operation)
+    names = set(inputs)
+    allowed = set(spec["inputs"])
+    required = set(required_inputs_for(operation))
+    missing = required - names
+    unknown = names - allowed
+    if missing or unknown:
+        details = []
+        if missing:
+            details.append(f"missing inputs: {sorted(missing)}")
+        if unknown:
+            details.append(f"unknown inputs: {sorted(unknown)}")
+        raise ValueError("; ".join(details))
+    return dict(inputs)
 
 
 def input_mimes_for(operation):
@@ -222,6 +269,7 @@ def capabilities():
         "revision": revision_for(op),
         "name": spec["label"],
         "inputs": spec["inputs"],
+        "required_inputs": required_inputs_for(op),
         "options": spec["options"],
         "worker_app": worker_for(op),
         "entrypoint": {"kind": "class_method", "class_name": "Model", "method_name": "run_job"},

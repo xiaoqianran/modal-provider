@@ -14,14 +14,14 @@ from .operations import (
     MAX_BYTES,
     MIMES,
     RESULT_CONTRACT,
-    SPECS,
     confined,
     digest_file,
+    input_mimes_for,
     options_for,
     request_key,
     revision_for,
-    input_mimes_for,
     validate_descriptor,
+    validate_input_names,
 )
 
 
@@ -70,8 +70,7 @@ def execute_blender(operation, inputs, options, output):
 def run_operation_job(volume, operation, inputs, options=None, *, root="/artifacts", execute=execute_blender):
     started = time.monotonic()
     options = options_for(operation, options)
-    if not isinstance(inputs, dict) or set(inputs) != set(SPECS[operation]["inputs"]):
-        raise ValueError("operation inputs do not match required names")
+    inputs = validate_input_names(operation, inputs)
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     volume.reload()

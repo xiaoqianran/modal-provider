@@ -85,6 +85,20 @@ def deployment_manifest() -> dict[str, object]:
                 ),
             },
             {
+                "app": "modal-3d-hunyuan2mv",
+                "module": "modal_3d.hunyuan2mv_worker",
+                "kind": "worker",
+                "models": ["multiview_to_3d"],
+                "revision": revision,
+                "weights": _weights(
+                    "modal-3d-hunyuan2mv-weights",
+                    [
+                        "Hunyuan3D-2mv/hunyuan3d-dit-v2-mv/config.yaml",
+                        "Hunyuan3D-2mv/hunyuan3d-dit-v2-mv/model.fp16.safetensors",
+                    ],
+                ),
+            },
+            {
                 "app": "modal-3d-rembg",
                 "module": "modal_3d.rembg_worker",
                 "kind": "preprocess",
