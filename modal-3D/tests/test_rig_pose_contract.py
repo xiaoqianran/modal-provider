@@ -50,6 +50,7 @@ def test_pose_profiles_are_explicit_and_bounded():
     }
     for preset in ("t_pose", "a_pose", "rest"):
         assert options_for("pose", {"preset": preset})["preset"] == preset
+    assert options_for("pose", {"skeleton_profile": "tokenrig"})["skeleton_profile"] == "tokenrig"
     with pytest.raises(ValueError):
         options_for("pose", {"preset": "dance"})
 
@@ -79,7 +80,18 @@ def test_tokenrig_worker_pins_official_source_and_checkpoint_revision():
     )
     assert 'WEIGHT_REVISION = "79736ca"' in source
     assert 'QWEN_REVISION = "c1899de"' in source
-    assert 'GPU = "L40S"' in source
+    assert 'GPU = "A100-80GB"' in source
+    assert '"libxrender1"' in source
+    assert "import bpy; print('bpy', bpy.app.version_string)" in source
+
+
+def test_pose_worker_supports_tokenrig_and_validates_bpy_runtime():
+    source = (
+        Path(__file__).resolve().parents[1] / "modal_3d" / "pose_worker.py"
+    ).read_text(encoding="utf-8")
+    assert 'return "tokenrig", mapping' in source
+    assert '"libxrender1"' in source
+    assert "import bpy; print('bpy', bpy.app.version_string)" in source
 
 
 def test_glb_validation_modes_are_not_globally_relaxed(tmp_path, monkeypatch):

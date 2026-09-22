@@ -25,7 +25,7 @@ from .operations import (
 )
 
 APP_NAME = "modal-3d-tokenrig"
-GPU = "L40S"
+GPU = "A100-80GB"
 
 SOURCE_REPO = "VAST-AI-Research/SkinTokens"
 SOURCE_REVISION = "273b691d35989d71cd17ff2895fdc735097b92d1"
@@ -103,6 +103,17 @@ runtime_image = (
         f"git -C {SRC} checkout {SOURCE_REVISION}",
         f"python -m py_compile {SRC}/src/model/tokenrig.py {SRC}/demo.py",
     )
+    .apt_install(
+        "libxrender1",
+        "libxfixes3",
+        "libxcursor1",
+        "libxinerama1",
+        "libxrandr2",
+        "libxkbcommon0",
+        "libsm6",
+        "libice6",
+    )
+    .run_commands("python -c \"import bpy; print('bpy', bpy.app.version_string)\"")
     .env(
         {
             "PYTHONPATH": SRC,

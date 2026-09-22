@@ -158,7 +158,7 @@ SPECS = {
         "inputs": ["asset"],
         "options": {
             "preset": enum("t_pose", ["t_pose", "a_pose", "rest"]),
-            "skeleton_profile": enum("auto", ["auto", "mixamo", "vroid"]),
+            "skeleton_profile": enum("auto", ["auto", "mixamo", "vroid", "tokenrig"]),
         },
         "worker_app": "modal-3d-pose",
         "revision": POSE_REVISION,

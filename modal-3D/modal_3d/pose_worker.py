@@ -33,6 +33,17 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("libgl1", "libglib2.0-0", "libx11-6", "libxi6", "libxxf86vm1")
     .uv_pip_install("bpy==4.2.0", "mathutils==3.3.0", uv_version="0.12.5")
+    .apt_install(
+        "libxrender1",
+        "libxfixes3",
+        "libxcursor1",
+        "libxinerama1",
+        "libxrandr2",
+        "libxkbcommon0",
+        "libsm6",
+        "libice6",
+    )
+    .run_commands("python -c \"import bpy; print('bpy', bpy.app.version_string)\"")
 )
 
 _MIXAMO = {
@@ -45,18 +56,76 @@ _VROID = {
 }
 
 
+def _chain_depth(bone) -> int:
+    children = list(bone.children)
+    return 1 + max((_chain_depth(child) for child in children), default=0)
+
+
+def _tokenrig_mapping(armature) -> dict[str, str] | None:
+    bones = list(armature.data.bones)
+    token_bones = [
+        bone
+        for bone in bones
+        if bone.name.startswith("bone_") and bone.name[5:].isdigit()
+    ]
+    if len(token_bones) < 20 or len(token_bones) * 4 < len(bones) * 3:
+        return None
+
+    candidates: list[tuple[int, float, object, object]] = []
+    for parent in token_bones:
+        branches = sorted(
+            list(parent.children),
+            key=_chain_depth,
+            reverse=True,
+        )
+        long_branches = [branch for branch in branches if _chain_depth(branch) >= 4]
+        if len(long_branches) < 2:
+            continue
+        first, second = long_branches[:2]
+        first_x = float(first.head_local.x)
+        second_x = float(second.head_local.x)
+        if first_x * second_x >= 0 or min(abs(first_x), abs(second_x)) < 1e-4:
+            continue
+        score = _chain_depth(first) + _chain_depth(second)
+        spread = abs(first_x - second_x)
+        candidates.append((score, spread, first, second))
+
+    if not candidates:
+        return None
+
+    _, _, first, second = max(candidates, key=lambda row: (row[0], row[1]))
+    left = first if float(first.head_local.x) > float(second.head_local.x) else second
+    right = second if left is first else first
+    return {
+        "left_upper_arm": left.name,
+        "right_upper_arm": right.name,
+    }
+
+
 def _profile(armature, requested: str) -> tuple[str, dict[str, str]]:
     names = {bone.name for bone in armature.pose.bones}
-    choices = (
-        [(requested, _MIXAMO if requested == "mixamo" else _VROID)]
-        if requested != "auto"
-        else [("mixamo", _MIXAMO), ("vroid", _VROID)]
-    )
-    for profile, mapping in choices:
+    named_profiles = {
+        "mixamo": _MIXAMO,
+        "vroid": _VROID,
+    }
+    if requested in named_profiles:
+        mapping = named_profiles[requested]
         if all(name in names for name in mapping.values()):
-            return profile, mapping
+            return requested, mapping
+    elif requested == "tokenrig":
+        mapping = _tokenrig_mapping(armature)
+        if mapping is not None:
+            return "tokenrig", mapping
+    elif requested == "auto":
+        for profile, mapping in named_profiles.items():
+            if all(name in names for name in mapping.values()):
+                return profile, mapping
+        mapping = _tokenrig_mapping(armature)
+        if mapping is not None:
+            return "tokenrig", mapping
+
     raise ValueError(
-        "unsupported skeleton for pose: expected Mixamo or VRoid upper-arm semantics"
+        "unsupported skeleton for pose: expected Mixamo, VRoid, or TokenRig upper-arm semantics"
     )
 
 

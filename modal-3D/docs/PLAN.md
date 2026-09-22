@@ -155,6 +155,12 @@ GPU 离线加载。选 `part-0000` 的首次 smoke（10 steps / 256）成功：
 
 ### P4：Rig 与姿态
 
+状态：✅ TokenRig → Blender Pose 远端 E2E 已闭环。2026-09-22 使用 Hunyuan3D-2mv
+真实 5.0 MB GLB 验证：TokenRig 在 A100-80GB 输出 28-bone rigged GLB，839,366 个
+weighted vertices、0 invalid weights，推理约 35.75s / worker total 52.82s；Pose worker
+自动识别 TokenRig 匿名骨架并输出 T-pose，CPU worker total 14.03s。两套 Blender runtime
+均在镜像构建期执行 `import bpy` smoke，避免缺失 X11 runtime library 导致容器重启循环。
+
 建议服务：`modal-3d-tokenrig`、`modal-3d-pose`（Blender headless）。
 
 - `rig`：最终网格 → 骨架 + 蒙皮，保留材质/单位/变换，输出 rigged GLB。
