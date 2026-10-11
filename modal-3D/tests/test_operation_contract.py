@@ -24,6 +24,24 @@ from modal_3d.operations import (
 
 
 class OperationContractTests(unittest.TestCase):
+    def test_planned_operations_are_discoverable_but_not_executable(self):
+        from modal_3d.operations import PLANNED_SPECS, spec_for, options_for
+        reserved = {"mesh_optimize", "uv_optimize", "texture_edit", "animation_generate"}
+        self.assertEqual(set(PLANNED_SPECS), reserved)
+        discovered = {item["id"]: item for item in operation_capabilities()}
+        for operation in reserved:
+            item = discovered[operation]
+            self.assertIs(item["available"], False)
+            self.assertEqual(item["status"], "planned")
+            self.assertNotIn("worker_app", item)
+            self.assertNotIn("entrypoint", item)
+            with self.assertRaisesRegex(ValueError, "not implemented"):
+                spec_for(operation)
+            with self.assertRaisesRegex(ValueError, "not implemented"):
+                options_for(operation, {})
+        self.assertNotIn("segment_parts", discovered)
+        self.assertNotIn("complete_parts", discovered)
+
     def test_parts_segment_uses_dedicated_gpu_worker_and_partset_roles(self):
         capability = next(
             item for item in operation_capabilities() if item["id"] == "parts_segment"

@@ -7,10 +7,12 @@ import math
 import re
 from pathlib import Path, PurePosixPath
 
-from .registry import MAX_BYTES, MIMES, REVISION, SPECS
+from .registry import MAX_BYTES, MIMES, REVISION, SPECS, PLANNED_SPECS
 
 
 def spec_for(operation):
+    if operation in PLANNED_SPECS:
+        raise ValueError(f'operation not implemented: {operation}')
     try:
         return SPECS[operation]
     except KeyError as exc:
@@ -149,4 +151,14 @@ def capabilities():
         "entrypoint": {"kind": "class_method", "class_name": "Model", "method_name": "run_job"},
         "execution": {"resource": spec.get("resource", "cpu"), "max_containers": 1},
         "verification": "experimental",
-    } for op, spec in SPECS.items()]
+    } for op, spec in SPECS.items()] + [{
+        "id": op,
+        "operation": f"modal-3d.asset.{op}.v1",
+        "version": "1",
+        "name": spec["label"],
+        "inputs": spec["inputs"],
+        "execution": {"resource": spec["resource"]},
+        "status": "planned",
+        "available": False,
+        "verification": "not_implemented",
+    } for op, spec in PLANNED_SPECS.items()]

@@ -160,3 +160,12 @@ SPECS = {
         "required_roles": ["primary-glb", "pose-report", "quality-report"],
     },
 }
+
+# Reserved operation IDs: discoverable for planning, never executable.
+# They deliberately are NOT members of SPECS until an implementation and tests exist.
+PLANNED_SPECS = {
+    "mesh_optimize": {"label": "Smart mesh optimization", "resource": "cpu", "inputs": ["asset"]},
+    "uv_optimize": {"label": "Advanced UV optimization", "resource": "cpu", "inputs": ["asset"]},
+    "texture_edit": {"label": "Localized texture editing", "resource": "gpu", "inputs": ["asset", "mask", "reference_image"]},
+    "animation_generate": {"label": "Rigged animation generation", "resource": "gpu", "inputs": ["asset"]},
+}
