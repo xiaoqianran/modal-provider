@@ -89,7 +89,7 @@ class Hunyuan2MVContractTests(unittest.TestCase):
         source = (
             Path(__file__).resolve().parents[1]
             / "modal_3d"
-            / "hunyuan2mv_worker.py"
+            / "workers" / "hunyuan2mv.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
             'SOURCE_REVISION = "f8db63096c8282cb27354314d896feba5ba6ff8a"',
@@ -105,3 +105,4 @@ class Hunyuan2MVContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
