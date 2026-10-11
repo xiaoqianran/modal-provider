@@ -5,6 +5,6 @@
     "lint": "eslint modal_gen/ui/assets/**/*.js"
   },
   "devDependencies": {
-    "eslint": "10.9.1"
+    "eslint": "^10.12.0"
   }
 }
