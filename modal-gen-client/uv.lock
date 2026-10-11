@@ -745,35 +745,21 @@ dependencies = [
     { name = "modal", extra = ["api-proxy-support"] },
 ]
 
-[package.metadata]
-requires-dist = [{ name = "modal", extras = ["api-proxy-support"], specifier = ">=1.5,<2" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8,<10" },
-    { name = "ruff", specifier = ">=0.12,<1" },
-]
-
-[[package]]
-name = "modal-2d-client-agent"
-version = "0.1.0"
-source = { editable = "../modal-2D-client" }
-dependencies = [
+[package.optional-dependencies]
+client = [
     { name = "fastapi" },
-    { name = "modal", extra = ["api-proxy-support"] },
-    { name = "modal-2d" },
     { name = "pydantic" },
     { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", specifier = ">=0.116,<1" },
+    { name = "fastapi", marker = "extra == 'client'", specifier = ">=0.116,<1" },
     { name = "modal", extras = ["api-proxy-support"], specifier = ">=1.5,<2" },
-    { name = "modal-2d", editable = "../modal-2D" },
-    { name = "pydantic", specifier = ">=2.11,<3" },
-    { name = "uvicorn", specifier = ">=0.35,<1" },
+    { name = "pydantic", marker = "extra == 'client'", specifier = ">=2.11,<3" },
+    { name = "uvicorn", marker = "extra == 'client'", specifier = ">=0.35,<1" },
 ]
+provides-extras = ["client"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -790,25 +776,9 @@ dependencies = [
     { name = "modal", extra = ["api-proxy-support"] },
 ]
 
-[package.metadata]
-requires-dist = [{ name = "modal", extras = ["api-proxy-support"], specifier = ">=1.5,<2" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "numpy", specifier = "==2.3.5" },
-    { name = "pillow", specifier = "==12.1.0" },
-    { name = "pytest", specifier = ">=8,<10" },
-    { name = "scipy", specifier = "==1.16.3" },
-]
-
-[[package]]
-name = "modal-3d-client"
-version = "0.1.0"
-source = { editable = "../modal-3D-client" }
-dependencies = [
+[package.optional-dependencies]
+client = [
     { name = "fastapi" },
-    { name = "modal", extra = ["api-proxy-support"] },
-    { name = "modal-3d" },
     { name = "numpy" },
     { name = "pillow" },
     { name = "pydantic" },
@@ -819,22 +789,25 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi" },
-    { name = "modal", extras = ["api-proxy-support"] },
-    { name = "modal-3d", editable = "../modal-3D" },
-    { name = "numpy", specifier = ">=2,<3" },
-    { name = "pillow", specifier = ">=11,<13" },
-    { name = "pydantic" },
-    { name = "python-multipart" },
-    { name = "scipy", specifier = ">=1.16,<2" },
-    { name = "uvicorn" },
+    { name = "fastapi", marker = "extra == 'client'" },
+    { name = "modal", extras = ["api-proxy-support"], specifier = ">=1.5,<2" },
+    { name = "numpy", marker = "extra == 'client'", specifier = ">=2,<3" },
+    { name = "pillow", marker = "extra == 'client'", specifier = ">=11,<13" },
+    { name = "pydantic", marker = "extra == 'client'" },
+    { name = "python-multipart", marker = "extra == 'client'" },
+    { name = "scipy", marker = "extra == 'client'", specifier = ">=1.16,<2" },
+    { name = "uvicorn", marker = "extra == 'client'" },
 ]
+provides-extras = ["client"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "numpy", specifier = "==2.3.5" },
+    { name = "pillow", specifier = "==12.1.0" },
     { name = "pytest", specifier = ">=8,<10" },
     { name = "ruff", specifier = ">=0.11,<1" },
+    { name = "scipy", specifier = "==1.16.3" },
 ]
 
 [[package]]
@@ -856,10 +829,8 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "jsonschema" },
-    { name = "modal-2d" },
-    { name = "modal-2d-client-agent" },
-    { name = "modal-3d" },
-    { name = "modal-3d-client" },
+    { name = "modal-2d", extra = ["client"] },
+    { name = "modal-3d", extra = ["client"] },
     { name = "modal-build" },
     { name = "modal-world" },
     { name = "pyjwt", extra = ["crypto"] },
@@ -877,10 +848,8 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.116,<1" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "jsonschema", specifier = ">=4.23,<5" },
-    { name = "modal-2d", editable = "../modal-2D" },
-    { name = "modal-2d-client-agent", editable = "../modal-2D-client" },
-    { name = "modal-3d", editable = "../modal-3D" },
-    { name = "modal-3d-client", editable = "../modal-3D-client" },
+    { name = "modal-2d", extras = ["client"], editable = "../modal-2D" },
+    { name = "modal-3d", extras = ["client"], editable = "../modal-3D" },
     { name = "modal-build", editable = "../modal-build" },
     { name = "modal-world", editable = "../modal-world" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10,<3" },

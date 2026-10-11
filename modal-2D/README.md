@@ -3,7 +3,7 @@
 `modal-2D` 是一个刻意保持很小的 Modal 文生图 Provider。当前只支持 **SANA-Sprint 0.6B / 1.6B**，输出固定为 1024×1024 lossless PNG。
 
 ```text
-本地 client（modal-2D-client）
+本地 client（modal_2d.client；同一个 modal-2d Distribution）
    │
    ├─ 本地校验 public request + capability
    └─ 按 model 直接 Cls.from_name("modal-2d", "SanaSprintWorker")(model_id=...)
@@ -29,7 +29,7 @@ primary-image PNG
 - 云端只负责模型、推理和远端 Artifact。
 - Artifact 内容身份使用 `mediaType + bytes + sha256 digest`；`remote_path`/Modal Volume 仅是 Provider 私有位置，不进入 AgentScape 领域语义。
 - `read_artifact` 暂保留为兼容 fallback；Reference Sidecar 优先直接读取命名 Volume，避免大 bytes 再经过一次 Modal Function result。
-- 不包含 Web UI、SQLite、用户账号、Connector、业务编排。
+- 云端 GPU Worker 不包含 Web UI、SQLite、用户账号、Connector、业务编排；本地 Client 子包 `modal_2d.client` 单独负责 Provider-private Job、缓存与调试用 API/UI。
 - `SanaSprintWorker.generate` / `.generate_batch` 是稳定异步边界，客户端直接对 GPU Worker 的 Modal FunctionCall 做 poll/cancel。生成热路径上没有 `submit` 这类 CPU 中转 Function：Modal 每多一层 Function 就多一次独立冷启动，中转层只会让首次请求先等一次 CPU 容器、再等一次 GPU 容器。
 - Worker 自己完成最后一道服务端校验：客户端只传 public payload（`prompt` / `model` / `seed` | `seeds` / `guidance`），`steps`、`width`、`height`、`output` 由服务端 normalize 产生，不接受外部传入。
 - `generate_batch` 把同 prompt 的多个 seed 放进同一个 `SanaSprintWorker`；一个 GPU/pipeline 顺序生成全部候选，避免 Modal 因并发 candidate 产生 cold-start overscaling。
@@ -49,10 +49,15 @@ primary-image PNG
 ## 开发
 
 ```bash
-uv sync --dev
-uv run pytest -q
+uv sync --extra client --dev
+uv run pytest -q tests client_tests
 ./scripts/deploy-all.sh
 ```
+
+本地 Client 和云端 Provider 共享同一个 `modal-2d` Distribution。Hub 安装
+`modal-2d[client]` 即可获得 `modal_2d.client.provider:create_provider` 插件；
+保留的 CLI 命令为 `modal-2d-agent`，Client 数据目录仍由 `MODAL_2D_DATA_DIR`
+决定。迁移后的 CPU/Fake 测试不需要部署 Modal App，也不会加载模型权重。
 
 `deploy-all.sh` 会先逐个检查并预取模型权重；任一下载失败时立即终止，不会继续部署
 worker。通过 `modal-gen-client` 发起部署时也执行同样的检查、下载和二次校验。公开的

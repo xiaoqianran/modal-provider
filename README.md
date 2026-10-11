@@ -10,17 +10,17 @@ AgentScape
    ▼
 modal-provider
 ├─ modal-gen-client/      optional local security gateway
-├─ modal-2D-client/       image Reference Sidecar
-├─ modal-2D/              image generation Provider
-├─ modal-3D-client/       3D Reference Sidecar
-├─ modal-3D/              3D generation Provider
+├─ modal-2D/              image Provider + local Client adapter (modal_2d.client)
+├─ modal-2D-client/       legacy rollback source; no longer installed by Hub
+├─ modal-3D/              3D Provider + local Client adapter (modal_3d.client)
+├─ modal-3D-client/       legacy rollback source; no longer installed by Hub
 ├─ modal-world/          HYWorld2 generation/reconstruction Provider + lightweight World contracts
 ├─ modal-fire3d/         independent FIRE3D reconstruction runtime and adapter
 ├─ modal-EmbodiedGen/     EmbodiedGen fork；其 modal/ 仅负责 EmbodiedGen 的 Modal 集成
 └─ modal-build/           通用 CUDA/PyTorch 可复现构建与 release artifacts
 ```
 
-这些目录是 **monorepo 内部 package / integration / build boundary**。其中 `modal-world` 是正式、canonical 的生产 World Provider；仓库根目录之外的 `modal-comfyui-hyworld2` 仅用于 HY-World 2.0 的 ComfyUI 可视化、手工调试和实验验证，不承担 AgentScape 生产 World contract。`modal-2D-client`、`modal-3D-client`、`modal-gen-client` 等 package 可同时维护独立 Git 仓库用于单独查看、CI、发布和分发；代码真值仍以本 monorepo 为准。
+这些目录是 **monorepo 内部 package / integration / build boundary**。其中 `modal-world` 是正式、canonical 的生产 World Provider；仓库根目录之外的 `modal-comfyui-hyworld2` 仅用于 HY-World 2.0 的 ComfyUI 可视化、手工调试和实验验证，不承担 AgentScape 生产 World contract。2D Client 已迁入 `modal-2D/modal_2d/client/`，作为 `modal-2d[client]` 的子包，不再由 Hub 安装单独的 pip Distribution；旧 `modal-2D-client/` 暂作为回退来源，禁止同时安装新旧 Provider 插件。3D Client 也已迁入 `modal-3D/modal_3d/client/`，作为 `modal-3d[client]` 子包；旧 `modal-3D-client/` 仅用于回退。
 
 ## 部署前置条件：必须创建 Hugging Face Secret
 
@@ -114,9 +114,9 @@ https://pypi.org/simple
 本 monorepo 是集成主仓，同时维护以下独立 package 仓库：
 
 - `modal-2D` (`main`) → https://github.com/xiaoqianran/modal-2D
-- `modal-2D-client` (`main`) → https://github.com/xiaoqianran/modal-2D-client
+- `modal-2D-client` (`main`) → https://github.com/xiaoqianran/modal-2D-client （历史独立仓库；迁移期间冻结，不再作为活动 2D Client 发布来源）
 - `modal-3D` (`master`) → https://github.com/xiaoqianran/modal-3D
-- `modal-3D-client` (`main`) → https://github.com/xiaoqianran/modal-3D-client
+- `modal-3D-client` (`main`) → https://github.com/xiaoqianran/modal-3D-client （历史独立仓库；迁移期间冻结）
 - `modal-gen-client` (`main`) → https://github.com/xiaoqianran/modal-gen-client
 - `modal-EmbodiedGen` (`master`) → https://github.com/xiaoqianran/modal-EmbodiedGen
 - `modal-build` (`master`) → https://github.com/xiaoqianran/modal-build

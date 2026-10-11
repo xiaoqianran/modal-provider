@@ -9,8 +9,8 @@ AgentScape
     │ /connector/v1/*
     ▼
 modal-gen-client
-    ├── modal-2D-client
-    ├── modal-3D-client
+    ├── modal_2d.client    (from modal-2d[client])
+    ├── modal_3d.client    (from modal-3d[client])
     ├── modal-world      current World Provider
     ├── EmbodiedGen      integration boundary
     └── future providers
@@ -44,8 +44,8 @@ Provider 自己拥有：
 ```text
 modal-gen-client
     │ Python entry point
-    ├── modal_2d_client.provider:create_provider
-    ├── modal_3d_client.provider:create_provider
+    ├── modal_2d.client.provider:create_provider
+    ├── modal_3d.client.provider:create_provider
     └── modal_world.provider:create_provider
 ```
 
@@ -152,14 +152,14 @@ uv run pytest -q
 
 ## Runtime topology
 
-`modal-2D` / `modal-3D` 定义远程 GPU Runtime；`modal-2D-client` / `modal-3D-client` 是本地 Provider 控制库；`modal-gen-client` 负责统一调用、Runtime readiness 与部署生命周期。
+`modal-2D` / `modal-3D` 定义远程 GPU Runtime；本地 Provider 控制库分别位于 `modal_2d.client` 和 `modal_3d.client`，与各自远端 Provider 共用 Distribution；`modal-gen-client` 负责统一调用、Runtime readiness 与部署生命周期。
 
 ```text
 AgentScape / Browser
         ↓
 modal-gen-client
-    ├── modal-2D-client ──direct──> Modal 2D GPU workers
-    ├── modal-3D-client ──direct──> Modal 3D GPU workers
+    ├── modal_2d.client ──direct──> Modal 2D GPU workers
+    ├── modal_3d.client ──direct──> Modal 3D GPU workers
     └── DeploymentService ────────> app.deploy()
 ```
 

@@ -7,8 +7,8 @@ import shutil
 from pathlib import Path
 
 import uvicorn
-from modal_2d_client.provider import Modal2DProvider
-from modal_3d_client.provider import Modal3DProvider
+from modal_2d.client.provider import Modal2DProvider
+from modal_3d.client.provider import Modal3DProvider
 
 from modal_gen.app import build_runtime, create_app
 from modal_gen.providers.loader import adapt_providers

@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from modal_2d_client.provider import Modal2DProvider
-from modal_3d_client.provider import Modal3DProvider
+from modal_2d.client.provider import Modal2DProvider
+from modal_3d.client.provider import Modal3DProvider
 
 from modal_gen.app import build_runtime
 from modal_gen.identity import idempotency_key, request_hash
@@ -165,7 +165,7 @@ def three_d_request(snapshot, source, parent_id):
 def test_connector_composes_builtin_2d_artifact_into_builtin_3d(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("MODAL_GEN_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(
-        "modal_2d_client.provider.capabilities.document",
+        "modal_2d.client.provider.capabilities.document",
         lambda **_: {"models": [{"id": "sana-sprint-1.6b"}]},
     )
     jobs_2d = Fake2DJobs(tmp_path)

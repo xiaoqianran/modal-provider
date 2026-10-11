@@ -40,8 +40,10 @@ def test_connection_error_exposes_type_but_not_provider_message():
     assert "credential contents" not in str(captured.value)
     assert "secret-value" not in str(captured.value)
 
+
 def test_loader_preserves_queued_and_unknown_operation_jobs():
     from modal_gen.providers.loader import LibraryProviderAdapter
+
     adapter = LibraryProviderAdapter(BrokenConnectionProvider())
     for state in ("queued", "submission_unknown", "running"):
         normalized = adapter._job({"id": "op_a", "status": state, "artifacts": []})

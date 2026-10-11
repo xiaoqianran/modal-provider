@@ -81,28 +81,8 @@ jobs:
       - run: uv build
       - run: uv run python -c "from modal_gen.server import main; assert callable(main)"
 
-  modal-2d-client:
-    name: modal-2D-client
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: modal-2D-client
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: astral-sh/setup-uv@v10.0.1
-        with:
-          python-version: "3.12"
-          enable-cache: true
-      - run: uv lock --check
-      - run: uv sync --dev --frozen
-      - run: uv run ruff check .
-      - run: uv run python -m compileall -q modal_2d_client tests
-      - run: uv run pytest -q
-      - run: uv run python -c "from modal_2d_client.server import main; assert callable(main)"
-
   modal-2d:
-    name: modal-2D
+    name: modal-2D / provider + client
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -115,30 +95,12 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv lock --check
-      - run: uv sync --dev --frozen
+      - run: uv sync --extra client --dev --frozen
       - run: uv run ruff check .
-      - run: uv run python -m compileall -q modal_2d tests
-      - run: uv run pytest -q
+      - run: uv run python -m compileall -q modal_2d tests client_tests
+      - run: uv run pytest -q tests client_tests
       - run: uv run python -c "import modal_2d.app"
-
-  modal-3d-client:
-    name: modal-3D-client
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: modal-3D-client
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: astral-sh/setup-uv@v10.0.1
-        with:
-          python-version: "3.12"
-          enable-cache: true
-      - run: uv lock --check
-      - run: uv sync --dev --frozen
-      - run: uv run ruff check .
-      - run: uv run python -m compileall -q modal_3d_client tests
-      - run: uv run pytest -q
+      - run: uv run python -c "from modal_2d.client.server import main; assert callable(main)"
 
   modal-3d:
     name: modal-3D / Python ${{ matrix.python-version }}
@@ -163,6 +125,14 @@ jobs:
       - run: uv sync --frozen
       - run: uv run python -m compileall -q modal_3d
       - run: uv run python -m unittest discover -s tests -v
+      - name: Client adapter (Python 3.12)
+        if: matrix.python-version == '3.12'
+        run: |
+          uv sync --extra client --group dev --frozen
+          uv run ruff check modal_3d/client client_tests
+          uv run python -m compileall -q modal_3d/client client_tests
+          uv run pytest -q client_tests
+          uv run python -c "from modal_3d.client.server import main; assert callable(main)"
 
   modal-embodiedgen:
     name: modal-EmbodiedGen

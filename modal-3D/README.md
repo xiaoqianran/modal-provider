@@ -37,7 +37,7 @@ Optional preprocessing worker:
 Two input paths share the same GPU workers:
 
 ```text
-Direct modal-3D-client upload
+Direct modal_3d.client upload
 PNG / JPEG / WebP
   -> local validation + target-worker warmup
   -> [opaque/no mask only] T4 RemBgWorker.process -> mask
@@ -201,10 +201,16 @@ uv run --locked --default-index https://pypi.org/simple --no-config pytest -q
 真实 RGBA PNG → GLB 成功，GLB v2、1,520,464 bytes、37,990 vertices、75,968 faces，
 L40S 推理约 5.8 秒，完整远端调用约 42 秒。
 
-直接调用 `Model.generate_job` 时仍必须提供 canonical RGBA；通过 `modal-3D-client` 或 `modal-gen` 的 source contract 可以提交 PNG/JPEG/WebP，opaque 图片会先经过 conditioning。
+直接调用 `Model.generate_job` 时仍必须提供 canonical RGBA；通过 `modal_3d.client` 或 `modal-gen` 的 source contract 可以提交 PNG/JPEG/WebP，opaque 图片会先经过 conditioning。
 
-Generation/task/artifact HTTP APIs live in the sibling `modal-3D-client` package, not in this
-provider package. Historical benchmark evidence is preserved under
+Generation/task/artifact HTTP APIs live in the optional `modal_3d.client` subpackage,
+not in the GPU workers. Historical benchmark evidence is preserved under
 `benchmarks/`; retired experiments live under `archive/`.
+
+Install the local adapter with `pip install "modal-3d[client]"` or
+`uv sync --extra client --group dev`. Its Provider SPI entry point is
+`modal_3d.client.provider:create_provider` and its optional local API command is
+`modal-3d-agent`. The pre-existing `MODAL_3D_CLIENT_DATA_DIR`, SQLite jobs,
+artifact cache, and remote Modal identities are unchanged by the relocation.
 
 See `docs/ARCHITECTURE.md` for the production boundaries.

@@ -30,7 +30,7 @@ def studio(tmp_path, monkeypatch):
     monkeypatch.setenv("STUDIO_DEV_TOKEN", "test-token-with-at-least-24-characters")
     monkeypatch.setenv("STUDIO_ALLOWED_ORIGINS", "http://localhost:5173")
     monkeypatch.setattr(
-        "modal_2d_client.provider.capabilities.document",
+        "modal_2d.client.provider.capabilities.document",
         lambda **_: {"models": [{"id": "sana-sprint-1.6b"}]},
     )
     jobs = Fake3DJobs(tmp_path)

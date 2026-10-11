@@ -16,6 +16,17 @@ SOURCE_IGNORE = [
     ".venv-*/**",
     "__pycache__",
     "**/__pycache__/**",
+    ".pytest_cache",
+    "**/.pytest_cache/**",
+    ".ruff_cache",
+    "**/.ruff_cache/**",
+    "build",
+    "build/**",
+    "dist",
+    "dist/**",
+    "*.egg-info",
+    "**/*.egg-info/**",
+    "**/repomix-output.md",
     ".git",
     ".git/**",
 ]
@@ -40,12 +51,6 @@ image = (
     .add_local_dir(ROOT / "modal-world", "/opt/src/modal-world", copy=True, ignore=SOURCE_IGNORE)
     .add_local_dir(ROOT / "modal-build", "/opt/src/modal-build", copy=True, ignore=SOURCE_IGNORE)
     .add_local_dir(
-        ROOT / "modal-2D-client", "/opt/src/modal-2D-client", copy=True, ignore=SOURCE_IGNORE
-    )
-    .add_local_dir(
-        ROOT / "modal-3D-client", "/opt/src/modal-3D-client", copy=True, ignore=SOURCE_IGNORE
-    )
-    .add_local_dir(
         ROOT / "modal-gen-client", "/opt/src/modal-gen-client", copy=True, ignore=SOURCE_IGNORE
     )
     .env(
@@ -64,8 +69,6 @@ image = (
         "python -m pip install --no-deps /opt/src/modal-3D",
         "python -m pip install --no-deps /opt/src/modal-world",
         "python -m pip install --no-deps /opt/src/modal-build",
-        "python -m pip install --no-deps /opt/src/modal-2D-client",
-        "python -m pip install --no-deps /opt/src/modal-3D-client",
         "python -m pip install --no-deps /opt/src/modal-gen-client",
     )
 )

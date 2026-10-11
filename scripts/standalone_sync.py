@@ -42,13 +42,7 @@ class SyncPlan:
 
 PACKAGES: dict[str, PackageSpec] = {
     "modal-2D": PackageSpec("https://github.com/xiaoqianran/modal-2D.git", "main"),
-    "modal-2D-client": PackageSpec(
-        "https://github.com/xiaoqianran/modal-2D-client.git", "main"
-    ),
     "modal-3D": PackageSpec("https://github.com/xiaoqianran/modal-3D.git", "master"),
-    "modal-3D-client": PackageSpec(
-        "https://github.com/xiaoqianran/modal-3D-client.git", "main"
-    ),
     "modal-gen-client": PackageSpec(
         "https://github.com/xiaoqianran/modal-gen-client.git", "main"
     ),

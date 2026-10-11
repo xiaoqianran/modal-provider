@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 import httpx
-from modal_3d_client.provider import Modal3DProvider
+from modal_3d.client.provider import Modal3DProvider
 
 from modal_gen.app import build_runtime, create_app
 from modal_gen.identity import idempotency_key, request_hash

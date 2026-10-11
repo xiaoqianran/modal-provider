@@ -112,7 +112,8 @@ def project_runtime_readiness(
             matched = [state for state in states if state.app == target]
             runnable = bool(matched) and all(state.runnable for state in matched)
             capability["runtimeTargetReadiness"] = {
-                "app": target, "runnable": runnable,
+                "app": target,
+                "runnable": runnable,
                 "state": matched[0].model_state if matched else "not_deployed",
             }
             if runnable:

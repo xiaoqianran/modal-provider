@@ -4,7 +4,7 @@ The production path has no dispatch gateway and no CPU forwarding container.
 The VPS/client owns orchestration. Modal is used only for useful model compute.
 
 ```text
-local client / VPS (modal-3D-client)
+local client / VPS (modal_3d.client, supplied by modal-3d[client])
   ├─ validate source/model/profile/options
   ├─ immediately spawn selected Model.warmup (L40S cold-start begins)
   ├─ if source already has useful alpha or caller mask:
@@ -100,7 +100,7 @@ bypass this worker entirely.
 
 ## Local responsibilities
 
-`modal-3D-client` owns:
+`modal_3d.client` owns:
 
 - model/profile/option validation;
 - static model -> Modal App/class/method routing;

@@ -6,8 +6,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CLIENT_DIRS = (
-    ROOT / "modal-2D-client" / "modal_2d_client",
-    ROOT / "modal-3D-client" / "modal_3d_client",
+    ROOT / "modal-2D" / "modal_2d" / "client",
+    ROOT / "modal-3D" / "modal_3d" / "client",
 )
 
 

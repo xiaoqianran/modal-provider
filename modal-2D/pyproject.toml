@@ -5,12 +5,31 @@ description = "Minimal Modal provider for Sana Sprint text-to-image generation."
 requires-python = ">=3.12"
 dependencies = ["modal[api-proxy-support]>=1.5,<2"]
 
+[project.optional-dependencies]
+client = [
+    "fastapi>=0.116,<1",
+    "pydantic>=2.11,<3",
+    "uvicorn>=0.35,<1",
+]
+
+[project.scripts]
+modal-2d-agent = "modal_2d.client.server:main"
+
+[project.entry-points."modal_gen.providers"]
+modal-2d = "modal_2d.client.provider:create_provider"
+
+[tool.setuptools.package-data]
+"modal_2d.client" = ["static/*.html", "static/*.css", "static/*.js"]
+
+[tool.setuptools.packages.find]
+include = ["modal_2d*"]
+
 [build-system]
 requires = ["setuptools>=80"]
 build-backend = "setuptools.build_meta"
 
 [dependency-groups]
-dev = ["pytest>=8,<10", "ruff>=0.12,<1"]
+dev = ["httpx>=0.28,<1", "pytest>=8,<10", "ruff>=0.12,<1"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
