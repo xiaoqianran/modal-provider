@@ -1,4 +1,5 @@
 import React from "react";
+import {useSearchParams} from "react-router-dom";
 import {ChevronDown,Download,RefreshCw,Upload,X} from "lucide-react";
 import {Badge,Btn,PanelLabel} from "./components.jsx";
 import {Viewport3DUpload} from "./three-viewport.jsx";
@@ -73,6 +74,7 @@ function ProviderModelPicker({models, selectedId, onSelect, onClose}) {
 }
 
 export function ImageTo3DWorkspace() {
+  const [search, setSearch] = useSearchParams();
   const [models, setModels] = React.useState([FALLBACK_MODEL]);
   const [selectedId, setSelectedId] = React.useState(FALLBACK_MODEL.id);
   const [profile, setProfile] = React.useState("recommended");
@@ -93,11 +95,8 @@ export function ImageTo3DWorkspace() {
   const artifactUrlRef = React.useRef(null);
   const startedAtRef = React.useRef(null);
   const abortRef = React.useRef(null);
+  const activeJobIdRef = React.useRef(null);
   React.useEffect(() => () => abortRef.current?.abort(), []);
-
-  const selectedModel = models.find((model) => model.id === selectedId) || FALLBACK_MODEL;
-  const profiles = modelProfiles(selectedModel);
-  const running = phase === "submitting" || phase === "running" || phase === "artifact";
 
   const replaceObjectUrl = React.useCallback((ref, setter, blobOrFile) => {
     if (ref.current) URL.revokeObjectURL(ref.current);
@@ -106,6 +105,42 @@ export function ImageTo3DWorkspace() {
     setter(next);
     return next;
   }, []);
+
+  // The URL stores only the server Job ID; artifacts and status remain server-owned.
+  const resumeId = search.get("job");
+  React.useEffect(() => {
+    if (!resumeId || activeJobIdRef.current === resumeId) return;
+    activeJobIdRef.current = resumeId;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setJob(resumeId);
+    setPhase("running");
+    const restore = async () => {
+      try {
+        const finished = await waitFor(resumeId, {signal: controller.signal, timeoutMs: 60 * 60 * 1000});
+        if (finished.status !== "succeeded") throw new Error(terminalError(finished));
+        setPhase("artifact");
+        const blob = await fetchArtifactBlob3d(resumeId, "primary-glb");
+        if (controller.signal.aborted) return;
+        replaceObjectUrl(artifactUrlRef, setArtifactUrl, blob);
+        setArtifactName(`restored-${resumeId}.glb`);
+        setCurrentAssetRef(jobArtifactRef(resumeId, "primary-glb"));
+        setGenerationJobId(resumeId);
+        setPhase("done");
+      } catch (err) {
+        if (err.name !== "AbortError" && !controller.signal.aborted) {
+          setPhase("failed");
+          setError(err.message || String(err));
+        }
+      }
+    };
+    restore();
+    return () => controller.abort();
+  }, [resumeId, waitFor, replaceObjectUrl, setJob]);
+
+  const selectedModel = models.find((model) => model.id === selectedId) || FALLBACK_MODEL;
+  const profiles = modelProfiles(selectedModel);
+  const running = phase === "submitting" || phase === "running" || phase === "artifact";
 
   const refreshProvider = React.useCallback(async () => {
     setProviderState("checking");
@@ -155,6 +190,15 @@ export function ImageTo3DWorkspace() {
       return;
     }
     setSourceFile(file);
+    if (abortRef.current) abortRef.current.abort();
+    activeJobIdRef.current = null;
+    if (search.has("job")) {
+      setSearch(previous => {
+        const next = new URLSearchParams(previous);
+        next.delete("job");
+        return next;
+      }, {replace: true});
+    }
     replaceObjectUrl(sourceUrlRef, setSourceUrl, file);
     replaceObjectUrl(artifactUrlRef, setArtifactUrl, null);
     setArtifactName("");
@@ -187,6 +231,12 @@ export function ImageTo3DWorkspace() {
         profile,
         seed: Number.isFinite(Number(seed)) ? Number(seed) : 42,
       });
+      activeJobIdRef.current = submitted.id;
+      setSearch(previous => {
+        const next = new URLSearchParams(previous);
+        next.set("job", submitted.id);
+        return next;
+      }, {replace: true});
       setJob(submitted);
       setPhase("running");
 

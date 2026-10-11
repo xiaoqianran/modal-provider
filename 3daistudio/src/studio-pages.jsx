@@ -44,6 +44,7 @@ export function StudioDashboard() {
       {data.jobs.filter(j => !project || j.projectId === project).map(job => <article key={job.id} className="flex flex-wrap items-center gap-3 border-t border-zinc-800 py-3 text-sm">
         <div className="min-w-0 flex-1"><p>{job.operation}</p><p className="text-xs text-zinc-500">{job.id}</p>{job.error && <p className="text-xs text-amber-300">{errorMessage(job.error)}</p>}</div>
         <span>{job.status} · {job.stage}</span>
+        <NavLink className="text-indigo-300" to={job.operation === IMAGE_3D ? `/ImageTo3D?job=${encodeURIComponent(job.id)}` : `${job.operation === TEXT_IMAGE ? "/ImageGeneration/generate" : job.operation === "studio.text_to_3d.v1" ? "/TextTo3D" : "/Studio/operations"}?job=${encodeURIComponent(job.id)}`}>Open task</NavLink>
         {!terminal(job) && <Btn onClick={async () => {try {await cancelJob(job.id); await refresh();} catch(err) {setError(err.message);}}}>Cancel</Btn>}
         {job.result?.artifacts?.map(a => <a key={a.id} className="text-indigo-300" href={assetContentUrl(a.id)} download>{a.role}</a>)}
       </article>)}
@@ -62,7 +63,7 @@ export function StudioDashboard() {
 }
 
 export function StudioWorkbench({mode = "operations"}) {
-  const [search] = useSearchParams();
+  const [search, setSearch] = useSearchParams();
   const [caps, setCaps] = React.useState([]);
   const [assets, setAssets] = React.useState([]);
   const [projects, setProjects] = React.useState([]);
@@ -76,6 +77,10 @@ export function StudioWorkbench({mode = "operations"}) {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const {job, error: jobError, track: trackJob, cancel: cancelTrackedJob} = useJob();
+  const resumeId = search.get("job");
+  React.useEffect(() => {
+    if (resumeId) trackJob(resumeId);
+  }, [resumeId, trackJob]);
   React.useEffect(() => {
     let live = true;
     Promise.all([listCapabilities3d(), listAssets(), listProjects()]).then(([snapshot, a, p]) => {
@@ -121,7 +126,13 @@ export function StudioWorkbench({mode = "operations"}) {
     try {
       const spec = mode === "text" ? {operation: "studio.text_to_3d.v1", inputs: {prompt, model, imageModel}}
         : {operation, inputs: Object.fromEntries(Object.entries(values).filter(([,v]) => v !== "").map(([k,v]) => [k, cap.input.schema.properties[k].type === "object" ? {artifact_id: v} : v])), options};
-      trackJob(await submitJob({...spec, ...(project ? {projectId: project} : {})}));
+      const submitted = await submitJob({...spec, ...(project ? {projectId: project} : {})});
+      trackJob(submitted);
+      setSearch(previous => {
+        const next = new URLSearchParams(previous);
+        next.set("job", submitted.id);
+        return next;
+      }, {replace: true});
     } catch (err) {setError(err.message);} finally {setBusy(false);}
   };
   const ready = mode === "text" ? imageCap?.available && modelCap?.available && !!prompt.trim() && model && imageModel : cap?.available;
