@@ -2,7 +2,11 @@ import React from "react";
 import {NavLink, useSearchParams} from "react-router-dom";
 import {Btn} from "./components.jsx";
 import {Viewport3DUpload} from "./three-viewport.jsx";
-import {api, capabilities, listCapabilities3d, submitJob, uploadAsset3d, assetContentUrl, cancelJob, terminal, errorMessage, TEXT_IMAGE, IMAGE_3D} from "./api/modal.js";
+import {errorMessage} from "./api/client.js";
+import {capabilities, listCapabilities3d, TEXT_IMAGE, IMAGE_3D} from "./api/capabilities.js";
+import {submitJob, cancelJob, terminal, getJob3d, listJobs} from "./api/jobs.js";
+import {uploadAsset3d, assetContentUrl, listAssets} from "./api/assets.js";
+import {listProjects, createProject as createStudioProject} from "./api/projects.js";
 
 const fieldClass = "w-full rounded-lg border border-zinc-700 bg-zinc-900 p-2 text-sm";
 const panelClass = "rounded-xl border border-zinc-800 bg-zinc-950/40 p-4";
@@ -15,14 +19,14 @@ export function StudioDashboard() {
   const [preview, setPreview] = React.useState(null);
   const refresh = React.useCallback(async () => {
     try {
-      const [jobs, assets, projects] = await Promise.all([api("/jobs"), api("/assets"), api("/projects")]);
+      const [jobs, assets, projects] = await Promise.all([listJobs(), listAssets(), listProjects()]);
       setData({...jobs, ...assets, ...projects}); setError("");
     } catch (err) { setError(err.message); }
   }, []);
   React.useEffect(() => {refresh(); const id = setInterval(refresh, 4000); return () => clearInterval(id);}, [refresh]);
   const createProject = async e => {
     e.preventDefault();
-    try {await api("/projects", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name})}); setName(""); await refresh();}
+    try {await createStudioProject(name); setName(""); await refresh();}
     catch (err) {setError(err.message);}
   };
   return <main className="space-y-5 p-5">
@@ -73,7 +77,7 @@ export function StudioWorkbench({mode = "operations"}) {
   const [job, setJob] = React.useState(null);
   React.useEffect(() => {
     let live = true;
-    Promise.all([listCapabilities3d(), api("/assets"), api("/projects")]).then(([snapshot, a, p]) => {
+    Promise.all([listCapabilities3d(), listAssets(), listProjects()]).then(([snapshot, a, p]) => {
       if (!live) return;
       const list = capabilities(snapshot); setCaps(list); setAssets(a.assets); setProjects(p.projects);
       const choices = list.filter(c => mode === "image" ? c.operation === TEXT_IMAGE : c.category === "asset-processing");
@@ -100,7 +104,7 @@ export function StudioWorkbench({mode = "operations"}) {
     if (!job || terminal(job)) return;
     let live = true;
     const id = setInterval(async () => {
-      try {const next = (await api(`/jobs/${job.id}`)).job; if (live) setJob(next);}
+      try {const next = await getJob3d(job.id); if (live) setJob(next);}
       catch (err) {if (live) setError(err.message);}
     }, 2000);
     return () => {live = false; clearInterval(id);};

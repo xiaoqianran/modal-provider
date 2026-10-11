@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test cloudflare/worker.test.mjs",
+    "test": "node --test cloudflare/worker.test.mjs src/api/api.test.mjs",
     "cf:check": "wrangler deploy --dry-run",
     "crawl:login": "node crawler/login.mjs",
     "crawl:capture": "node crawler/capture.mjs"
