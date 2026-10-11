@@ -23,6 +23,7 @@ modal-3d = "modal_3d.client.provider:create_provider"
 
 [tool.setuptools.package-data]
 "modal_3d.client" = ["capabilities.json", "static/*"]
+"modal_3d" = ["patches/*.patch"]
 
 [tool.ruff]
 line-length = 100

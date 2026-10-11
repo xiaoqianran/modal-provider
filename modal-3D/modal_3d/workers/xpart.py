@@ -31,7 +31,7 @@ WEIGHT_REPO = "tencent/Hunyuan3D-Part"
 WEIGHT_REVISION = "677174466c53571e8bacd5050dff5948734a1a4d"
 SRC = PurePosixPath("/opt/hunyuan3d-part")
 MODEL_ROOT = PurePosixPath("/models/tencent/Hunyuan3D-Part")
-PATCH = Path(__file__).parent / "patches/xpart.patch"
+PATCH = Path(__file__).resolve().parents[1] / "patches/xpart.patch"
 
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-xpart-weights", create_if_missing=True)

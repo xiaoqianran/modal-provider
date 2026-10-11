@@ -34,7 +34,7 @@ SONATA_REVISION = "df99897472c09f91ba9288da0a034aacffc0b010"
 SRC = PurePosixPath("/opt/hunyuan3d-part")
 WEIGHT = PurePosixPath("/models/p3sam/p3sam.safetensors")
 SONATA_WEIGHT = PurePosixPath("/models/sonata/sonata.pth")
-PATCH = Path(__file__).parent / "patches/p3sam.patch"
+PATCH = Path(__file__).resolve().parents[1] / "patches/p3sam.patch"
 
 app = modal.App(APP_NAME)
 weights = modal.Volume.from_name("modal-3d-p3sam-weights", create_if_missing=True)
