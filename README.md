@@ -1,5 +1,7 @@
 # modal-provider
 
+开发基线：[Modal Provider Standard v1](docs/standards/README.md)，配套[可运行模板](templates/provider/README.md)。现有 Provider 按兼容原则逐步采用。
+
 `modal-provider` 是 AgentScape 的 **Modal Provider monorepo**。过去分散在多个独立仓库中的 Gateway、2D/3D Provider、Reference Sidecar、EmbodiedGen fork 与可复现 CUDA build tooling 已统一收敛到这里。
 
 ## Repository role

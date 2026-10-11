@@ -23,6 +23,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - run: python scripts/check-provider-architecture.py
+      - run: python scripts/check-legacy-providers.py
+      - run: python -m unittest discover -s templates/provider/tests -v
+      - run: python -m pip install build
+      - run: python -m build templates/provider --outdir templates/provider/dist
+      - run: python -m pip install templates/provider/dist/*.whl
+      - run: python -m unittest discover -s templates/provider/tests -v
+        env:
+          PROVIDER_TEST_INSTALLED: "1"
       - run: python scripts/check-runtime-architecture.py
       - run: python -m unittest discover -s scripts/tests -v
 
@@ -206,3 +215,4 @@ jobs:
       - run: uv run ruff check modal_world tests
       - run: uv run python -m compileall -q modal_world tests
       - run: uv run pytest -q
+
