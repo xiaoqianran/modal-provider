@@ -113,5 +113,5 @@ def test_stage5_static_cache_has_idempotent_cpu_bootstrap_and_pipeline_gate():
     assert "vgg16-397923af.pth" in section
     assert 'LearnedPerceptualImagePatchSimilarity(net_type="vgg"' in section
     assert "model_cache.commit()" in section
-    pipeline = source[source.index("def worldgen_pipeline(") :]
-    assert 'stages["stage5_static_cache"] = ensure_stage5_static_cache.remote()' in pipeline
+    pipeline = Path("modal_world/pipelines/orchestrator.py").read_text()
+    assert 'stages["stage5_static_cache"] = deps.ensure_static_cache()' in pipeline

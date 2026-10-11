@@ -5,11 +5,11 @@ from modal_world.stage1_patch import patch_stage1_worldnav
 
 def test_stage1_pipeline_dispatches_directly_to_persistent_worldnav_worker():
     app = Path("modal_world/app.py").read_text()
-    pipeline = app[app.index("def worldgen_pipeline("):]
+    pipeline = Path("modal_world/pipelines/orchestrator.py").read_text()
     assert 'def worldgen_case000_stage1(' not in app
     assert 'modal.Cls.from_name("modal-world-stage2", "WorldNavRenderer")' in app
-    assert "worldnav_worker = _worldnav_worker()" in pipeline
-    assert "_spawn_worker_call(\n        worldnav_worker.generate_nav" in pipeline
+    assert "worldnav_worker = deps.worldnav_factory()" in pipeline
+    assert "deps.spawn_worker(\n        worldnav_worker.generate_nav" in pipeline
     assert "Qwen3VLEngine(" not in pipeline
     assert "panorama_utils.write_text" not in pipeline
 

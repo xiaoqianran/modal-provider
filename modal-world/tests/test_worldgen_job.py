@@ -53,7 +53,7 @@ def test_stage2_and_stage4_accept_job_id_and_use_manifest():
     stage2 = Path("modal_world/stage2_app.py").read_text()
     stage45_core = Path("modal_world/stage45_core.py").read_text()
     assert 'def worldgen_case000_stage2(' not in app
-    assert "worldnav_worker.render" in app
+    assert "worldnav_worker.render" in Path("modal_world/pipelines/orchestrator.py").read_text()
     assert 'def worldgen_case000_stage4(job_id: str = "case000", force: bool = False)' in app
     assert 'manifest_matches(target, "stage2"' in stage2
     assert 'write_stage_manifest(target, "stage2"' in stage2

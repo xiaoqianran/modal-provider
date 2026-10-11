@@ -4,10 +4,10 @@ from pathlib import Path
 def test_stage3_is_single_gpu_without_fsdp():
     app = Path("modal_world/app.py").read_text()
     worker = Path("modal_world/stage3_app.py").read_text()
-    pipeline = app[app.index("def worldgen_pipeline("):]
+    pipeline = Path("modal_world/pipelines/orchestrator.py").read_text()
     assert 'def worldgen_case000_stage3(' not in app
     assert 'modal.Cls.from_name("modal-world-stage3", "WorldStereoWorker")' in app
-    assert "_spawn_worker_call(\n        _worldstereo_worker().generate" in pipeline
+    assert "deps.spawn_worker(\n        deps.worldstereo_factory().generate" in pipeline
     assert '"torch.distributed.run"' not in pipeline
     assert "fsdp=False" in worker
     assert "sp_world_size=1" in worker

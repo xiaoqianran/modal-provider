@@ -21,6 +21,7 @@ from .hyworld2_runtime import (
     hyworld2_worldmirror_image,
 )
 from .pipelines.artifacts import collect_world_artifacts
+from .pipelines.orchestrator import PipelineDependencies, run_stages
 from .service import capabilities as local_capabilities
 from .stage45_core import run_stage4_core, run_stage5_core, run_stage5_smoke_core
 from .worldgen_job import (
@@ -1220,63 +1221,27 @@ def worldgen_pipeline(
     if not prompt:
         raise ValueError("worldgen prompt must not be empty")
 
-    stages = {}
-    # Bootstrap cheap static Stage 5 assets before spending on any GPU stage.
-    stages["stage5_static_cache"] = ensure_stage5_static_cache.remote()
-    worldnav_worker = _worldnav_worker()
-    stages["stage0"] = worldgen_garden_stage0.remote(
-        job_id=job_id,
-        source_name=source_name,
-        seed=int(seed),
-        prompt=prompt,
-        force=bool(force),
+    stages = run_stages(
+        job_id=job_id, prompt=prompt, source_name=source_name, seed=int(seed),
+        force=bool(force), merge_stage45=merge_stage45, steps=steps,
+        deps=PipelineDependencies(
+            ensure_static_cache=ensure_stage5_static_cache.remote,
+            worldnav_factory=_worldnav_worker,
+            stage0=worldgen_garden_stage0.remote,
+            spawn_worker=_spawn_worker_call,
+            reload_volume=worldgen_outputs.reload,
+            resolve_target=resolve_worldgen_job_root,
+            sanitize_semantics=_sanitize_garden_semantics,
+            commit_volume=worldgen_outputs.commit,
+            worldstereo_factory=_worldstereo_worker,
+            stage45_factory=_stage45_worker,
+            stage4=worldgen_case000_stage4.remote,
+            stage5=worldgen_case000_stage5.remote,
+            runtime_compile=modal.Function.from_name(
+                "modal-world-runtime-compile", "compile_world_runtime"
+            ).remote,
+        ),
     )
-    stages["stage1"] = _spawn_worker_call(
-        worldnav_worker.generate_nav,
-        job_id=job_id,
-        force=bool(force),
-        wait_timeout_s=30 * 60,
-    )
-
-    worldgen_outputs.reload()
-    target = resolve_worldgen_job_root(job_id)
-    if job_id != "case000":
-        stages["semantic_sanitize"] = _sanitize_garden_semantics(target)
-        worldgen_outputs.commit()
-
-    stages["stage2"] = _spawn_worker_call(
-        worldnav_worker.render,
-        job_id=job_id,
-        force=bool(force),
-        wait_timeout_s=30 * 60,
-    )
-    stages["stage3"] = _spawn_worker_call(
-        _worldstereo_worker().generate,
-        job_id=job_id,
-        force=bool(force),
-        wait_timeout_s=45 * 60,
-    )
-    if merge_stage45:
-        stages["stage45"] = _stage45_worker().remote(
-            job_id=job_id,
-            force=bool(force),
-            steps=steps,
-        )
-    else:
-        stages["stage4"] = worldgen_case000_stage4.remote(
-            job_id=job_id, force=bool(force)
-        )
-        stages["stage5"] = worldgen_case000_stage5.remote(
-            job_id=job_id,
-            force=bool(force),
-            steps=steps,
-        )
-
-    runtime_compile = modal.Function.from_name(
-        "modal-world-runtime-compile", "compile_world_runtime"
-    ).remote(job_id=job_id, force=bool(force), steps=steps)
-    stages["runtime_compile"] = runtime_compile
-
     worldgen_outputs.reload()
     target = resolve_worldgen_job_root(job_id)
     artifacts = collect_world_artifacts(target, job_id, steps)
