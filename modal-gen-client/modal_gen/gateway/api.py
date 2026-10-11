@@ -32,8 +32,10 @@ def create_app(state=None, *, runtime_factory) -> FastAPI:
             return
         target = runtime_factory()
         try:
+            await target.deployments.connect_async(saved.token_id, saved.token_secret)
             await target.capabilities.connect_all_async(saved.token_id, saved.token_secret)
         except Exception as exc:
+            target.deployments.disconnect()
             target.capabilities.disconnect_all()
             _LOG.warning("无法自动恢复已保存的 Modal 凭据: %s", exc)
 
@@ -76,6 +78,12 @@ def create_app(state=None, *, runtime_factory) -> FastAPI:
     async def boundaries(request: Request, call_next):
         if request.method == "OPTIONS" and request.url.path.startswith("/connector/v1/"):
             return _cors_preflight(request)
+        if request.url.path.startswith("/v1/deployments") and (
+            not request.client or request.client.host not in {"127.0.0.1", "::1", "testclient"}
+        ):
+            return JSONResponse(
+                status_code=403, content={"detail": "Local deployment control only"}
+            )
         if request.url.path.startswith("/v1/"):
             expected = os.environ.get("MODAL_GEN_AGENT_TOKEN") or _DEFAULT_AGENT_TOKEN
             provided = request.headers.get("X-Modal-Gen-Session", "")
@@ -107,7 +115,13 @@ def create_app(state=None, *, runtime_factory) -> FastAPI:
         token_secret = payload.get("tokenSecret")
         if not isinstance(token_id, str) or not isinstance(token_secret, str):
             raise ConnectorError("PROVIDER_CREDENTIALS_REQUIRED", "Modal credentials 不能为空", 422)
-        rows = await current().capabilities.connect_all_async(token_id, token_secret)
+        await current().deployments.connect_async(token_id, token_secret)
+        try:
+            rows = await current().capabilities.connect_all_async(token_id, token_secret)
+        except Exception:
+            current().deployments.disconnect()
+            current().capabilities.disconnect_all()
+            raise
         if state is None:
             credentials.save(token_id, token_secret)
         return {"providers": rows}
@@ -115,18 +129,63 @@ def create_app(state=None, *, runtime_factory) -> FastAPI:
     @app.post("/v1/providers/connect-local-profile")
     async def connect_providers_local_profile():
         await stop_credential_restore()
-        rows = await current().capabilities.connect_all_default_async()
+        await current().deployments.connect_default_async()
+        try:
+            rows = await current().capabilities.connect_all_default_async()
+        except Exception:
+            current().deployments.disconnect()
+            current().capabilities.disconnect_all()
+            raise
         return {"providers": rows, "credentialSource": "modal-profile"}
 
     @app.post("/v1/providers/disconnect")
     async def disconnect_providers():
         await stop_credential_restore()
+        current().deployments.disconnect()
         rows = current().capabilities.disconnect_all()
         return {"providers": rows}
 
     @app.get("/v1/capabilities")
     async def local_capabilities(refresh: bool = False):
         return await current().capabilities.snapshot_async()
+
+    @app.get("/v1/deployments")
+    async def deployment_status(provider: str | None = None, refresh: bool = False):
+        return await current().deployments.status_async(provider, force=refresh)
+
+    @app.get("/v1/deployments/jobs")
+    def deployment_jobs():
+        return current().deployments.deployment_jobs()
+
+    @app.get("/v1/deployments/jobs/{job_id}")
+    def deployment_job(job_id: str):
+        return current().deployments.deployment_job(job_id)
+
+    @app.post("/v1/deployments/deploy", status_code=202)
+    async def deploy_apps(request: Request):
+        body = await _json_body(request)
+        if not body.get("provider") and not body.get("app"):
+            raise ConnectorError("DEPLOYMENT_SCOPE_REQUIRED", "部署必须指定 Provider 或 App", 422)
+        return {
+            "job": current().deployments.start_deploy(
+                provider=body.get("provider"),
+                app_name=body.get("app"),
+                environment_name=body.get("environment"),
+            )
+        }
+
+    @app.post("/v1/deployments/stop", status_code=202)
+    async def stop_apps(request: Request):
+        body = await _json_body(request)
+        if body.get("confirm") is not True:
+            raise ConnectorError("DEPLOYMENT_CONFIRM_REQUIRED", "停止云端 App 需要明确确认", 422)
+        return {
+            "job": current().deployments.start_stop(
+                provider=body.get("provider"),
+                app_name=body.get("app"),
+                environment_name=body.get("environment"),
+            )
+        }
 
     @app.get("/v1/pairings")
     def pairings():

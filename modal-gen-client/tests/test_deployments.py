@@ -1,0 +1,808 @@
+from __future__ import annotations
+
+import asyncio
+from types import SimpleNamespace
+
+import pytest
+from modal.exception import NotFoundError
+
+from modal_gen.deployment.service import DeploymentService, DeploymentTarget
+from modal_gen.deployment.weights import PrepareCall, WeightSpec
+from modal_gen.errors import ConnectorError
+
+
+def test_deploy_requires_in_memory_credentials():
+    service = DeploymentService(targets=())
+    with pytest.raises(ConnectorError) as exc:
+        service.deploy("modal-2d")
+    assert exc.value.code == "DEPLOYMENT_CREDENTIALS_REQUIRED"
+
+
+def test_status_only_marks_not_found_as_missing(monkeypatch):
+    target = DeploymentTarget("modal-2d", "missing-app", "unused")
+
+    def missing(*_args, **_kwargs):
+        raise NotFoundError("missing")
+
+    monkeypatch.setattr("modal_gen.deployment.service.modal.App.lookup", missing)
+    service = DeploymentService(targets=(target,))
+    row = service._target_status(target, SimpleNamespace())
+    assert row["status"] == "missing"
+
+
+def test_deploy_uses_runtime_app_definition(monkeypatch):
+    service = DeploymentService(targets=())
+    service._client = SimpleNamespace()
+    target = DeploymentTarget("modal-2d", "test-app", "runtime.module")
+    calls = []
+
+    class FakeApp:
+        def deploy(self, **kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setattr(service, "_targets", lambda _provider=None: (target,))
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.importlib.import_module",
+        lambda _name: SimpleNamespace(app=FakeApp()),
+    )
+
+    result = service.deploy("modal-2d")
+    assert result["providers"][0]["status"] == "current"
+    assert calls[0]["name"] == "test-app"
+    assert calls[0]["strategy"] == "rolling"
+
+
+def test_deploy_can_target_one_runtime_app(monkeypatch):
+    service = DeploymentService(targets=())
+    service._client = SimpleNamespace()
+    targets = (
+        DeploymentTarget("modal-3d", "app-a", "runtime.a"),
+        DeploymentTarget("modal-3d", "app-b", "runtime.b"),
+    )
+    imported = []
+
+    class FakeApp:
+        def __init__(self, name):
+            self.name = name
+
+        def deploy(self, **_kwargs):
+            imported.append(self.name)
+
+    monkeypatch.setattr(service, "_targets", lambda _provider=None: targets)
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.importlib.import_module",
+        lambda name: SimpleNamespace(app=FakeApp(name)),
+    )
+
+    result = service.deploy("modal-3d", app_name="app-b")
+    assert imported == ["runtime.b"]
+    assert result["providers"][0]["apps"][0]["app"] == "app-b"
+
+
+def test_deploy_rejects_unknown_runtime_app(monkeypatch):
+    service = DeploymentService(targets=())
+    service._client = SimpleNamespace()
+    monkeypatch.setattr(
+        service,
+        "_targets",
+        lambda _provider=None: (DeploymentTarget("modal-2d", "known", "runtime.known"),),
+    )
+    with pytest.raises(ConnectorError) as exc:
+        service.deploy("modal-2d", app_name="missing")
+    assert exc.value.code == "DEPLOYMENT_APP_UNKNOWN"
+
+
+def test_summary_preserves_error_state():
+    rows = [
+        {"provider": "modal-2d", "app": "a", "module": "m.a", "status": "error"},
+        {"provider": "modal-2d", "app": "b", "module": "m.b", "status": "missing"},
+    ]
+    assert DeploymentService._summary(rows)["providers"][0]["status"] == "error"
+
+
+def test_deploy_continues_after_one_runtime_failure(monkeypatch):
+    service = DeploymentService(targets=())
+    service._client = SimpleNamespace()
+    targets = (
+        DeploymentTarget("modal-2d", "bad", "runtime.bad"),
+        DeploymentTarget("modal-2d", "good", "runtime.good"),
+    )
+    called = []
+
+    class FakeApp:
+        def __init__(self, name):
+            self.name = name
+
+        def deploy(self, **_kwargs):
+            called.append(self.name)
+            if self.name == "runtime.bad":
+                raise RuntimeError("boom")
+
+    monkeypatch.setattr(service, "_targets", lambda _provider=None: targets)
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.importlib.import_module",
+        lambda name: SimpleNamespace(app=FakeApp(name)),
+    )
+    result = service.deploy("modal-2d")
+    assert called == ["runtime.bad", "runtime.good"]
+    assert [item["status"] for item in result["providers"][0]["apps"]] == [
+        "failed",
+        "current",
+    ]
+
+
+def test_missing_only_skips_existing_runtime(monkeypatch):
+    service = DeploymentService(targets=())
+    service._client = SimpleNamespace()
+    targets = (
+        DeploymentTarget("modal-2d", "existing", "runtime.existing"),
+        DeploymentTarget("modal-2d", "missing", "runtime.missing"),
+    )
+    called = []
+
+    monkeypatch.setattr(service, "_targets", lambda _provider=None: targets)
+    monkeypatch.setattr(
+        service,
+        "_target_status",
+        lambda target, _client, _environment=None: {
+            "provider": target.provider,
+            "app": target.app_name,
+            "module": target.module,
+            "status": "missing" if target.app_name == "missing" else "current",
+        },
+    )
+
+    class FakeApp:
+        def deploy(self, **kwargs):
+            called.append(kwargs["name"])
+
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.importlib.import_module",
+        lambda _name: SimpleNamespace(app=FakeApp()),
+    )
+    service.deploy("modal-2d", missing_only=True)
+    assert called == ["missing"]
+
+
+def test_targets_are_discovered_from_provider_manifest():
+    class Adapter:
+        id = "modal-x"
+
+        def deployment_manifest(self):
+            return {
+                "provider": self.id,
+                "targets": [
+                    {"app": "app-a", "module": "runtime.a"},
+                    {"app": "app-a", "module": "runtime.a"},
+                    {"app": "app-b", "module": "runtime.b"},
+                ],
+            }
+
+    service = DeploymentService([Adapter()])
+    assert service._targets("modal-x") == (
+        DeploymentTarget("modal-x", "app-a", "runtime.a"),
+        DeploymentTarget("modal-x", "app-b", "runtime.b"),
+    )
+
+
+def test_target_status_distinguishes_current_and_stale(monkeypatch):
+    class RemoteApp:
+        def __init__(self, revision):
+            self.revision = revision
+
+        def get_tags(self, **_kwargs):
+            return {"modal-gen-revision": self.revision}
+
+    target = DeploymentTarget(
+        "modal-2d", "worker", "runtime.worker", "sha256-expected", ("model-a",), False
+    )
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.modal.App.lookup",
+        lambda *_args, **_kwargs: RemoteApp("sha256-expected"),
+    )
+    service = DeploymentService(targets=(target,))
+    current = service._target_status(target, SimpleNamespace())
+    assert current["status"] == "current"
+    assert current["deployedRevision"] == "sha256-expected"
+
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.modal.App.lookup",
+        lambda *_args, **_kwargs: RemoteApp("sha256-old"),
+    )
+    stale = service._target_status(target, SimpleNamespace())
+    assert stale["status"] == "stale"
+    assert stale["expectedRevision"] == "sha256-expected"
+    assert stale["deployedRevision"] == "sha256-old"
+
+
+def test_deploy_tags_runtime_revision(monkeypatch):
+    revision = "sha256-expected"
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker", revision)
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+    calls = []
+
+    class DeployedApp:
+        def get_tags(self, **_kwargs):
+            calls.append(("get_tags", None))
+            return {"keep": "yes"}
+
+        def set_tags(self, tags, **_kwargs):
+            calls.append(("set_tags", dict(tags)))
+
+    class LocalApp:
+        def deploy(self, **kwargs):
+            calls.append(("deploy", dict(kwargs)))
+            return DeployedApp()
+
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.importlib.import_module",
+        lambda _name: SimpleNamespace(app=LocalApp()),
+    )
+    result = service.deploy("modal-2d")
+    assert result["providers"][0]["status"] == "current"
+    deploy_call = next(value for kind, value in calls if kind == "deploy")
+    assert deploy_call["tag"] == revision
+    set_tags = next(value for kind, value in calls if kind == "set_tags")
+    assert set_tags == {"keep": "yes", "modal-gen-revision": revision}
+
+
+def test_rejects_revision_that_modal_cannot_use_as_deployment_tag():
+    with pytest.raises(ConnectorError) as exc:
+        DeploymentService(
+            targets=(DeploymentTarget("modal-2d", "worker", "runtime.worker", "sha256:bad"),)
+        )
+    assert exc.value.code == "DEPLOYMENT_REVISION_INVALID"
+
+
+def test_manifest_declares_weight_preparation():
+    class Adapter:
+        id = "modal-x"
+
+        def deployment_manifest(self):
+            return {
+                "provider": self.id,
+                "targets": [
+                    {
+                        "app": "worker",
+                        "module": "runtime.worker",
+                        "weights": [
+                            {
+                                "volume": "model-weights",
+                                "requiredPaths": ["model/config.json"],
+                                "prepare": [{"function": "sync_weights"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+
+    target = DeploymentService([Adapter()])._targets("modal-x")[0]
+    assert target.weights == (
+        WeightSpec(
+            volume="model-weights",
+            required_paths=("model/config.json",),
+            prepare=(PrepareCall("runtime.worker", "sync_weights"),),
+        ),
+    )
+
+
+def test_weights_are_verified_before_runtime_deployment(monkeypatch):
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        weights=(
+            WeightSpec(
+                "model-weights",
+                ("model/config.json",),
+                (PrepareCall("runtime.worker", "sync_weights"),),
+            ),
+        ),
+    )
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+    calls = []
+
+    monkeypatch.setattr(
+        service._weights,
+        "ensure",
+        lambda *_args, **_kwargs: calls.append("weights") or {"status": "ready"},
+    )
+
+    class App:
+        def deploy(self, **_kwargs):
+            calls.append("deploy")
+            return self
+
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.importlib.import_module",
+        lambda _name: SimpleNamespace(app=App()),
+    )
+    result = service.deploy("modal-x")
+    assert result["providers"][0]["status"] == "current"
+    assert calls == ["weights", "deploy"]
+
+
+def test_weight_failure_prevents_runtime_deployment(monkeypatch):
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        weights=(WeightSpec("weights", ("model.bin",), (PrepareCall("m", "sync"),)),),
+    )
+    service = DeploymentService(targets=(target,), max_attempts=1)
+    service._client = SimpleNamespace()
+    monkeypatch.setattr(
+        service._weights,
+        "ensure",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("download failed")),
+    )
+    imported = []
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.importlib.import_module",
+        lambda name: imported.append(name),
+    )
+
+    app = service.deploy("modal-x")["providers"][0]["apps"][0]
+    assert app["status"] == "failed"
+    assert app["error"] == "download failed"
+    assert imported == []
+
+
+def test_async_status_returns_disconnected_without_credentials():
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker")
+    service = DeploymentService(targets=(target,))
+
+    result = asyncio.run(service.status_async("modal-2d"))
+
+    assert result["connected"] is False
+    assert result["providers"][0]["status"] == "disconnected"
+    assert result["providers"][0]["apps"][0]["status"] == "disconnected"
+
+
+def test_async_status_uses_readiness_ttl_cache(monkeypatch):
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker")
+    service = DeploymentService(targets=(target,), readiness_ttl_s=10.0)
+    service._client = SimpleNamespace()
+    calls = []
+
+    async def fake_status(target, _client, _environment=None):
+        calls.append(target.app_name)
+        return {
+            "provider": target.provider,
+            "app": target.app_name,
+            "module": target.module,
+            "status": "current",
+            "expectedRevision": target.revision,
+            "deployedRevision": target.revision,
+            "models": list(target.models),
+            "required": target.required,
+        }
+
+    monkeypatch.setattr(service, "_target_status_async", fake_status)
+
+    async def scenario():
+        first = await service.status_async("modal-2d")
+        second = await service.status_async("modal-2d")
+        return first, second
+
+    first, second = asyncio.run(scenario())
+    assert first == second
+    assert calls == ["worker"]
+
+
+def test_huggingface_secret_status_never_returns_values(monkeypatch):
+    service = DeploymentService(targets=())
+    service._client = SimpleNamespace()
+    monkeypatch.setattr(
+        "modal_gen.deployment.service._modal_secret_names",
+        lambda _client: {"huggingface"},
+    )
+
+    status = service.huggingface_secret_status()
+
+    assert status == {
+        "connected": True,
+        "configured": False,
+        "secrets": [
+            {"name": "huggingface", "exists": True},
+            {"name": "hyworld2-hf", "exists": False},
+        ],
+    }
+    assert "hf_" not in repr(status)
+
+
+def test_save_huggingface_token_updates_and_creates_compat_secrets(monkeypatch):
+    service = DeploymentService(targets=())
+    service._client = SimpleNamespace()
+    calls = []
+    listings = iter([{"huggingface"}, {"huggingface", "hyworld2-hf"}])
+    monkeypatch.setattr(
+        "modal_gen.deployment.service._modal_secret_names",
+        lambda _client: next(listings),
+    )
+    monkeypatch.setattr(
+        "modal_gen.deployment.service._upsert_modal_secret",
+        lambda name, token, _client, *, exists: calls.append((name, token, exists)),
+    )
+
+    status = service.save_huggingface_token("  hf_test_secret  ")
+
+    assert calls == [
+        ("huggingface", "hf_test_secret", True),
+        ("hyworld2-hf", "hf_test_secret", False),
+    ]
+    assert status["configured"] is True
+
+
+def test_deployed_app_with_missing_weights_stays_deployed(monkeypatch):
+    class RemoteApp:
+        def get_tags(self, *, client=None):
+            return {"modal-gen-revision": "sha256-old"}
+
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        revision="sha256-new",
+        models=("model-x",),
+        weights=(WeightSpec("weights", ("model.bin",), (PrepareCall("m", "sync"),)),),
+    )
+    service = DeploymentService(targets=(target,))
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.modal.App.lookup", lambda *_args, **_kwargs: RemoteApp()
+    )
+    monkeypatch.setattr(
+        service._weights,
+        "status",
+        lambda *_args, **_kwargs: {"status": "missing", "volumes": []},
+    )
+
+    row = service._target_status(target, SimpleNamespace())
+    assert row["status"] == "stale"
+    assert row["deployedRevision"] == "sha256-old"
+    assert row["weights"]["status"] == "missing"
+    assert row["weightError"] == "required model weights are missing"
+    assert row["runnable"] is False
+
+
+def test_missing_app_skips_weight_status_lookup(monkeypatch):
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        weights=(WeightSpec("weights", ("model.bin",), (PrepareCall("m", "sync"),)),),
+    )
+    service = DeploymentService(targets=(target,))
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.modal.App.lookup",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(NotFoundError("missing")),
+    )
+    monkeypatch.setattr(
+        service._weights,
+        "status",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected weight lookup")),
+    )
+
+    row = service._target_status(target, SimpleNamespace())
+    assert row["status"] == "missing"
+    assert row["runnable"] is False
+    assert "weights" not in row
+
+
+def test_force_and_missing_only_are_mutually_exclusive():
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker")
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+
+    with pytest.raises(ConnectorError) as exc:
+        service.deploy("modal-2d", missing_only=True, force=True)
+    assert exc.value.code == "DEPLOYMENT_MODE_CONFLICT"
+
+
+def test_force_deploy_rolls_over_current_runtime(monkeypatch):
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker", "sha256-current")
+    rollover_requests = []
+
+    class Stub:
+        async def AppRollover(self, request):
+            rollover_requests.append(request)
+            return SimpleNamespace()
+
+    client = SimpleNamespace(stub=Stub())
+    service = DeploymentService(targets=(target,))
+    service._client = client
+
+    class RemoteApp:
+        app_id = "ap_current"
+
+        def get_tags(self, **_kwargs):
+            return {"modal-gen-revision": "sha256-current"}
+
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.modal.App.lookup", lambda *_args, **_kwargs: RemoteApp()
+    )
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.importlib.import_module",
+        lambda _name: (_ for _ in ()).throw(
+            AssertionError("current force redeploy must not rebuild")
+        ),
+    )
+
+    result = service.deploy("modal-2d", force=True)
+    app = result["providers"][0]["apps"][0]
+
+    assert app["status"] == "current"
+    assert app["action"] == "rollover"
+    assert len(rollover_requests) == 1
+    assert rollover_requests[0].app_id == "ap_current"
+
+
+def test_force_deploy_stale_runtime_publishes_latest_code(monkeypatch):
+    target = DeploymentTarget("modal-2d", "worker", "runtime.worker", "sha256-new")
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+    calls = []
+
+    monkeypatch.setattr(
+        service,
+        "_target_status",
+        lambda *_args, **_kwargs: {"status": "stale", "runnable": False},
+    )
+
+    class App:
+        def deploy(self, **kwargs):
+            calls.append(kwargs)
+            return self
+
+        def get_tags(self, **_kwargs):
+            return {}
+
+        def set_tags(self, *_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.importlib.import_module",
+        lambda _name: SimpleNamespace(app=App()),
+    )
+
+    result = service.deploy("modal-2d", force=True)
+
+    assert result["providers"][0]["status"] == "current"
+    assert len(calls) == 1
+    assert calls[0]["strategy"] == "rolling"
+
+
+def test_submission_status_checks_required_and_selected_model_only(monkeypatch):
+    targets = (
+        DeploymentTarget("modal-3d", "prep", "runtime.prep", required=True),
+        DeploymentTarget("modal-3d", "worker-a", "runtime.a", models=("model-a",)),
+        DeploymentTarget("modal-3d", "worker-b", "runtime.b", models=("model-b",)),
+    )
+    service = DeploymentService(targets=targets)
+    service._client = SimpleNamespace()
+    seen = []
+
+    def fake_status(target, _client, environment_name=None):
+        seen.append(target.app_name)
+        return {
+            "provider": target.provider,
+            "app": target.app_name,
+            "module": target.module,
+            "status": "current",
+            "expectedRevision": target.revision,
+            "deployedRevision": target.revision,
+            "models": list(target.models),
+            "required": target.required,
+            "runnable": True,
+        }
+
+    monkeypatch.setattr(service, "_target_status", fake_status)
+    result = service.submission_status("modal-3d", "model-b")
+
+    assert seen == ["prep", "worker-b"]
+    assert result["providers"][0]["status"] == "current"
+
+
+def test_deploy_rejects_missing_declared_secrets(monkeypatch):
+    target = DeploymentTarget(
+        "modal-3d",
+        "worker",
+        "runtime.worker",
+        secrets=("huggingface",),
+    )
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+    monkeypatch.setattr("modal_gen.deployment.service._modal_secret_names", lambda _client: set())
+
+    try:
+        service.start_deploy("modal-3d")
+    except Exception as exc:
+        assert getattr(exc, "code", None) == "DEPLOYMENT_SECRETS_REQUIRED"
+        assert "huggingface" in str(exc)
+    else:
+        raise AssertionError("missing deployment secret must block the job before it starts")
+
+    assert service.deployment_jobs()["jobs"] == []
+
+
+def test_deploy_accepts_declared_secrets(monkeypatch):
+    target = DeploymentTarget(
+        "modal-3d",
+        "worker",
+        "runtime.worker",
+        secrets=("huggingface",),
+    )
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+    monkeypatch.setattr(
+        "modal_gen.deployment.service._modal_secret_names", lambda _client: {"huggingface"}
+    )
+    monkeypatch.setattr(service, "_run_deployment_job", lambda *_args, **_kwargs: None)
+
+    job = service.start_deploy("modal-3d")
+
+    assert job["status"] == "queued"
+
+
+def test_manifest_declares_deployment_prerequisites():
+    class Adapter:
+        id = "modal-x"
+
+        def deployment_manifest(self):
+            return {
+                "provider": self.id,
+                "targets": [
+                    {
+                        "app": "worker",
+                        "module": "runtime.worker",
+                        "prerequisites": [
+                            {
+                                "volume": "build-artifacts",
+                                "requiredPaths": ["bundle.zip"],
+                                "prepare": [
+                                    {
+                                        "module": "build.restore",
+                                        "function": "restore",
+                                        "arguments": ["bundle"],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+
+    target = DeploymentService([Adapter()])._targets("modal-x")[0]
+    assert target.prerequisites == (
+        WeightSpec(
+            volume="build-artifacts",
+            required_paths=("bundle.zip",),
+            prepare=(PrepareCall("build.restore", "restore", ("bundle",)),),
+        ),
+    )
+
+
+def test_prerequisites_are_prepared_before_runtime_module_import(monkeypatch):
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        prerequisites=(
+            WeightSpec(
+                "build-artifacts",
+                ("bundle.zip",),
+                (PrepareCall("build.restore", "restore"),),
+            ),
+        ),
+    )
+    service = DeploymentService(targets=(target,))
+    service._client = SimpleNamespace()
+    calls = []
+    monkeypatch.setattr(
+        service._prerequisites,
+        "ensure",
+        lambda *_args, **_kwargs: calls.append("prerequisites") or {"status": "ready"},
+    )
+
+    class App:
+        def deploy(self, **_kwargs):
+            calls.append("deploy")
+            return self
+
+    def import_module(_name):
+        calls.append("import")
+        return SimpleNamespace(app=App())
+
+    monkeypatch.setattr("modal_gen.deployment.service.importlib.import_module", import_module)
+    result = service.deploy("modal-x")
+    assert result["providers"][0]["status"] == "current"
+    assert calls == ["prerequisites", "import", "deploy"]
+
+
+def test_prerequisite_failure_prevents_runtime_import(monkeypatch):
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        prerequisites=(
+            WeightSpec("build-artifacts", ("bundle.zip",), (PrepareCall("m", "restore"),)),
+        ),
+    )
+    service = DeploymentService(targets=(target,), max_attempts=1)
+    service._client = SimpleNamespace()
+    monkeypatch.setattr(
+        service._prerequisites,
+        "ensure",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("artifact restore failed")),
+    )
+    imported = []
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.importlib.import_module",
+        lambda name: imported.append(name),
+    )
+    app = service.deploy("modal-x")["providers"][0]["apps"][0]
+    assert app["status"] == "failed"
+    assert app["error"] == "artifact restore failed"
+    assert imported == []
+
+
+def test_runtime_status_reports_missing_prerequisites(monkeypatch):
+    class RemoteApp:
+        def get_tags(self, **_kwargs):
+            return {"modal-gen-revision": "sha256-current"}
+
+    target = DeploymentTarget(
+        "modal-x",
+        "worker",
+        "runtime.worker",
+        revision="sha256-current",
+        models=("model-x",),
+        prerequisites=(
+            WeightSpec("build-artifacts", ("bundle.zip",), (PrepareCall("m", "restore"),)),
+        ),
+    )
+    service = DeploymentService(targets=(target,))
+    monkeypatch.setattr(
+        "modal_gen.deployment.service.modal.App.lookup", lambda *_args, **_kwargs: RemoteApp()
+    )
+    monkeypatch.setattr(
+        service._prerequisites,
+        "status",
+        lambda *_args, **_kwargs: {"status": "missing", "volumes": []},
+    )
+    row = service._target_status(target, SimpleNamespace())
+    assert row["status"] == "current"
+    assert row["runnable"] is False
+    assert row["prerequisites"]["status"] == "missing"
+    assert row["prerequisiteError"] == "required deployment prerequisites are missing"
+
+
+def test_submission_status_selects_only_operation_runtime_target(monkeypatch):
+    from types import SimpleNamespace
+
+    targets = (
+        DeploymentTarget("modal-3d", "prep", "runtime.prep", required=True),
+        DeploymentTarget("modal-3d", "model", "runtime.model", models=("one",)),
+        DeploymentTarget("modal-3d", "modal-3d-pose", "runtime.pose", models=("pose",)),
+    )
+    service = DeploymentService(targets=targets)
+    service._client = SimpleNamespace()
+    seen = []
+
+    def status(target, _client, environment_name=None):
+        seen.append(target.app_name)
+        return {
+            "provider": target.provider,
+            "app": target.app_name,
+            "status": "current",
+            "models": list(target.models),
+            "runnable": True,
+        }
+
+    monkeypatch.setattr(service, "_target_status", status)
+
+    result = service.submission_status("modal-3d", runtime_target="modal-3d-pose")
+    assert seen == ["modal-3d-pose"]
+    assert result["providers"][0]["apps"][0]["app"] == "modal-3d-pose"

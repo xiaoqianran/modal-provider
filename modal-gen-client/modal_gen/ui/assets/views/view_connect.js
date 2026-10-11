@@ -60,15 +60,106 @@ export async function mountConnect(root) {
   root.append(providers);
 
   root.append(hubOverview(snap, connections));
-  root.append(h("div", { class: "connect-hint" },
-    "云端模型部署请运行 deploy-modal.bat；停止云端 App 请运行 delete-modal.bat。"
-  ));
+  root.append(deploymentPanel());
 
   try {
     const pr = await apiGet("pairings");
     const pending = (pr.pairings || []).filter((item) => item.status === "pending");
     if (pending.length) root.append(pairingPanel(pending));
   } catch { /* local control plane may be locked */ }
+}
+
+function deploymentPanel() {
+  const body = h("div", { class: "panel__body stack" },
+    h("span", { class: "muted" }, "正在读取 Modal App 状态…")
+  );
+  const refreshButton = h("button", { class: "btn btn--sm", type: "button" }, "刷新部署状态");
+  const panel = h("section", { class: "panel hub-panel" },
+    h("div", { class: "panel__head" },
+      h("h2", { class: "panel__title" }, "云端模型部署"),
+      refreshButton
+    ),
+    body
+  );
+  if (store.mode !== "live") {
+    refreshButton.disabled = true;
+    body.replaceChildren(h("span", { class: "muted" }, "Demo 模式不执行云端部署。"));
+    return panel;
+  }
+
+  async function refresh(force = false) {
+    refreshButton.disabled = true;
+    try {
+      const data = await apiGet(`deployments${force ? "?refresh=1" : ""}`);
+      const providers = data.providers || [];
+      const apps = providers.flatMap(provider =>
+        (provider.apps || []).map(app => ({ ...app, provider: provider.id }))
+      );
+      body.replaceChildren(
+        h("p", { class: "muted" },
+          data.connected
+            ? "每个 App 可以单独部署或停止；部署会检查 Secret 和模型权重。"
+            : "请先在连接设置中连接 Modal，才能部署或查询云端状态。"),
+        ...apps.map(app => {
+          const status = h("span", { class: "muted" }, app.status || "—");
+          const deploy = h("button", { class: "btn btn--sm btn--primary", type: "button" }, "部署");
+          const stop = h("button", { class: "btn btn--sm", type: "button" }, "停止");
+          deploy.disabled = stop.disabled = !data.connected;
+          async function act(action) {
+            const label = action === "deploy" ? "部署" : "停止";
+            const question = action === "deploy"
+              ? `确认部署 ${app.app}？这可能产生云端资源费用。`
+              : `确认停止 ${app.app}？正在运行的调用可能会中断，但不会删除 Volume 或 Secret。`;
+            if (!window.confirm(question)) return;
+            deploy.disabled = stop.disabled = true;
+            status.textContent = "正在提交" + label + "任务…";
+            try {
+              const result = await apiPost(`deployments/${action}`, {
+                provider: app.provider, app: app.app, confirm: true,
+              });
+              const jobId = result.job?.id;
+              if (!jobId) throw new Error("未返回 Deployment Job ID");
+              status.textContent = `已提交 ${jobId}`;
+              for (;;) {
+                if (!panel.isConnected) return;
+                const job = await apiGet(`deployments/jobs/${encodeURIComponent(jobId)}`);
+                status.textContent = job.status || "unknown";
+                if (["succeeded", "failed", "partial"].includes(job.status)) {
+                  if (job.status !== "succeeded") {
+                    status.textContent += `：${job.error || JSON.stringify(job.result || {}).slice(0, 250)}`;
+                  }
+                  invalidateCapabilities();
+                  return;
+                }
+                await new Promise(resolve => setTimeout(resolve, 2000));
+              }
+            } catch (error) {
+              status.textContent = String(error.message || error);
+              toast(`${label} ${app.app} 失败：${status.textContent}`, "danger");
+            } finally {
+              deploy.disabled = stop.disabled = false;
+            }
+          }
+          deploy.onclick = () => act("deploy");
+          stop.onclick = () => act("stop");
+          return h("div", { class: "row spread", style: "padding: 8px 0; border-bottom: 1px solid var(--line, #ddd)" },
+            h("div", { class: "stack" }, h("strong", {}, app.app),
+              h("span", { class: "muted" }, app.provider), status),
+            h("div", { class: "row" }, deploy, stop)
+          );
+        })
+      );
+      if (!apps.length) body.append(h("span", { class: "muted" }, "当前没有可管理的 App。"));
+    } catch (error) {
+      body.replaceChildren(h("div", { class: "connect-hint connect-hint--error" },
+        `部署状态读取失败：${String(error.message || error)}`));
+    } finally {
+      refreshButton.disabled = false;
+    }
+  }
+  refreshButton.onclick = () => refresh(true);
+  refresh();
+  return panel;
 }
 
 function hubOverview(snapshot, connections) {

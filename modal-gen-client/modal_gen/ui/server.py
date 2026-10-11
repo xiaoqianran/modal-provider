@@ -93,6 +93,15 @@ class DemoGateway:
         self._connected = False
         return self.connections()
 
+    def deployments(self, *, refresh: bool = False) -> dict:
+        return {"connected": False, "providers": []}
+
+    def deployment_job(self, job_id: str) -> dict:
+        raise RuntimeError("Demo mode cannot run cloud deployments")
+
+    def deployment_action(self, action: str, body: dict) -> dict:
+        raise RuntimeError("Demo mode cannot run cloud deployments")
+
     def jobs(self, status=None, q="", page=1, page_size=25) -> dict:
         return self.engine.list_jobs(status=status, q=q, page=page, page_size=page_size)
 
@@ -249,6 +258,32 @@ class LiveGateway:
         self.snapshot = None
         self._snapshot_at = 0.0
         return result
+
+    def deployments(self, *, refresh: bool = False) -> dict:
+        return self._req(
+            "GET",
+            f"/v1/deployments{'?refresh=1' if refresh else ''}",
+            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+            timeout=90.0,
+        )
+
+    def deployment_job(self, job_id: str) -> dict:
+        return self._req(
+            "GET",
+            f"/v1/deployments/jobs/{job_id}",
+            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+        )
+
+    def deployment_action(self, action: str, body: dict) -> dict:
+        if action not in {"deploy", "stop"}:
+            raise ValueError("Unsupported action")
+        return self._req(
+            "POST",
+            f"/v1/deployments/{action}",
+            json_body=body,
+            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
+            timeout=30.0,
+        )
 
     def pairings(self) -> dict:
         snap = self._req("GET", "/v1/pairings", headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN})
@@ -488,6 +523,20 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
 
+    def _deployment_allowed(self, *, write: bool = False) -> bool:
+        # Deployment controls can spend money or stop GPU apps. Never expose them
+        # through the console's default 0.0.0.0/wildcard-CORS listener.
+        if self.client_address[0] not in {"127.0.0.1", "::1"}:
+            return False
+        host = self.headers.get("Host", "").split(":")[0].lower()
+        if host not in {"127.0.0.1", "localhost", "[::1]"}:
+            return False
+        if write:
+            origin = self.headers.get("Origin")
+            if origin and urlparse(origin).netloc.lower() != self.headers.get("Host", "").lower():
+                return False
+        return True
+
     def do_OPTIONS(self):
         self.send_response(204)
         self._cors_headers()
@@ -542,6 +591,18 @@ class Handler(BaseHTTPRequestHandler):
     # -- API ---------------------------------------------------------------- #
     def _api_get(self, name: str, query: str):
         g = self.gateway
+        if name == "deployments" or name.startswith("deployments/jobs/"):
+            if not self._deployment_allowed():
+                return self._send_json({"error": "Deployment management is local-only"}, 403)
+            try:
+                if name == "deployments":
+                    params = parse_qs(query)
+                    return self._send_json(
+                        g.deployments(refresh=params.get("refresh", ["0"])[0] == "1")
+                    )
+                return self._send_json(g.deployment_job(name[len("deployments/jobs/") :]))
+            except RuntimeError as exc:
+                return self._send_json({"error": str(exc)}, 502)
         if name == "bootstrap":
             return self._send_json(g.bootstrap())
         if name == "capabilities":
@@ -605,6 +666,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _api_post(self, name: str, body: dict):
         g = self.gateway
+        if name in {"deployments/deploy", "deployments/stop"}:
+            if not self._deployment_allowed(write=True):
+                return self._send_json({"error": "Deployment management is local-only"}, 403)
+            try:
+                return self._send_json(g.deployment_action(name.split("/")[-1], body), 202)
+            except (RuntimeError, ValueError) as exc:
+                return self._send_json({"error": str(exc)}, 502)
         if name == "session":
             return self._send_json(g.session())
         if name == "pairings/approve":

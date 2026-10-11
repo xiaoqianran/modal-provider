@@ -18,6 +18,11 @@ modal_gen/
 ├── gateway/
 │   ├── api.py                # HTTP 路由、请求解析、CORS
 │   └── sessions.py           # 配对、身份、权限和访问范围
+├── deployment/
+│   ├── service.py            # 云端部署、状态、Secret/权重前置检查、任务
+│   ├── weights.py            # 缺失权重准备及校验
+│   ├── manifests.py          # 从外部 Provider 读取部署清单
+│   └── cli.py                # BAT/命令行共用的部署入口
 ├── storage.py                # SQLite 持久化
 ├── identity.py               # 请求哈希和幂等标识
 ├── errors.py
@@ -50,11 +55,12 @@ Studio 共用这些生成服务，并拥有自己的持久化创作流程队列�
 | 使用哪个生成服务？ | Provider | providers/ 与外部 Provider 包 |
 | 如何提交和追踪任务？ | Job | generation/jobs.py |
 | 如何获取生成结果？ | Artifact | generation/artifacts.py |
-| 如何管理云端模型？ | Deployment | deploy-modal.bat / delete-modal.bat |
+| 如何管理云端模型？ | Deployment | deployment/ + UI + BAT |
 
-Deployment 通过命令操作，服务器没有部署服务、部署队列或部署 API。
-Capability 展示 Provider 声明的能力与连接状态，不再集中检查云端 App 的部署版本、权重和就绪状态。
-“已连接”和“能力已声明”不代表 GPU Runtime 已部署；缺少云端资源时由 Provider 返回执行错误。
+Deployment 是独立于 Generation 的本地管理能力。Provider Hub 前端和 BAT 都复用
+`modal_gen.deployment.service.DeploymentService`；部署会检查必需 Secrets，
+验证模型权重和前置资源并在需要时准备权重，失败时停止部署。
+Capability 负责声明生成能力；Deployment 负责云端 App 的版本、权重和就绪状态。
 
 ### Session / Gateway：允许谁调用
 
@@ -154,24 +160,30 @@ Job #1002：把图片转换为 3D
 
 ArtifactService 处理归属校验、文件完整性和跨 Provider 输入解析。
 
-### Deployment：通过命令管理云端模型
+### Deployment：本地前端和命令行共同管理云端模型
 
 ```text
-deploy-modal.bat
-        │
-        │ 部署 / 更新
-        ▼
-   Modal 云端 App ◄── delete-modal.bat 停止部署
-        ▲
-        │ Modal SDK
-     Provider
-        ▲
-        │ 提交生成调用
-   Generation / Job
+    本地 Provider Hub UI            deploy-modal.bat / delete-modal.bat
+              │                                   │
+              ▼                                   ▼
+     /v1/deployments/*              modal_gen.deployment.cli
+              │                                   │
+              └────────────────┬──────────────────┘
+                               ▼
+                         DeploymentService
+                         ├── Secret 预检
+                         ├── 权重 / 前置资源检查
+                         ├── 目标部署与状态
+                         └── 指定 App 停止
+                               │
+                               ▼
+                         Modal 云端 App
 ```
 
-脚本读取各 Provider 自己的 deployment manifest，用 Modal CLI 执行命令；
-辅助脚本位于 `scripts/`，不参与 HTTP 或生成流程。
+部署目标仍从各 Provider 的 deployment manifest 读取，限制为明确声明的 App。
+正式部署复用 Modal SDK 与既有 WeightProvisioner；停止指定 App 通过受控 Modal CLI。
+前端提交后得到 Deployment Job ID，可查询进度；这些管理任务状态当前保存在本地进程内，
+服务重启后不会保留，云端已执行的操作也不会被自动回滚。
 
 ## 启动与部署命令
 
@@ -207,8 +219,8 @@ Windows PowerShell，在本目录运行：
 `stop.bat` 使用 PID、启动时间、执行路径和启动命令验证进程归属，不按端口或进程名批量结束进程。
 本地日志和 PID 记录位于 `.run/`。
 
-云端命令使用本机 Modal CLI profile，支持 `--env <环境>`，也读取 `MODAL_ENVIRONMENT`。
-UI 保存的凭据只供 Provider 连接使用，部署脚本不会读取它们。
+云端命令优先复用 UI 保存的本机 `.secrets/modal.json` 凭据，否则使用本机 Modal CLI profile。
+支持 `--env <环境>`，也读取 `MODAL_ENVIRONMENT`。
 
 首次部署前，在仓库根目录配置 `.env` 中的 HF_TOKEN，再执行：
 
@@ -219,7 +231,8 @@ UI 保存的凭据只供 Provider 连接使用，部署脚本不会读取它们�
 ```
 
 也可以使用各 Provider 自己的模型拉取脚本。模型下载和 World 构建前置资源以各 Provider README 为准。
-部署命令只部署 manifest 中的 App；不会自动补权重、配置 Secrets 或构建 World 依赖。
+部署命令只部署 manifest 中的 App；可以按 Provider 的 manifest 自动准备和校验权重、
+前置资源，但不会自动创建 Hugging Face Secrets，首次部署前仍需要配置。
 
 跨平台前台启动仍支持 `uv run modal-gen`。
 独立入口保留 `modal-gen-agent`、`modal-gen-ui` 和 `modal-studio`。
@@ -239,9 +252,19 @@ GET    /connector/v1/artifacts
 GET    /connector/v1/artifacts/{id}
 ```
 
-生成、配对、连接和产物接口保持原协议。已移除 `/v1/deployments*`、
-`/v1/secrets/huggingface` 及其 UI 代理接口；返回 404。
-HF Secrets 改用仓库根目录的 `modal_provider-create_secrets.bat` 配置。
+生成、配对、连接和产物接口保持原协议。本地管理 API：
+
+```text
+GET    /v1/deployments
+GET    /v1/deployments/jobs
+GET    /v1/deployments/jobs/{id}
+POST   /v1/deployments/deploy
+POST   /v1/deployments/stop
+```
+
+这些接口仅允许本机访问，并需要 `X-Modal-Gen-Session` 管理令牌。
+停止请求额外要求 `confirm: true`。Hugging Face Secrets 使用仓库根目录
+`modal_provider-create_secrets.bat` 配置。
 
 内部 Python 导入路径迁移为 `modal_gen.generation.*` 和 `modal_gen.gateway.sessions`。
 `modal_gen.app:app`、`build_runtime()` 和 `create_app()` 入口保留。
@@ -249,7 +272,10 @@ HF Secrets 改用仓库根目录的 `modal_provider-create_secrets.bat` 配置�
 ## 本地控制台
 
 控制台提供 Provider 连接、Capability 展示、配对批准、生成、任务追踪、取消、PNG 预览及 GLB 下载。
-云端部署和 Secrets 配置显示对应命令说明。
+Provider Hub 中可以针对每个 App 部署、停止、刷新状态并跟踪 Deployment Job。
+因为本地控制台默认可以监听全部网络接口，部署管理 API 默认仅允许从本机的
+`localhost` / `127.0.0.1` 打开 UI 调用；通过远端端口转发访问时，
+云端部署按钮将被拒绝，以免远程匿名请求引发费用或停机。
 
 Modal credentials 验证后保存在本机 `.secrets/modal.json`，下次启动自动恢复；
 不会写入 Connector SQLite。断开连接保留已保存凭据。

@@ -542,8 +542,8 @@ def test_runtime_ui_exposes_resync_and_model_value_sync() -> None:
     )
     create = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_create.js").read_text(encoding="utf-8")
 
-    assert "deploy-modal.bat" in connect
-    assert "delete-modal.bat" in connect
+    assert "deployments/deploy" in connect or "deployments/${action}" in connect
+    assert "deployments/jobs/" in connect
     assert "loadCapabilities({ refresh: true })" in connect
     assert "loadCapabilities({ refresh: true })" in create
     assert "Runtime 状态校验失败" in create

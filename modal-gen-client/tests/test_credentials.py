@@ -8,6 +8,17 @@ import modal_gen.app as app_module
 from modal_gen.credentials import CredentialStore
 
 
+class _FakeDeployments:
+    async def connect_async(self, *_args):
+        return None
+
+    async def connect_default_async(self):
+        return None
+
+    def disconnect(self):
+        return None
+
+
 def test_credentials_persist_and_replace(tmp_path: Path):
     path = tmp_path / ".secrets" / "modal.json"
     store = CredentialStore(path)
@@ -53,7 +64,7 @@ def test_app_restores_saved_credentials_and_new_login_replaces_them(monkeypatch,
         def disconnect_all(self):
             return []
 
-    fake_runtime = SimpleNamespace(capabilities=Capabilities())
+    fake_runtime = SimpleNamespace(capabilities=Capabilities(), deployments=_FakeDeployments())
     monkeypatch.setattr(app_module, "runtime", lambda: fake_runtime)
 
     with TestClient(app_module.create_app()) as client:
@@ -91,7 +102,7 @@ def test_manual_login_cancels_background_credential_restore(monkeypatch, tmp_pat
         def disconnect_all(self):
             return []
 
-    fake_runtime = SimpleNamespace(capabilities=Capabilities())
+    fake_runtime = SimpleNamespace(capabilities=Capabilities(), deployments=_FakeDeployments())
     monkeypatch.setattr(app_module, "runtime", lambda: fake_runtime)
 
     async def scenario():
@@ -141,7 +152,7 @@ def test_local_profile_connect_uses_modal_profile_without_persisting_tokens(
         def disconnect_all(self):
             return []
 
-    fake_runtime = SimpleNamespace(capabilities=Capabilities())
+    fake_runtime = SimpleNamespace(capabilities=Capabilities(), deployments=_FakeDeployments())
     monkeypatch.setattr(app_module, "runtime", lambda: fake_runtime)
 
     with TestClient(app_module.create_app()) as client:
