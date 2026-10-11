@@ -5,12 +5,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from ..errors import ConnectorError, ProviderError
+from ..identity import safe_json, verify_request_identity
+from ..providers.protocol import ProviderContext, ProviderJob
+from ..storage import Store
 from .artifacts import ArtifactService
 from .capabilities import CapabilityRegistry, iso
-from .errors import ConnectorError, ProviderError
-from .identity import safe_json, verify_request_identity
-from .providers.protocol import ProviderContext, ProviderJob
-from .storage import Store
 
 _TERMINAL = {"succeeded", "failed", "cancelled", "expired"}
 _ALLOWED_TRANSITIONS = {
@@ -100,7 +100,6 @@ class JobService:
 
         relations = self._relations(payload.get("parent"), owner_client, owner_origin)
         inputs = safe_json(payload["inputs"], "inputs")
-        self.capabilities.ensure_submission_ready(provider_id, operation, inputs)
         options = safe_json(payload.get("options") or {}, "options")
         profile = None if payload.get("profile") is None else str(payload["profile"])
         adapter = self.capabilities.adapter(provider_id)

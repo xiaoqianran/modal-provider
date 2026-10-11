@@ -93,59 +93,6 @@ class DemoGateway:
         self._connected = False
         return self.connections()
 
-    def deployments(self, *, force: bool = False) -> dict:
-        del force
-        return {
-            "providers": [
-                {"id": "modal-2d", "status": "current", "apps": []},
-                {"id": "modal-3d", "status": "current", "apps": []},
-            ]
-        }
-
-    def huggingface_secret(self) -> dict:
-        return {"connected": True, "configured": True, "secrets": []}
-
-    def save_huggingface_secret(self, _token: str) -> dict:
-        return self.huggingface_secret()
-
-    def deploy(
-        self,
-        provider: str = "all",
-        app_name: str | None = None,
-        *,
-        missing_only: bool = False,
-        force: bool = False,
-        strategy: str = "rolling",
-    ) -> dict:
-        rows = self.deployments()
-        selected = (
-            rows["providers"]
-            if provider == "all"
-            else [row for row in rows["providers"] if row["id"] == provider]
-        )
-        if app_name:
-            for row in selected:
-                row["apps"] = [item for item in row.get("apps", []) if item.get("app") == app_name]
-        job = {
-            "id": "dep_demo",
-            "status": "succeeded",
-            "provider": provider,
-            "app": app_name,
-            "missingOnly": missing_only,
-            "force": force,
-            "strategy": strategy,
-            "result": {"providers": selected},
-        }
-        return {"job": job}
-
-    def deployment_jobs(self, limit: int = 20) -> dict:
-        return {"jobs": []}
-
-    def deployment_job(self, job_id: str) -> dict:
-        if job_id != "dep_demo":
-            raise RuntimeError("deployment job not found")
-        return self.deploy()["job"]
-
     def jobs(self, status=None, q="", page=1, page_size=25) -> dict:
         return self.engine.list_jobs(status=status, q=q, page=page, page_size=page_size)
 
@@ -302,72 +249,6 @@ class LiveGateway:
         self.snapshot = None
         self._snapshot_at = 0.0
         return result
-
-    def deployments(self, *, force: bool = False) -> dict:
-        return self._req(
-            "GET",
-            f"/v1/deployments{'?refresh=1' if force else ''}",
-            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
-            timeout=30.0,
-        )
-
-    def huggingface_secret(self) -> dict:
-        return self._req(
-            "GET",
-            "/v1/secrets/huggingface",
-            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
-            timeout=30.0,
-        )
-
-    def save_huggingface_secret(self, token: str) -> dict:
-        return self._req(
-            "POST",
-            "/v1/secrets/huggingface",
-            json_body={"token": token},
-            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
-            timeout=30.0,
-        )
-
-    def deploy(
-        self,
-        provider: str = "all",
-        app_name: str | None = None,
-        *,
-        missing_only: bool = False,
-        force: bool = False,
-        strategy: str = "rolling",
-    ) -> dict:
-        body = {
-            "provider": provider,
-            "missingOnly": missing_only,
-            "force": force,
-            "strategy": strategy,
-        }
-        if app_name:
-            body["app"] = app_name
-        return self._req(
-            "POST",
-            "/v1/deployments/deploy",
-            json_body=body,
-            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
-            timeout=10.0,
-        )
-
-    def deployment_jobs(self, limit: int = 20) -> dict:
-        return self._req(
-            "GET",
-            f"/v1/deployments/jobs?limit={limit}",
-            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
-            timeout=10.0,
-        )
-
-    def deployment_job(self, job_id: str) -> dict:
-        return self._req(
-            "GET",
-            f"/v1/deployments/jobs/{job_id}",
-            headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN},
-            timeout=10.0,
-        )["job"]
 
     def pairings(self) -> dict:
         snap = self._req("GET", "/v1/pairings", headers={"X-Modal-Gen-Session": _CONNECTOR_TOKEN})
@@ -671,29 +552,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(g.pairings())
         if name == "connections":
             return self._send_json(g.connections())
-        if name == "deployments":
-            try:
-                params = parse_qs(query)
-                force = params.get("refresh", ["0"])[0] in {"1", "true", "yes"}
-                return self._send_json(g.deployments(force=force))
-            except RuntimeError as exc:
-                return self._send_json({"error": str(exc)}, 409)
-        if name == "secrets/huggingface":
-            try:
-                return self._send_json(g.huggingface_secret())
-            except RuntimeError as exc:
-                return self._send_json({"error": str(exc)}, 502)
-        if name == "deployments/jobs":
-            try:
-                return self._send_json(g.deployment_jobs())
-            except RuntimeError as exc:
-                return self._send_json({"error": str(exc)}, 502)
-        if name.startswith("deployments/jobs/"):
-            try:
-                job_id = name[len("deployments/jobs/") :]
-                return self._send_json({"job": g.deployment_job(job_id)})
-            except RuntimeError as exc:
-                return self._send_json({"error": str(exc)}, 502)
         if name == "jobs":
             params = parse_qs(query)
             return self._send_json(
@@ -761,24 +619,6 @@ class Handler(BaseHTTPRequestHandler):
         if name == "providers/disconnect":
             try:
                 return self._send_json(g.disconnect_providers())
-            except RuntimeError as exc:
-                return self._send_json({"error": str(exc)}, 502)
-        if name == "secrets/huggingface":
-            try:
-                return self._send_json(g.save_huggingface_secret(body.get("token", "")))
-            except RuntimeError as exc:
-                return self._send_json({"error": str(exc)}, 502)
-        if name == "deployments/deploy":
-            try:
-                return self._send_json(
-                    g.deploy(
-                        body.get("provider", "all"),
-                        body.get("app"),
-                        missing_only=bool(body.get("missingOnly", False)),
-                        force=bool(body.get("force", False)),
-                        strategy=str(body.get("strategy") or "rolling"),
-                    )
-                )
             except RuntimeError as exc:
                 return self._send_json({"error": str(exc)}, 502)
         if name == "jobs":

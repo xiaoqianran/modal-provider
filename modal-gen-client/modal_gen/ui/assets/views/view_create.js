@@ -39,7 +39,7 @@ export async function mountCreate(root) {
     root.append(
       stateEmpty(
         "当前没有可提交的 Provider",
-        "Modal 中已有的 App 仍会显示在下面；版本过旧、权重未就绪或未部署的模型不会被误当成可运行。",
+        "这里展示 Provider 声明的能力。请先使用 deploy-modal.bat 部署云端模型，实际执行状态由 Provider 返回。",
         { iconName: "alert" }
       ),
       unavailableProviderPanel(providers)

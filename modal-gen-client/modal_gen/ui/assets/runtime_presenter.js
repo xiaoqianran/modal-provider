@@ -12,14 +12,16 @@ export function capabilityModels(capability) {
 
   return declared.map((model) => ({
     model,
-    state: "unknown",
-    runnable: false,
+    state: "declared",
+    runnable: canSubmitCapability(capability),
   }));
 }
 
 export function modelStateLabel(row, separator = " · ") {
   const parts = [];
   switch (row?.state) {
+    case "declared":
+      return "已声明 · 云端未检查";
     case "ready":
       return "可用";
     case "outdated":

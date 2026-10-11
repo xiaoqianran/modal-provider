@@ -29,8 +29,9 @@ modal-provider
 HF_TOKEN=<具备目标模型访问权限的 Hugging Face Token>
 ```
 
-该 Secret 名称、环境和字段名都必须完全一致。部署脚本及 `modal-gen-client` 会先检查
-权重；缺失时自动下载，下载和二次校验未通过则停止部署，不会启动不完整的 Worker。
+该 Secret 名称、环境和字段名都必须完全一致。先运行各 Provider 的模型拉取脚本
+下载和校验权重，再使用 `modal-gen-client/deploy-modal.bat` 部署云端 App。
+`modal-gen-client` 生成服务器不再管理部署、自动补权重或集中检查 Runtime 就绪状态。
 没有该 Secret 时，3D 部署会明确失败，不能通过部署命令绕过。
 
 2D 的公开 SANA-Sprint 模型本身不强制要求 Token，但为了统一部署所有模型，建议同样配置

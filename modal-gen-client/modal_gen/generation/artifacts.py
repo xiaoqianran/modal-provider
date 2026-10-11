@@ -7,15 +7,15 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .capabilities import CapabilityRegistry, iso
-from .errors import ConnectorError
-from .paths import artifact_cache_dir
-from .providers.protocol import (
+from ..errors import ConnectorError
+from ..paths import artifact_cache_dir
+from ..providers.protocol import (
     ConnectorArtifactDescriptor,
     ConnectorArtifactInput,
     ProviderArtifact,
 )
-from .storage import Store
+from ..storage import Store
+from .capabilities import CapabilityRegistry, iso
 
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
 MAX_INPUT_ARTIFACT_BYTES = 20 * 1024 * 1024

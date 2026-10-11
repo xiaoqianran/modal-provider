@@ -51,7 +51,7 @@ def test_loader_preserves_queued_and_unknown_operation_jobs():
 
 
 def test_connector_job_transition_accepts_recovery_and_processing_kind():
-    from modal_gen.jobs import JobService, _job_kind, _stage
+    from modal_gen.generation.jobs import JobService, _job_kind, _stage
 
     JobService._assert_transition("accepted", "queued")
     JobService._assert_transition("accepted", "submission_unknown")

@@ -59,29 +59,10 @@ export async function mountConnect(root) {
   }
   root.append(providers);
 
-  // Runtime deployment state is technical detail. Render the useful business
-  // capabilities first, then resolve Modal control-plane state in the background.
-  const runtimeBody = h("div", { class: "runtime-disclosure__body stack" },
-    hubOverview(snap, connections),
-    h("div", { class: "runtime-panel-host" }, skeletonRows(3))
-  );
-  const runtimeDetails = h("details", { class: "disclosure runtime-disclosure" },
-    h("summary", { class: "disclosure__head" },
-      icon("chevron", 14, "chevron"),
-      h("span", {}, "运行时与部署"),
-      h("span", { class: "muted runtime-disclosure__summary" }, "技术信息 · 后台刷新")
-    ),
-    runtimeBody
-  );
-  root.append(runtimeDetails);
-  const runtimeHost = runtimeBody.querySelector(".runtime-panel-host");
-  apiGet("deployments").then((deployments) => {
-    runtimeHost.replaceChildren(deploymentPanel(deployments.providers || []));
-  }).catch((error) => {
-    runtimeHost.replaceChildren(
-      h("div", { class: "connect-hint" }, `Runtime 状态暂不可用：${String(error.message || error)}`)
-    );
-  });
+  root.append(hubOverview(snap, connections));
+  root.append(h("div", { class: "connect-hint" },
+    "云端模型部署请运行 deploy-modal.bat；停止云端 App 请运行 delete-modal.bat。"
+  ));
 
   try {
     const pr = await apiGet("pairings");
@@ -130,20 +111,16 @@ export async function openConnectionSettings() {
     return;
   }
   let connections = [];
-  let hfSecret = { connected: false, configured: false, secrets: [] };
   try {
     const data = await apiGet("connections");
     connections = data.providers || [];
-    if (connections.some((item) => item.connected === true)) {
-      hfSecret = await apiGet("secrets/huggingface");
-    }
   } catch (error) {
     toast(`读取连接状态失败：${String(error.message || error)}`, "danger");
   }
-  openDrawer("连接 Modal", connectionPanel(connections, hfSecret));
+  openDrawer("连接 Modal", connectionPanel(connections));
 }
 
-function connectionPanel(connections, hfSecret) {
+function connectionPanel(connections) {
   const command = h("input", {
     class: "input input--mono connect-command",
     type: "password",
@@ -173,29 +150,10 @@ function connectionPanel(connections, hfSecret) {
   );
   const connect = h("button", { class: "btn btn--primary connect-action", type: "button" });
   const disconnect = h("button", { class: "btn", type: "button" }, "断开全部");
-  const deployMissing = h("button", { class: "btn", type: "button" }, "补缺失");
-  const deployAll = h("button", { class: "btn", type: "button" }, "全部重部署");
-  const hfToken = h("input", {
-    class: "input input--mono",
-    type: "password",
-    autocomplete: "off",
-    spellcheck: "false",
-    placeholder: "hf_...",
-  });
-  const hfHint = h("div", { class: `connect-hint ${hfSecret.configured ? "connect-hint--ok" : ""}` },
-    hfSecret.connected
-      ? (hfSecret.configured ? "已保存到 Modal Secrets。Token 不会回显。" : "尚未配置 Hugging Face Token。")
-      : "连接 Modal 后可以保存 Hugging Face Token。"
-  );
-  const saveHf = h("button", {
-    class: "btn", type: "button", disabled: !connectedNow,
-  }, "保存 HF Token");
   const connectionIndicators = [];
-
   function renderConnectionState() {
     connect.disabled = false;
     disconnect.disabled = !connectedNow;
-    saveHf.disabled = !connectedNow;
     connect.replaceChildren(
       icon("plug", 15),
       connectedNow ? "重新连接 Modal" : "连接 Modal"
@@ -205,33 +163,6 @@ function connectionPanel(connections, hfSecret) {
       indicator.label.textContent = connectedNow ? "Connected" : "Disconnected";
     }
   }
-
-  saveHf.addEventListener("click", async () => {
-    const token = hfToken.value.trim();
-    if (!token) {
-      hfHint.className = "connect-hint connect-hint--error";
-      hfHint.textContent = "Hugging Face Token 不能为空。";
-      return;
-    }
-    saveHf.disabled = true;
-    hfHint.className = "connect-hint";
-    hfHint.textContent = "正在写入 Modal Secrets…";
-    try {
-      const result = await apiPost("secrets/huggingface", { token });
-      hfToken.value = "";
-      hfHint.className = "connect-hint connect-hint--ok";
-      hfHint.textContent = result.configured
-        ? "已写入 huggingface + hyworld2-hf；Token 不会回显。"
-        : "已保存，但部分 Secret 状态尚未确认。";
-      toast("Hugging Face Token 已保存到 Modal", "ok");
-    } catch (e) {
-      hfToken.value = "";
-      hfHint.className = "connect-hint connect-hint--error";
-      hfHint.textContent = String(e.message || e);
-    } finally {
-      saveHf.disabled = false;
-    }
-  });
 
   command.addEventListener("input", () => {
     const parsed = parseModalTokenCommand(command.value);
@@ -285,59 +216,6 @@ function connectionPanel(connections, hfSecret) {
     }
   });
 
-  async function runGlobalDeployment({ missingOnly, force, label }) {
-    deployMissing.disabled = true;
-    deployAll.disabled = true;
-    status.className = "connect-hint";
-    status.textContent = `${label}；首次部署可能需要构建镜像。`;
-    try {
-      const secretState = await apiGet("secrets/huggingface");
-      if (!secretState.configured) {
-        throw new Error("请先保存 Hugging Face Token；3D / World Runtime 依赖 huggingface + hyworld2-hf Secrets。");
-      }
-      const result = await apiPost("deployments/deploy", {
-        provider: "all",
-        missingOnly,
-        force,
-        strategy: "rolling",
-      });
-      const job = result.job;
-      if (!job?.id) throw new Error("Deployment Job identity 无效");
-      status.className = "connect-hint connect-hint--ok";
-      status.textContent = `${label}已提交，后台继续执行。`;
-      toast(`${label}已提交`, "ok");
-      trackDeploymentJob(job.id, {
-        onFinished: (finished) => {
-          const failed = ["failed", "partial"].includes(finished.status);
-          status.className = failed ? "connect-hint connect-hint--error" : "connect-hint connect-hint--ok";
-          status.textContent = failed ? `${label}未全部完成，请查看 Runtime 状态。` : `${label}完成。`;
-          toast(failed ? `${label}部分失败` : `${label}完成`, failed ? "danger" : "ok");
-          invalidateCapabilities();
-          refreshCurrentRoute();
-          refreshNavCounts();
-        },
-      });
-    } catch (e) {
-      status.className = "connect-hint connect-hint--error";
-      status.textContent = String(e.message || e);
-    } finally {
-      deployMissing.disabled = false;
-      deployAll.disabled = false;
-    }
-  }
-
-  deployMissing.addEventListener("click", () => runGlobalDeployment({
-    missingOnly: true,
-    force: false,
-    label: "部署缺失 Runtime",
-  }));
-
-  deployAll.addEventListener("click", () => runGlobalDeployment({
-    missingOnly: false,
-    force: true,
-    label: "全部重部署",
-  }));
-
   disconnect.addEventListener("click", async () => {
     disconnect.disabled = true;
     try {
@@ -386,16 +264,7 @@ function connectionPanel(connections, hfSecret) {
     h("label", { class: "drawer-field" }, h("span", {}, "Modal Token ID"), tokenId),
     h("label", { class: "drawer-field" }, h("span", {}, "Modal Token Secret"), tokenSecret),
     h("div", { class: "drawer-actions" }, disconnect, connect),
-    h("div", { class: "drawer-actions" }, deployMissing, deployAll),
-    h("div", { class: "drawer-section" },
-      h("div", { class: "drawer-section__title" }, "Hugging Face"),
-      h("p", { class: "drawer-copy" },
-        "用于 gated / private 模型下载。保存后写入 Modal Secrets：huggingface 与 hyworld2-hf。"
-      ),
-      h("label", { class: "drawer-field" }, h("span", {}, "HF Token"), hfToken),
-      hfHint,
-      h("div", { class: "drawer-actions" }, saveHf)
-    )
+    h("p", { class: "drawer-copy" }, "Hugging Face Secrets 使用仓库根目录的 modal_provider-create_secrets.bat 配置。")
   );
 }
 
@@ -410,9 +279,9 @@ function providerCard(provider, connection) {
         ? "World 世界生成"
         : provider.displayName || provider.id;
   const serviceCopy = provider.id === "modal-2d"
-    ? "Prompt → 图片。选择已就绪模型后直接创建任务。"
+    ? "Prompt → 图片。云端模型部署后可以创建任务。"
     : provider.id === "modal-3d"
-      ? "图片 → GLB。前处理与 3D Worker 会分别显示就绪状态。"
+      ? "图片 → GLB。前处理和推理由 3D Provider 完成。"
       : provider.id === "modal-world"
         ? "图片 + Prompt → Mesh / Semantics / Visual 世界产物。"
         : "生成能力";
@@ -537,170 +406,4 @@ function kv(rows) {
 
 function skeletonRows(n) {
   return h("div", {}, ...Array.from({ length: n }, () => h("div", { class: "skeleton skel-row" })));
-}
-
-function deploymentPanel(rows) {
-  const body = h("div", { class: "panel__body stack" });
-  const deployAll = deploymentAction("部署全部缺失", "all", null, body, false, true, false);
-  const resync = runtimeResyncAction(body);
-  body.append(h("div", { class: "row spread" },
-    h("p", { class: "muted" }, "部署会修改 Modal Runtime；重新同步只读取 App / revision / weights / capability，不会重新部署。"),
-    h("div", { class: "row" }, resync, deployAll)
-  ));
-
-  for (const row of rows) {
-    const providerLabel = row.id === "modal-2d" ? "2D Runtime" : row.id === "modal-3d" ? "3D Runtime" : row.id === "modal-world" ? "World Runtime" : row.id;
-    const providerAction = deploymentAction(
-      row.status === "current" ? "重新部署全部" : row.status === "stale" ? "更新全部" : "部署缺失",
-      row.id,
-      null,
-      body,
-      false,
-      !["current", "stale"].includes(row.status),
-      row.status === "current"
-    );
-    body.append(h("div", { class: "cap-row" },
-      h("div", { class: "row spread" },
-        h("div", { class: "stack" },
-          h("strong", {}, providerLabel),
-          h("span", { class: "muted mono" }, `${(row.apps || []).length} apps`)
-        ),
-        h("div", { class: "row" }, deploymentStatusBadge(row.status), providerAction)
-      ),
-      h("div", { class: "stack" }, ...(row.apps || []).map((app) => runtimeAppRow(row.id, app, body)))
-    ));
-  }
-
-  return h("div", { class: "panel" },
-    h("div", { class: "panel__head" }, h("h2", { class: "panel__title" }, "Modal Runtime")),
-    body
-  );
-}
-
-function runtimeAppRow(provider, app, refreshHost) {
-  const action = deploymentAction(
-    app.status === "current" ? "重新部署" : app.status === "stale" ? "更新" : "部署",
-    provider,
-    app.app,
-    refreshHost,
-    true,
-    false,
-    app.status === "current"
-  );
-  const weightsStatus = app.weights?.status;
-  const detail = app.weightError
-    ? app.weightError
-    : weightsStatus && weightsStatus !== "ready"
-      ? `weights: ${weightsStatus}`
-      : app.error;
-  return h("div", { class: "row spread" },
-    h("div", { class: "stack" },
-      h("span", { class: "mono" }, app.app || "—"),
-      detail ? h("span", { class: "muted" }, detail) : null
-    ),
-    h("div", { class: "row" }, deploymentStatusBadge(app.status), action)
-  );
-}
-
-function deploymentStatusBadge(status) {
-  const mapped = status === "current" ? "available" : ["partial", "stale"].includes(status) ? "degraded" : "unavailable";
-  const label = status === "current" ? "当前版本" : status === "stale" ? "已部署 · 需更新" : status === "missing" ? "未部署" : status === "partial" ? "部分状态" : status === "error" ? "状态异常" : "失败";
-  return h("span", { class: `badge badge--${mapped === "available" ? "ok" : mapped === "degraded" ? "warn" : "neutral"}` }, label);
-}
-
-function runtimeResyncAction(refreshHost) {
-  const button = h("button", { class: "btn", type: "button" }, "重新同步状态");
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    button.replaceChildren(h("span", { class: "spinner" }), "同步中…");
-    try {
-      const deployments = await apiGet("deployments?refresh=1");
-      invalidateCapabilities();
-      await loadCapabilities({ refresh: true });
-      if (refreshHost?.parentElement) {
-        refreshHost.parentElement.replaceWith(deploymentPanel(deployments.providers || []));
-      }
-      refreshCurrentRoute();
-      refreshNavCounts();
-      toast("Runtime / Capability 状态已重新同步", "ok");
-    } catch (error) {
-      toast(`重新同步失败：${String(error.message || error)}`, "danger");
-      button.disabled = false;
-      button.textContent = "重新同步状态";
-    }
-  });
-  return button;
-}
-
-function deploymentAction(
-  label, provider, appName, refreshHost, compact = false, missingOnly = false, force = false
-) {
-  const button = h("button", { class: `btn ${compact ? "btn--sm" : ""}`, type: "button" }, label);
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    button.textContent = "部署中…";
-    try {
-      const payload = {
-        provider,
-        missingOnly,
-        force,
-        strategy: "rolling",
-      };
-      if (appName) payload.app = appName;
-      const response = await apiPost("deployments/deploy", payload);
-      const job = response.job;
-      if (!job?.id) throw new Error("Deployment Job identity 无效");
-      toast("Deployment Job 已提交，后台继续执行", "ok");
-      trackDeploymentJob(job.id, {
-        onFinished: async (finished) => {
-          const failed = ["failed", "partial"].includes(finished.status);
-          toast(
-            failed ? "Runtime 部署未全部成功" : "Runtime 部署完成",
-            failed ? "danger" : "ok"
-          );
-          await refreshDeploymentPanel(refreshHost);
-          invalidateCapabilities();
-          refreshCurrentRoute();
-          refreshNavCounts();
-        },
-      });
-    } catch (error) {
-      toast(String(error.message || error), "danger");
-    } finally {
-      button.disabled = false;
-      button.textContent = label;
-    }
-  });
-  return button;
-}
-
-function trackDeploymentJob(jobId, { onProgress = null, onFinished = null } = {}) {
-  void waitForDeploymentJob(jobId, onProgress)
-    .then((job) => onFinished?.(job))
-    .catch((error) => {
-      toast(`Deployment Job 状态跟踪失败：${String(error.message || error)}`, "danger");
-    });
-}
-
-async function waitForDeploymentJob(jobId, onProgress = null) {
-  const terminal = new Set(["succeeded", "partial", "failed"]);
-  for (let attempt = 0; attempt < 3600; attempt += 1) {
-    const response = await apiGet(`deployments/jobs/${encodeURIComponent(jobId)}`);
-    const job = response.job;
-    if (!job?.id) throw new Error("Deployment Job identity 无效");
-    if (onProgress) onProgress(job);
-    if (terminal.has(job.status)) return job;
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  throw new Error("Deployment Job 查询超时；后台部署可能仍在继续");
-}
-
-async function refreshDeploymentPanel(host) {
-  if (!host?.parentElement) return;
-  try {
-    const deployments = await apiGet("deployments");
-    host.parentElement.replaceWith(deploymentPanel(deployments.providers || []));
-  } catch (error) {
-    toast(`读取 Runtime 状态失败：${String(error.message || error)}`, "danger");
-  }
 }

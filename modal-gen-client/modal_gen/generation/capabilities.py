@@ -4,11 +4,10 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 
-from .constants import CONNECTOR_ID, CONNECTOR_VERSION, CONTRACT_VERSION
-from .errors import ProviderError
-from .providers.protocol import ProviderAdapter
-from .runtime_state import project_runtime_failure, project_runtime_readiness
-from .storage import Store
+from ..constants import CONNECTOR_ID, CONNECTOR_VERSION, CONTRACT_VERSION
+from ..errors import ProviderError
+from ..providers.protocol import ProviderAdapter
+from ..storage import Store
 
 
 def iso(value: datetime) -> str:
@@ -16,10 +15,9 @@ def iso(value: datetime) -> str:
 
 
 class CapabilityRegistry:
-    def __init__(self, store: Store, adapters: list[ProviderAdapter], deployments=None) -> None:
+    def __init__(self, store: Store, adapters: list[ProviderAdapter]) -> None:
         self.store = store
         self.adapters = {adapter.id: adapter for adapter in adapters}
-        self.deployments = deployments
         if len(self.adapters) != len(adapters):
             raise ValueError("duplicate provider adapter")
         self.connector = {
@@ -34,7 +32,7 @@ class CapabilityRegistry:
         for adapter in self.adapters.values():
             try:
                 descriptor = adapter.descriptor()
-                providers.append(self._with_runtime_readiness(adapter.id, descriptor))
+                providers.append(descriptor)
             except ProviderError:
                 providers.append(adapter.unavailable_descriptor())
         canonical = {
@@ -58,145 +56,9 @@ class CapabilityRegistry:
         self.store.save_snapshot(snapshot)
         return snapshot
 
-    async def snapshot_async(
-        self, *, now: datetime | None = None, force_runtime: bool = False
-    ) -> dict[str, object]:
-        timestamp = now or datetime.now(UTC)
-        providers: list[dict[str, object]] = []
-        for adapter in self.adapters.values():
-            try:
-                descriptor = adapter.descriptor()
-                providers.append(
-                    await self._with_runtime_readiness_async(
-                        adapter.id, descriptor, force_runtime=force_runtime
-                    )
-                )
-            except ProviderError:
-                providers.append(adapter.unavailable_descriptor())
-        canonical = {
-            "contractVersion": CONTRACT_VERSION,
-            "connector": self.connector,
-            "providers": providers,
-        }
-        digest = hashlib.sha256(
-            json.dumps(
-                canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-            ).encode()
-        ).hexdigest()
-        snapshot = {
-            **canonical,
-            "revision": f"caprev_{digest[:24]}",
-            "hash": f"sha256:{digest}",
-            "generatedAt": iso(timestamp),
-            "expiresAt": iso(timestamp + timedelta(minutes=30)),
-            "cachePolicy": {"maxAgeSeconds": 60},
-        }
-        self.store.save_snapshot(snapshot)
-        return snapshot
-
-    def _with_runtime_readiness(
-        self, provider_id: str, descriptor: dict[str, object]
-    ) -> dict[str, object]:
-        if self.deployments is None or not self.deployments.connected:
-            return descriptor
-        try:
-            readiness = self.deployments.cached_status(provider_id)
-        except Exception as exc:
-            return project_runtime_failure(descriptor, provider_id, exc)
-        if readiness is None:
-            return descriptor
-        return project_runtime_readiness(descriptor, readiness)
-
-    async def _with_runtime_readiness_async(
-        self,
-        provider_id: str,
-        descriptor: dict[str, object],
-        *,
-        force_runtime: bool = False,
-    ) -> dict[str, object]:
-        if self.deployments is None or not self.deployments.connected:
-            return descriptor
-        try:
-            readiness = await self.deployments.status_async(provider_id, force=force_runtime)
-        except Exception as exc:
-            return project_runtime_failure(descriptor, provider_id, exc)
-        return project_runtime_readiness(descriptor, readiness)
-
-    def ensure_submission_ready(
-        self, provider_id: str, operation: str, inputs: dict[str, object]
-    ) -> None:
-        """Verify the selected runtime immediately before provider dispatch."""
-
-        if self.deployments is None or not self.deployments.manages_provider(provider_id):
-            return
-        adapter = self.adapter(provider_id)
-        descriptor = adapter.descriptor()
-        try:
-            connection = adapter.connection_status()
-        except (AttributeError, ProviderError):
-            connection = {}
-        if connection.get("managed") is False:
-            return
-        if not self.deployments.connected:
-            raise ProviderError("JOB_RUNTIME_UNAVAILABLE", "Provider Runtime 当前未连接", 409)
-
-        capability = self._operation(descriptor, operation)
-        model_schema = self._model_schema(capability)
-        requested_model = inputs.get("model")
-        model = str(requested_model).strip() if isinstance(requested_model, str) else ""
-        if not model and model_schema is not None:
-            default_model = model_schema.get("default")
-            if isinstance(default_model, str):
-                model = default_model.strip()
-
-        try:
-            target = capability.get("runtimeTarget")
-            if isinstance(target, str) and target:
-                readiness = self.deployments.submission_status(provider_id, runtime_target=target)
-            else:
-                readiness = self.deployments.submission_status(provider_id, model or None)
-        except Exception as exc:
-            raise ProviderError(
-                "JOB_RUNTIME_UNAVAILABLE", f"Provider Runtime 状态校验失败: {exc}", 409
-            ) from exc
-
-        projected = project_runtime_readiness(descriptor, readiness)
-        projected_capability = self._operation(projected, operation)
-        if (
-            projected.get("status") not in {"available", "degraded"}
-            or projected_capability.get("status") != "available"
-        ):
-            raise ProviderError("JOB_RUNTIME_UNAVAILABLE", "Provider Runtime 当前不可提交", 409)
-        if model:
-            live_schema = self._model_schema(projected_capability)
-            live_models = live_schema.get("enum") if live_schema is not None else None
-            if isinstance(live_models, list) and model not in live_models:
-                raise ProviderError(
-                    "JOB_RUNTIME_UNAVAILABLE", f"模型 {model} 当前 Runtime 不可用", 409
-                )
-
-    @staticmethod
-    def _operation(descriptor: dict[str, object], operation: str) -> dict[str, object]:
-        capabilities = descriptor.get("capabilities")
-        if isinstance(capabilities, list):
-            for capability in capabilities:
-                if isinstance(capability, dict) and capability.get("operation") == operation:
-                    return capability
-        raise ProviderError("JOB_CAPABILITY_UNAVAILABLE", "Capability 当前不可用", 409)
-
-    @staticmethod
-    def _model_schema(capability: dict[str, object]) -> dict[str, object] | None:
-        input_desc = capability.get("input")
-        if not isinstance(input_desc, dict):
-            return None
-        schema = input_desc.get("schema")
-        if not isinstance(schema, dict):
-            return None
-        properties = schema.get("properties")
-        if not isinstance(properties, dict):
-            return None
-        model = properties.get("model")
-        return model if isinstance(model, dict) else None
+    async def snapshot_async(self, *, now: datetime | None = None) -> dict[str, object]:
+        # Kept async for callers sharing the provider connection lifecycle.
+        return self.snapshot(now=now)
 
     def get(self, hash_value: str) -> dict[str, object] | None:
         return self.store.get_snapshot(hash_value)

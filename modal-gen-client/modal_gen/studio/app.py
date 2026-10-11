@@ -7,8 +7,9 @@ from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 
-from ..app import _json_body, _read_bounded_body, build_runtime
+from ..app import build_runtime
 from ..errors import ConnectorError
+from ..gateway.api import _json_body, _read_bounded_body
 from .auth import StudioAuth
 from .service import StudioService
 
@@ -22,7 +23,6 @@ def create_app(service=None, auth=None, *, background=True, persist=None):
         if service is None:
             runtime = build_runtime()
             if os.getenv("STUDIO_CONNECT_MODAL", "1") == "1":
-                await runtime.deployments.connect_default_async()
                 await runtime.capabilities.connect_all_default_async()
             service = StudioService.configured(runtime, persist=persist)
         if background:

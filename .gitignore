@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .codegraph/
 *.log
+modal-gen-client/.run/
 3daistudio/repomix-output.txt
 
 # wrangler files

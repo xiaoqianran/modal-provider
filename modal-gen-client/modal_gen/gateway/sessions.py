@@ -6,16 +6,16 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
-from .capabilities import CapabilityRegistry, iso
-from .constants import (
+from ..constants import (
     CLIENT_IDENTITY,
     CONTRACT_VERSION,
     SESSION_PATH,
     SESSION_SCOPES,
     allow_any_origin,
 )
-from .errors import ConnectorError
-from .storage import Store
+from ..errors import ConnectorError
+from ..generation.capabilities import CapabilityRegistry, iso
+from ..storage import Store
 
 
 class SessionService:

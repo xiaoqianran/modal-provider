@@ -127,7 +127,6 @@ def test_server_api_endpoints(ui_server: str) -> None:
     assert _get(ui_server, "bootstrap")["mode"] == "demo"
     assert _get(ui_server, "capabilities")["snapshot"]["providers"]
     assert _get(ui_server, "artifacts")["artifacts"]
-    assert _get(ui_server, "deployments")["providers"][0]["status"] == "current"
     assert _get(ui_server, "jobs?status=all&page=1&page_size=25")["total"] >= 3
 
 
@@ -247,7 +246,7 @@ def test_connection_drawer_restores_state_after_connect_request() -> None:
         encoding="utf-8"
     )
     assert 'connectedNow ? "重新连接 Modal" : "连接 Modal"' in source
-    assert "saveHf.disabled = !connectedNow" in source
+    assert "disconnect.disabled = !connectedNow" in source
     assert source.count("finally {\n      renderConnectionState();\n    }") >= 2
     assert 'status.textContent = "Modal 已连接。"' in source
 
@@ -506,21 +505,6 @@ def test_ui_surfaces_deployed_but_blocked_models() -> None:
     assert "版本过旧" in presenter
 
 
-def test_runtime_ui_exposes_explicit_global_deployment_modes() -> None:
-    source = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_connect.js").read_text(
-        encoding="utf-8"
-    )
-
-    assert "补缺失" in source
-    assert "全部重部署" in source
-    assert "missingOnly: true" in source
-    assert "force: false" in source
-    assert "missingOnly: false" in source
-    assert "force: true" in source
-    assert 'strategy: "rolling"' in source
-    assert 'app.status === "current"' in source
-
-
 def test_live_gateway_submit_retries_timeout_with_same_identity(monkeypatch) -> None:
     from modal_gen.ui.server import LiveGateway
 
@@ -552,38 +536,14 @@ def test_live_gateway_submit_retries_timeout_with_same_identity(monkeypatch) -> 
     assert attempts[0]["json_body"]["idempotencyKey"] == attempts[1]["json_body"]["idempotencyKey"]
 
 
-def test_live_gateway_force_refresh_and_redeploy_are_forwarded(monkeypatch) -> None:
-    from modal_gen.ui.server import LiveGateway
-
-    gateway = LiveGateway()
-    calls = []
-
-    def fake_req(method, path, **kwargs):
-        calls.append((method, path, kwargs))
-        return {"providers": []} if method == "GET" else {"job": {"id": "dep_1"}}
-
-    monkeypatch.setattr(gateway, "_req", fake_req)
-    gateway.deployments(force=True)
-    gateway.deploy("modal-3d", "modal-3d-rembg", force=True, strategy="rolling")
-
-    assert calls[0][1] == "/v1/deployments?refresh=1"
-    assert calls[1][2]["json_body"] == {
-        "provider": "modal-3d",
-        "missingOnly": False,
-        "force": True,
-        "strategy": "rolling",
-        "app": "modal-3d-rembg",
-    }
-
-
 def test_runtime_ui_exposes_resync_and_model_value_sync() -> None:
     connect = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_connect.js").read_text(
         encoding="utf-8"
     )
     create = (PROJECT_ROOT / "modal_gen/ui/assets/views/view_create.js").read_text(encoding="utf-8")
 
-    assert "重新同步状态" in connect
-    assert 'apiGet("deployments?refresh=1")' in connect
+    assert "deploy-modal.bat" in connect
+    assert "delete-modal.bat" in connect
     assert "loadCapabilities({ refresh: true })" in connect
     assert "loadCapabilities({ refresh: true })" in create
     assert "Runtime 状态校验失败" in create
@@ -664,9 +624,3 @@ def test_live_gateway_rebuilds_session_when_capability_hash_changes(monkeypatch)
 
     assert calls == [True]
     assert gateway.token == "new-token"
-
-
-def test_runtime_deploy_requires_huggingface_secret_in_ui():
-    source = Path("modal_gen/ui/assets/views/view_connect.js").read_text(encoding="utf-8")
-    assert 'apiGet("secrets/huggingface")' in source
-    assert "请先保存 Hugging Face Token" in source

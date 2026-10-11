@@ -43,15 +43,7 @@ def test_app_restores_saved_credentials_and_new_login_replaces_them(monkeypatch,
     CredentialStore(path).save("ak_old", "as_old")
     monkeypatch.setenv("MODAL_GEN_CREDENTIALS_FILE", str(path))
 
-    deployment_connects = []
     provider_connects = []
-
-    class Deployments:
-        async def connect_async(self, token_id, token_secret):
-            deployment_connects.append((token_id, token_secret))
-
-        def disconnect(self):
-            return None
 
     class Capabilities:
         async def connect_all_async(self, token_id, token_secret):
@@ -61,11 +53,10 @@ def test_app_restores_saved_credentials_and_new_login_replaces_them(monkeypatch,
         def disconnect_all(self):
             return []
 
-    fake_runtime = SimpleNamespace(deployments=Deployments(), capabilities=Capabilities())
+    fake_runtime = SimpleNamespace(capabilities=Capabilities())
     monkeypatch.setattr(app_module, "runtime", lambda: fake_runtime)
 
     with TestClient(app_module.create_app()) as client:
-        assert deployment_connects == [("ak_old", "as_old")]
         assert provider_connects == [("ak_old", "as_old")]
         response = client.post(
             "/v1/providers/connect",
@@ -78,7 +69,6 @@ def test_app_restores_saved_credentials_and_new_login_replaces_them(monkeypatch,
     assert saved is not None
     assert saved.token_id == "ak_new"
     assert saved.token_secret == "as_new"
-    assert deployment_connects[-1] == ("ak_new", "as_new")
     assert provider_connects[-1] == ("ak_new", "as_new")
 
 
@@ -88,28 +78,20 @@ def test_manual_login_cancels_background_credential_restore(monkeypatch, tmp_pat
     monkeypatch.setenv("MODAL_GEN_CREDENTIALS_FILE", str(path))
 
     restore_started = asyncio.Event()
-    deployment_connects = []
     provider_connects = []
-
-    class Deployments:
-        async def connect_async(self, token_id, token_secret):
-            deployment_connects.append((token_id, token_secret))
-            if token_id == "ak_old":
-                restore_started.set()
-                await asyncio.Event().wait()
-
-        def disconnect(self):
-            return None
 
     class Capabilities:
         async def connect_all_async(self, token_id, token_secret):
             provider_connects.append((token_id, token_secret))
+            if token_id == "ak_old":
+                restore_started.set()
+                await asyncio.Event().wait()
             return [{"id": "modal-2d", "connected": True}]
 
         def disconnect_all(self):
             return []
 
-    fake_runtime = SimpleNamespace(deployments=Deployments(), capabilities=Capabilities())
+    fake_runtime = SimpleNamespace(capabilities=Capabilities())
     monkeypatch.setattr(app_module, "runtime", lambda: fake_runtime)
 
     async def scenario():
@@ -141,8 +123,7 @@ def test_manual_login_cancels_background_credential_restore(monkeypatch, tmp_pat
             assert response["providers"][0]["connected"] is True
 
     asyncio.run(scenario())
-    assert deployment_connects == [("ak_old", "as_old"), ("ak_new", "as_new")]
-    assert provider_connects == [("ak_new", "as_new")]
+    assert provider_connects == [("ak_old", "as_old"), ("ak_new", "as_new")]
 
 
 def test_local_profile_connect_uses_modal_profile_without_persisting_tokens(
@@ -152,13 +133,6 @@ def test_local_profile_connect_uses_modal_profile_without_persisting_tokens(
     monkeypatch.setenv("MODAL_GEN_CREDENTIALS_FILE", str(path))
     calls: list[str] = []
 
-    class Deployments:
-        async def connect_default_async(self):
-            calls.append("deployments")
-
-        def disconnect(self):
-            return None
-
     class Capabilities:
         async def connect_all_default_async(self):
             calls.append("capabilities")
@@ -167,7 +141,7 @@ def test_local_profile_connect_uses_modal_profile_without_persisting_tokens(
         def disconnect_all(self):
             return []
 
-    fake_runtime = SimpleNamespace(deployments=Deployments(), capabilities=Capabilities())
+    fake_runtime = SimpleNamespace(capabilities=Capabilities())
     monkeypatch.setattr(app_module, "runtime", lambda: fake_runtime)
 
     with TestClient(app_module.create_app()) as client:
@@ -181,5 +155,5 @@ def test_local_profile_connect_uses_modal_profile_without_persisting_tokens(
         "providers": [{"id": "modal-2d", "connected": True}],
         "credentialSource": "modal-profile",
     }
-    assert calls == ["deployments", "capabilities"]
+    assert calls == ["capabilities"]
     assert CredentialStore(path).load() is None
