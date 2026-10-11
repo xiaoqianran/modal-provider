@@ -17,12 +17,11 @@ from .hyworld2_runtime import (
     HYWORLD2_SOURCE,
     hyworld2_worldgen_stage2_h100_image,
 )
+from .pipelines.resume import decide_resume
 from .worldgen_job import (
     build_stage_manifest,
     fingerprint_files,
-    manifest_matches,
     resolve_worldgen_job_root,
-    stage_manifest_path,
     write_stage_manifest,
 )
 from .worldgen_policy import (
@@ -189,11 +188,11 @@ class WorldNavRenderer:
             target / "navmesh/metadata.json",
         ]
         if not force and all(path.exists() for path in required):
-            manifest_ok = manifest_matches(target, "stage1", manifest)
-            legacy_adopted = (
-                job_id == "case000" and not stage_manifest_path(target, "stage1").exists()
-            )
-            if manifest_ok or legacy_adopted:
+            decision = decide_resume(target, "stage1", manifest, job_id=job_id)
+
+            legacy_adopted = decision.adopt_legacy
+
+            if decision.reuse:
                 if legacy_adopted:
                     write_stage_manifest(target, "stage1", manifest)
                     worldgen_outputs.commit()
@@ -346,11 +345,11 @@ class WorldNavRenderer:
                     valid_captions = False
                     break
             if valid_captions:
-                manifest_ok = manifest_matches(target, "stage2", manifest)
-                legacy_adopted = (
-                    job_id == "case000" and not stage_manifest_path(target, "stage2").exists()
-                )
-                if manifest_ok or legacy_adopted:
+                decision = decide_resume(target, "stage2", manifest, job_id=job_id)
+
+                legacy_adopted = decision.adopt_legacy
+
+                if decision.reuse:
                     if legacy_adopted:
                         write_stage_manifest(target, "stage2", manifest)
                         worldgen_outputs.commit()

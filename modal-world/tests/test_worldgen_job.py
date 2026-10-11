@@ -55,9 +55,9 @@ def test_stage2_and_stage4_accept_job_id_and_use_manifest():
     assert 'def worldgen_case000_stage2(' not in app
     assert "worldnav_worker.render" in Path("modal_world/pipelines/orchestrator.py").read_text()
     assert 'def worldgen_case000_stage4(job_id: str = "case000", force: bool = False)' in app
-    assert 'manifest_matches(target, "stage2"' in stage2
+    assert 'decide_resume(target, "stage2"' in stage2
     assert 'write_stage_manifest(target, "stage2"' in stage2
-    assert 'manifest_matches(target, "stage4"' in stage45_core
+    assert 'decide_resume(target, "stage4"' in stage45_core
     assert 'write_stage_manifest(target, "stage4"' in stage45_core
 
 

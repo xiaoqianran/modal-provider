@@ -16,12 +16,11 @@ from .hyworld2_runtime import (
     HYWORLD2_SOURCE,
     hyworld2_worldgen_stage3_h100_image,
 )
+from .pipelines.resume import decide_resume
 from .worldgen_job import (
     build_stage_manifest,
     fingerprint_files,
-    manifest_matches,
     resolve_worldgen_job_root,
-    stage_manifest_path,
     write_stage_manifest,
 )
 from .worldgen_policy import NON_REFERENCE_CAMERA_FRAME_BUDGET, select_camera_files
@@ -297,11 +296,11 @@ class WorldStereoWorker:
             and aligned_pcd.is_file()
             and len(results) == expected_count
         ):
-            manifest_ok = manifest_matches(target, "stage3", manifest)
-            legacy_adopted = (
-                job_id == "case000" and not stage_manifest_path(target, "stage3").exists()
-            )
-            if manifest_ok or legacy_adopted:
+            decision = decide_resume(target, "stage3", manifest, job_id=job_id)
+
+            legacy_adopted = decision.adopt_legacy
+
+            if decision.reuse:
                 if legacy_adopted:
                     write_stage_manifest(target, "stage3", manifest)
                     worldgen_outputs.commit()
