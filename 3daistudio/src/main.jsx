@@ -1,17 +1,30 @@
-import React from "react";
+import React, {Suspense, lazy} from "react";
 import {createRoot} from "react-dom/client";
 import {BrowserRouter,Route,Routes} from "react-router-dom";
 import "./tailwind.css";
 import {AppLayout} from "./layout.jsx";
-import {StudioDashboard as Dashboard, StudioWorkbench} from "./studio-pages.jsx";
-import {ImageStudio,ToolDetail} from "./pages-image.jsx";
-import {ThreeDWorkspace,TextureGenerator,TexturePainter} from "./pages-3d.jsx";
-import {CommunityPage,ToolboxPage,SVGTool,SplatPage} from "./pages-tools.jsx";
-import {FlowPage,FlowEditor,Tutorials,VideoStudio,Platform,ModelComparison,UpdatesPage,Placeholder} from "./pages-misc.jsx";
-import {SettingsPage} from "./settings.jsx";
+const Dashboard = lazy(() => import("./features/dashboard/StudioDashboard.jsx").then(m => ({default: m.StudioDashboard})));
+const StudioWorkbench = lazy(() => import("./features/studio/StudioWorkbench.jsx").then(m => ({default: m.StudioWorkbench})));
+const ImageTo3DWorkspace = lazy(() => import("./features/image-to-3d/ImageTo3DWorkspace.jsx").then(m => ({default: m.ImageTo3DWorkspace})));
+const ImageStudio = lazy(() => import("./pages-image.jsx").then(m => ({default: m.ImageStudio})));
+const ToolDetail = lazy(() => import("./pages-image.jsx").then(m => ({default: m.ToolDetail})));
+const TexturePainter = lazy(() => import("./pages-3d.jsx").then(m => ({default: m.TexturePainter})));
+const CommunityPage = lazy(() => import("./pages-tools.jsx").then(m => ({default: m.CommunityPage})));
+const ToolboxPage = lazy(() => import("./pages-tools.jsx").then(m => ({default: m.ToolboxPage})));
+const SVGTool = lazy(() => import("./pages-tools.jsx").then(m => ({default: m.SVGTool})));
+const SplatPage = lazy(() => import("./pages-tools.jsx").then(m => ({default: m.SplatPage})));
+const FlowPage = lazy(() => import("./pages-misc.jsx").then(m => ({default: m.FlowPage})));
+const FlowEditor = lazy(() => import("./pages-misc.jsx").then(m => ({default: m.FlowEditor})));
+const Tutorials = lazy(() => import("./pages-misc.jsx").then(m => ({default: m.Tutorials})));
+const VideoStudio = lazy(() => import("./pages-misc.jsx").then(m => ({default: m.VideoStudio})));
+const Platform = lazy(() => import("./pages-misc.jsx").then(m => ({default: m.Platform})));
+const ModelComparison = lazy(() => import("./pages-misc.jsx").then(m => ({default: m.ModelComparison})));
+const UpdatesPage = lazy(() => import("./pages-misc.jsx").then(m => ({default: m.UpdatesPage})));
+const Placeholder = lazy(() => import("./pages-misc.jsx").then(m => ({default: m.Placeholder})));
+const SettingsPage = lazy(() => import("./settings.jsx").then(m => ({default: m.SettingsPage})));
 
 function App(){
-  return <Routes>
+  return <Suspense fallback={<main className="p-5 text-sm text-zinc-400" role="status">Loading workspace…</main>}><Routes>
     <Route element={<AppLayout/>}>
       <Route path="/" element={<Dashboard/>}/>
       <Route path="/Dashboard" element={<Dashboard/>}/>
@@ -21,8 +34,8 @@ function App(){
       <Route path="/ImageGeneration/generate/:tool" element={<StudioWorkbench mode="image"/>}/>
       <Route path="/ImageGeneration/:category" element={<ImageStudio/>}/>
       <Route path="/ImageGeneration/:category/:tool" element={<ToolDetail/>}/>
-      <Route path="/ImageTo3D/app" element={<ThreeDWorkspace mode="image"/>}/>
-      <Route path="/ImageTo3D" element={<ThreeDWorkspace mode="image"/>}/>
+      <Route path="/ImageTo3D/app" element={<ImageTo3DWorkspace/>}/>
+      <Route path="/ImageTo3D" element={<ImageTo3DWorkspace/>}/>
       <Route path="/TextTo3D/app" element={<StudioWorkbench mode="text"/>}/>
       <Route path="/TextTo3D" element={<StudioWorkbench mode="text"/>}/>
       <Route path="/TextureGenerator/app" element={<StudioWorkbench/>}/>
@@ -45,7 +58,7 @@ function App(){
     {/* marketing pages keep their own chrome */}
     <Route path="/Platform" element={<Platform/>}/>
     <Route path="/ModelComparison" element={<ModelComparison/>}/>
-  </Routes>;
+  </Routes></Suspense>;
 }
 
 createRoot(document.getElementById("root")).render(<BrowserRouter><App/></BrowserRouter>);

@@ -8,9 +8,8 @@ import {submitJob, cancelJob, terminal, listJobs} from "../../api/jobs.js";
 import {uploadAsset3d, assetContentUrl, listAssets} from "../../api/assets.js";
 import {listProjects, createProject as createStudioProject} from "../../api/projects.js";
 import {useJob} from "../../hooks/useJob.js";
+import {fieldClass, panelClass} from "../../components/studio-ui.js";
 
-const fieldClass = "w-full rounded-lg border border-zinc-700 bg-zinc-900 p-2 text-sm";
-const panelClass = "rounded-xl border border-zinc-800 bg-zinc-950/40 p-4";
 
 export function StudioWorkbench({mode = "operations"}) {
   const [search, setSearch] = useSearchParams();
