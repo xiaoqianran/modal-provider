@@ -72,7 +72,7 @@ def test_deployment_manifest_has_tokenrig_and_weightless_pose():
 
 def test_tokenrig_worker_pins_official_source_and_checkpoint_revision():
     source = (
-        Path(__file__).resolve().parents[1] / "modal_3d" / "tokenrig_worker.py"
+        Path(__file__).resolve().parents[1] / "modal_3d" / "workers" / "tokenrig.py"
     ).read_text(encoding="utf-8")
     assert (
         'SOURCE_REVISION = "273b691d35989d71cd17ff2895fdc735097b92d1"'
@@ -87,7 +87,7 @@ def test_tokenrig_worker_pins_official_source_and_checkpoint_revision():
 
 def test_pose_worker_supports_tokenrig_and_validates_bpy_runtime():
     source = (
-        Path(__file__).resolve().parents[1] / "modal_3d" / "pose_worker.py"
+        Path(__file__).resolve().parents[1] / "modal_3d" / "workers" / "pose.py"
     ).read_text(encoding="utf-8")
     assert 'return "tokenrig", mapping' in source
     assert '"libxrender1"' in source
@@ -134,3 +134,4 @@ def test_glb_validation_modes_are_not_globally_relaxed(tmp_path, monkeypatch):
     monkeypatch.setattr(operation_runner, "_glb_json_document", lambda _path: animated)
     with pytest.raises(ValueError, match="pose snapshot"):
         operation_runner.validate_file(path, "model/gltf-binary", glb_mode="posed")
+
