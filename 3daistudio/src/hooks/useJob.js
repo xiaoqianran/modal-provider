@@ -5,7 +5,7 @@ import {cancelJob, getJob3d, terminal} from "../api/jobs.js";
  * Observe a server-owned Job without resubmitting it.
  * Closing the page only stops polling; the remote task continues.
  */
-export function useJob({intervalMs = 2000} = {}) {
+export function useJob({intervalMs = 2000, enabled = true} = {}) {
   const [job, setJob] = React.useState(null);
   const [error, setError] = React.useState("");
   const [jobId, setJobId] = React.useState(null);
@@ -17,7 +17,7 @@ export function useJob({intervalMs = 2000} = {}) {
   }, []);
 
   React.useEffect(() => {
-    if (!jobId || (job?.id === jobId && terminal(job))) return;
+    if (!enabled || !jobId || (job?.id === jobId && terminal(job))) return;
     let active = true;
     let timeout;
     const refresh = async () => {
@@ -38,7 +38,7 @@ export function useJob({intervalMs = 2000} = {}) {
       active = false;
       clearTimeout(timeout);
     };
-  }, [jobId, job?.status, intervalMs]);
+  }, [enabled, jobId, job?.status, intervalMs]);
 
   const cancel = React.useCallback(async () => {
     if (!jobId) return null;

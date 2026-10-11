@@ -1,6 +1,7 @@
 import React from "react";
 import {Download,Layers3,Paintbrush,Scissors,Upload,WandSparkles} from "lucide-react";
 import {Badge,Btn,PanelLabel} from "./components.jsx";
+import {useJob} from "./hooks/useJob.js";
 import {
   fetchArtifactBlob3d,
   jobArtifactRef,
@@ -41,7 +42,9 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
   const [available, setAvailable] = React.useState([]);
   const [segmentJob, setSegmentJob] = React.useState(null);
   const [activeOperation, setActiveOperation] = React.useState("");
-  const [operationJob, setOperationJob] = React.useState(null);
+  const {job: operationJob, track: setOperationJob} = useJob({enabled: false});
+  const abortRef = React.useRef(null);
+  React.useEffect(() => () => abortRef.current?.abort(), []);
   const [error, setError] = React.useState("");
   const [history, setHistory] = React.useState([]);
   const [partIndices, setPartIndices] = React.useState("0");
@@ -91,6 +94,8 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
     setActiveOperation(operation);
     setOperationJob(null);
     setError("");
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const submitted = await submitOperation3d({operation, inputs, options});
       setOperationJob(submitted);
@@ -98,6 +103,7 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
         intervalMs: 1200,
         timeoutMs: 30 * 60 * 1000,
         onUpdate: setOperationJob,
+        signal: controller.signal,
       });
       if (String(finished.status || "").toLowerCase() !== TERMINAL_OK) {
         throw new Error(errorText(finished, `${operation} failed`));
@@ -118,8 +124,10 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
       ].slice(0, 8));
       afterSuccess?.(finished);
     } catch (err) {
+      if (err.name === "AbortError") return;
       setError(err.message || String(err));
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setActiveOperation("");
     }
   };
@@ -171,6 +179,8 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
     setActiveOperation("texture_generate");
     setOperationJob(null);
     setError("");
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const reference = await uploadAsset3d(referenceFile);
       const submitted = await submitOperation3d({
@@ -186,6 +196,7 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
         intervalMs: 1200,
         timeoutMs: 30 * 60 * 1000,
         onUpdate: setOperationJob,
+        signal: controller.signal,
       });
       if (String(finished.status || "").toLowerCase() !== TERMINAL_OK) {
         throw new Error(errorText(finished, "texture_generate failed"));
@@ -204,8 +215,10 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
         ...rows,
       ].slice(0, 8));
     } catch (err) {
+      if (err.name === "AbortError") return;
       setError(err.message || String(err));
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setActiveOperation("");
     }
   };

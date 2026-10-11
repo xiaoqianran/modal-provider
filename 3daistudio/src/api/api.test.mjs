@@ -53,3 +53,26 @@ test("domain endpoints preserve same-origin request contracts", async () => {
     globalThis.fetch = oldFetch;
   }
 });
+
+test("pollJob3d stops local waiting when page aborts without cancelling remote job", async () => {
+  const previousFetch = globalThis.fetch;
+  const controller = new AbortController();
+  const calls = [];
+  globalThis.fetch = async url => {
+    calls.push(url);
+    return {ok: true, json: async () => ({job: {id: "pending-1", status: "running"}})};
+  };
+  try {
+    await assert.rejects(
+      jobs.pollJob3d("pending-1", {
+        intervalMs: 100,
+        signal: controller.signal,
+        onUpdate: () => controller.abort(),
+      }),
+      {name: "AbortError"},
+    );
+    assert.deepEqual(calls, ["/api/v1/jobs/pending-1"]);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});

@@ -3,6 +3,7 @@ import {ChevronDown,Download,RefreshCw,Upload,X} from "lucide-react";
 import {Badge,Btn,PanelLabel} from "./components.jsx";
 import {Viewport3DUpload} from "./three-viewport.jsx";
 import {AssetOperationsPanel} from "./asset-operations.jsx";
+import {useJob} from "./hooks/useJob.js";
 import {
   fetchArtifactBlob3d,
   jobArtifactRef,
@@ -85,13 +86,15 @@ export function ImageTo3DWorkspace() {
   const [currentAssetRef, setCurrentAssetRef] = React.useState(null);
   const [generationJobId, setGenerationJobId] = React.useState(null);
   const [providerState, setProviderState] = React.useState("checking");
-  const [job, setJob] = React.useState(null);
+  const {job, track: setJob} = useJob({enabled: false});
   const [phase, setPhase] = React.useState("idle");
   const [error, setError] = React.useState("");
   const [elapsed, setElapsed] = React.useState(0);
   const sourceUrlRef = React.useRef(null);
   const artifactUrlRef = React.useRef(null);
   const startedAtRef = React.useRef(null);
+  const abortRef = React.useRef(null);
+  React.useEffect(() => () => abortRef.current?.abort(), []);
 
   const selectedModel = models.find((model) => model.id === selectedId) || FALLBACK_MODEL;
   const profiles = modelProfiles(selectedModel);
@@ -175,6 +178,8 @@ export function ImageTo3DWorkspace() {
     setArtifactName("");
     startedAtRef.current = Date.now();
     setElapsed(0);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       setPhase("submitting");
       const submitted = await submitImageTo3d({
@@ -190,6 +195,7 @@ export function ImageTo3DWorkspace() {
         intervalMs: 1500,
         timeoutMs: 20 * 60 * 1000,
         onUpdate: setJob,
+        signal: controller.signal,
       });
       const status = (finished.status || finished.state || "").toLowerCase();
       if (status !== "succeeded") throw new Error(terminalError(finished));
@@ -203,8 +209,11 @@ export function ImageTo3DWorkspace() {
       setPhase("done");
       setProviderState("ready");
     } catch (err) {
+      if (err.name === "AbortError") return;
       setPhase("failed");
       setError(err.message || String(err));
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
     }
   };
 
