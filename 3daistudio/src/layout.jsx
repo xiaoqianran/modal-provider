@@ -128,6 +128,8 @@ export function Shell({children}){
         <NavItem to="/TexturePainter" label="Texture Painter" Icon={Paintbrush}/>
         <Divider/>
         <NavItem to="/Flow/app" label="Flow" Icon={Workflow} badge="NEW"/>
+        <NavItem to="/SketchToImage/app" label="Live Sketch" Icon={Paintbrush} badge="NEW"/>
+        <NavItem to="/SculptTo3D/app" label="Live Sculpt" Icon={Cuboid} badge="NEW"/>
         <Divider/>
         <NavItem to="/Tools/Tutorials" label="Learning Studio" Icon={GraduationCap}/>
         <NavItem label="Community Creations" Icon={Globe2} expandable open={community} onClick={()=>setCommunity(v=>!v)}/>

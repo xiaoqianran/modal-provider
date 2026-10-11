@@ -286,9 +286,9 @@ export function ImageTo3DWorkspace() {
 
   return (
     <>
-      <div className="grid min-h-full grid-cols-1 lg:grid-cols-[1fr_380px]">
-        <section className="relative flex flex-col border-r border-zinc-800/40 p-4">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="image3d-workspace">
+        <section className="image3d-stage">
+          <div className="image3d-statusbar">
             <span className="inline-flex items-center rounded-lg border border-zinc-700/40 bg-zinc-800/40 px-2.5 py-1.5 text-xs text-zinc-200">Default Project</span>
             <span className={"rounded-full border px-2 py-1 text-[10px] " + (providerState === "ready" ? "border-emerald-500/30 text-emerald-300" : "border-amber-500/30 text-amber-300")}>
               {providerLabel}
@@ -298,11 +298,11 @@ export function ImageTo3DWorkspace() {
             </button>
           </div>
 
-          <Badge>IMAGE TO 3D · LIVE PROVIDER</Badge>
-          <h1 className="mt-2 text-2xl font-semibold text-zinc-50">Turn Images Into 3D Assets</h1>
-          <p className="text-sm text-zinc-400">modal_3d.client → Modal GPU → verified GLB → Three.js viewport</p>
+          <div className="image3d-eyebrow">IMAGE TO 3D <span>·</span> LIVE PROVIDER</div>
+          <h1 className="image3d-title">Turn Images Into 3D Assets</h1>
+          <p className="image3d-subtitle">Generate a 3D asset from a reference image. Preview and download your GLB here.</p>
 
-          <div className="relative mt-4 min-h-[380px] flex-1">
+          <div className="image3d-viewport">
             <Viewport3DUpload
               withToggles
               externalUrl={artifactUrl}
@@ -324,13 +324,13 @@ export function ImageTo3DWorkspace() {
           </div>
         </section>
 
-        <aside className="space-y-3 p-4">
+        <aside className="image3d-inspector">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-zinc-100">IMAGE TO 3D</h2>
             <Badge>{selectedModel.id}</Badge>
           </div>
 
-          <button type="button" onClick={() => setPicker(true)} className="flex w-full items-center justify-between rounded-xl border border-zinc-700/50 bg-zinc-800/40 p-3 text-left">
+          <button type="button" onClick={() => setPicker(true)} className="image3d-model-picker">
             <div>
               <b className="block text-sm text-zinc-100">{selectedModel.name || selectedModel.id}</b>
               <small className="text-xs text-zinc-400">{selectedModel.description || "Provider model"}</small>
@@ -338,13 +338,13 @@ export function ImageTo3DWorkspace() {
             <ChevronDown size={16} className="shrink-0 text-zinc-400"/>
           </button>
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="image3d-chip-row">
             {models.slice(0, 4).map((model) => (
               <button
                 type="button"
                 key={model.id}
                 onClick={() => setSelectedId(model.id)}
-                className={"rounded-lg border px-2.5 py-1.5 text-xs " + (model.id === selectedId ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-200" : "border-zinc-700/40 bg-zinc-800/40 text-zinc-400")}
+                className={"image3d-choice " + (model.id === selectedId ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-200" : "border-zinc-700/40 bg-zinc-800/40 text-zinc-400")}
               >
                 {model.name || model.id}
               </button>
@@ -356,7 +356,7 @@ export function ImageTo3DWorkspace() {
             label="Upload Image"
             accept="image/*"
             onFile={chooseSource}
-            className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 p-4 hover:border-zinc-600"
+            className="image3d-upload"
           >
             {sourceUrl ? (
               <>
@@ -374,13 +374,13 @@ export function ImageTo3DWorkspace() {
           </AssetUploader>
 
           <PanelLabel>Generation Profile</PanelLabel>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="image3d-chip-row">
             {profiles.map((item) => (
               <button
                 type="button"
                 key={item.id}
                 onClick={() => setProfile(item.id)}
-                className={"rounded-lg border px-2.5 py-1.5 text-xs " + (profile === item.id ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-200" : "border-zinc-700/40 text-zinc-400")}
+                className={"image3d-choice " + (profile === item.id ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-200" : "border-zinc-700/40 text-zinc-400")}
               >
                 {item.name || item.id}
               </button>
@@ -393,10 +393,10 @@ export function ImageTo3DWorkspace() {
             min="0"
             value={seed}
             onChange={(event) => setSeed(event.target.value)}
-            className="h-9 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-200 outline-none"
+            className="image3d-number"
           />
 
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-[11px] text-zinc-400">
+          <div className="image3d-summary">
             <div><b className="text-zinc-200">Output:</b> {selectedModel.artifact?.mime || "model/gltf-binary"}</div>
             <div><b className="text-zinc-200">Profile:</b> {profile}</div>
             {referenceSeconds && <div><b className="text-zinc-200">Reference E2E:</b> ~{Math.round(referenceSeconds)}s ({selectedModel.reference?.status || "benchmark"})</div>}
@@ -408,7 +408,7 @@ export function ImageTo3DWorkspace() {
             </div>
           )}
 
-          <Btn primary className="w-full !py-2.5" disabled={running || !sourceFile || providerState !== "ready" || !models.length} onClick={runGenerate}>
+          <Btn primary className="image3d-generate w-full !py-3" disabled={running || !sourceFile || providerState !== "ready" || !models.length} onClick={runGenerate}>
             {running ? "Generating…" : artifactUrl ? "Generate Again" : "Generate 3D Model"}
             <span className="text-[10px] opacity-80">
               {providerState === "disconnected" ? "Connect Modal credentials in the Provider client" : "Real modal-provider job"}

@@ -13,6 +13,8 @@ const CommunityPage = lazy(() => import("./pages-tools.jsx").then(m => ({default
 const ToolboxPage = lazy(() => import("./pages-tools.jsx").then(m => ({default: m.ToolboxPage})));
 const SVGTool = lazy(() => import("./pages-tools.jsx").then(m => ({default: m.SVGTool})));
 const SplatPage = lazy(() => import("./pages-tools.jsx").then(m => ({default: m.SplatPage})));
+const LiveSketch = lazy(() => import("./features/studio/LiveSketch.jsx").then(m => ({default:m.LiveSketch})));
+const LiveSculpt = lazy(() => import("./features/studio/LiveWorkspaces.jsx").then(m => ({default:m.LiveSculpt})));
 const FlowPage = lazy(() => import("./pages-misc.jsx").then(m => ({default: m.FlowPage})));
 const FlowEditor = lazy(() => import("./pages-misc.jsx").then(m => ({default: m.FlowEditor})));
 const Tutorials = lazy(() => import("./pages-misc.jsx").then(m => ({default: m.Tutorials})));
@@ -41,6 +43,8 @@ function App(){
       <Route path="/TextureGenerator/app" element={<StudioWorkbench/>}/>
       <Route path="/TexturePainter" element={<TexturePainter/>}/>
       <Route path="/Flow/app" element={<FlowPage/>}/>
+      <Route path="/SketchToImage/app" element={<LiveSketch/>}/>
+      <Route path="/SculptTo3D/app" element={<LiveSculpt/>}/>
       <Route path="/Flow/editor" element={<FlowEditor/>}/>
       <Route path="/Tools/Tutorials" element={<Tutorials/>}/>
       <Route path="/Tools/CommunityCreations" element={<CommunityPage mode="3d"/>}/>
