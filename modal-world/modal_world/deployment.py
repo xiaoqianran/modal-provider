@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 
 from .artifact_bundles import deployment_prerequisites
+from .models import get_model
 
 
 def runtime_revision() -> str:
@@ -22,6 +23,7 @@ def runtime_revision() -> str:
 def deployment_manifest() -> dict[str, object]:
     revision = runtime_revision()
     prerequisites = deployment_prerequisites()
+    model = get_model("hyworld2")
     return {
         "provider": "modal-world",
         "targets": [
@@ -31,7 +33,7 @@ def deployment_manifest() -> dict[str, object]:
                 "module": "modal_world.app",
                 "kind": "pipeline",
                 "revision": revision,
-                "models": ["hyworld2"],
+                "models": [model.id],
                 "required": True,
                 "prerequisites": prerequisites,
             },
@@ -41,7 +43,7 @@ def deployment_manifest() -> dict[str, object]:
                 "module": "modal_world.stage2_app",
                 "kind": "worker",
                 "revision": revision,
-                "models": ["hyworld2"],
+                "models": [model.id],
                 "required": True,
                 "prerequisites": prerequisites,
             },
@@ -51,7 +53,7 @@ def deployment_manifest() -> dict[str, object]:
                 "module": "modal_world.stage3_app",
                 "kind": "worker",
                 "revision": revision,
-                "models": ["hyworld2"],
+                "models": [model.id],
                 "required": True,
                 "prerequisites": prerequisites,
             },
@@ -61,7 +63,7 @@ def deployment_manifest() -> dict[str, object]:
                 "module": "modal_world.stage45_app",
                 "kind": "worker",
                 "revision": revision,
-                "models": ["hyworld2"],
+                "models": [model.id],
                 "required": True,
                 "prerequisites": prerequisites,
             },
@@ -71,9 +73,10 @@ def deployment_manifest() -> dict[str, object]:
                 "module": "modal_world.runtime_compile_app",
                 "kind": "compiler",
                 "revision": revision,
-                "models": ["hyworld2"],
+                "models": [model.id],
                 "required": True,
                 "prerequisites": prerequisites,
             },
         ],
     }
+
