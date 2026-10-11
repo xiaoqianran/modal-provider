@@ -1,7 +1,7 @@
 import React from "react";
 import {NavLink, useSearchParams} from "react-router-dom";
 import {Btn} from "../../components.jsx";
-import {Viewport3DUpload} from "../../three-viewport.jsx";
+import {LazyViewport3DUpload as Viewport3DUpload} from "../../components/LazyViewport3DUpload.jsx";
 import {errorMessage} from "../../api/client.js";
 import {capabilities, listCapabilities3d, TEXT_IMAGE, IMAGE_3D} from "../../api/capabilities.js";
 import {submitJob, cancelJob, terminal, listJobs} from "../../api/jobs.js";
