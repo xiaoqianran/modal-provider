@@ -9,6 +9,8 @@ import {uploadAsset3d, assetContentUrl, listAssets} from "../../api/assets.js";
 import {listProjects, createProject as createStudioProject} from "../../api/projects.js";
 import {useJob} from "../../hooks/useJob.js";
 import {fieldClass, panelClass} from "../../components/studio-ui.js";
+import {ModelSelector} from "../../components/generation/ModelSelector.jsx";
+import {ParameterForm} from "../../components/generation/ParameterForm.jsx";
 
 
 export function StudioWorkbench({mode = "operations"}) {
@@ -55,21 +57,6 @@ export function StudioWorkbench({mode = "operations"}) {
     setValues(defaults);
     setOptions(Object.fromEntries(Object.entries(cap?.optionsSchema?.properties || {}).filter(([, s]) => s.default !== undefined).map(([k, s]) => [k, s.default])));
   }, [cap, search]);
-  const inputControl = (key, schema, current, setter, required = false) => {
-    const value = current[key];
-    const set = v => setter(old => ({...old, [key]: v}));
-    return <label key={key} className="block space-y-1 text-xs text-zinc-300"><span>{key}{required ? " *" : ""}</span>
-      {schema.type === "object" ? <>
-        <select aria-label={key} className={fieldClass} value={value || ""} onChange={e => set(e.target.value)}><option value="">Select an asset</option>{assets.filter(a => !schema.properties?.mime?.const || a.mime === schema.properties.mime.const).map(a => <option key={a.id} value={a.id}>{a.name} · {a.role}</option>)}</select>
-        {schema.properties?.mime?.const !== "application/json" && <input aria-label={`Upload ${key}`} type="file" accept={schema.properties?.mime?.const === "image/png" ? "image/*" : ".glb"} disabled={busy} onChange={async e => {
-          if (!e.target.files[0]) return; setBusy(true); setError("");
-          try {const asset = await uploadAsset3d(e.target.files[0], project); setAssets(a => [asset, ...a.filter(x => x.id !== asset.id)]); set(asset.id);} catch(err) {setError(err.message);} finally {setBusy(false);}
-        }}/>}</>
-        : schema.enum ? <select aria-label={key} className={fieldClass} value={value ?? ""} onChange={e => set(e.target.value)}>{schema.enum.map(v => <option key={v}>{v}</option>)}</select>
-        : schema.type === "boolean" ? <input aria-label={key} type="checkbox" checked={!!value} onChange={e => set(e.target.checked)}/>
-        : <input aria-label={key} className={fieldClass} type={["number", "integer"].includes(schema.type) ? "number" : "text"} min={schema.minimum} max={schema.maximum} step={schema.type === "integer" ? 1 : "any"} value={Array.isArray(value) ? value.join(",") : value ?? ""} onChange={e => set(schema.type === "array" ? e.target.value.split(",").map(Number) : ["number", "integer"].includes(schema.type) ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value)}/>}
-    </label>;
-  };
   const generate = async () => {
     setBusy(true); setError("");
     try {
@@ -91,12 +78,16 @@ export function StudioWorkbench({mode = "operations"}) {
       <label className="block text-xs">Project<select aria-label="Project" className={fieldClass} value={project} onChange={e => setProject(e.target.value)}><option value="">Default Project</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
       {mode === "text" ? <>
         <textarea aria-label="Prompt" className={fieldClass} placeholder="Describe the model" value={prompt} onChange={e => setPrompt(e.target.value)}/>
-        {[["Image model", imageCap, imageModel, setImageModel], ["3D model", modelCap, model, setModel]].map(([label,c,v,set]) => <label key={label} className="block text-xs">{label}<select aria-label={label} className={fieldClass} value={v} onChange={e => set(e.target.value)}>{(c?.input?.schema?.properties?.model?.enum || []).map(id => <option key={id}>{id}</option>)}</select></label>)}
+        {[["Image model", imageCap, imageModel, setImageModel], ["3D model", modelCap, model, setModel]].map(([label,c,v,set]) => <ModelSelector key={label} label={label} models={(c?.input?.schema?.properties?.model?.enum || []).map(id => ({id}))} value={v} onChange={set}/>)}
         <p className="text-xs text-zinc-400">Generate a reference image, then create a 3D model. Both steps continue in the background.</p>
       </> : <>
         <select aria-label="Operation" className={fieldClass} value={operation} onChange={e => setOperation(e.target.value)}>{caps.filter(c => mode === "image" ? c.operation === TEXT_IMAGE : c.category === "asset-processing").map(c => <option key={c.operation} value={c.operation}>{c.displayName}{c.available ? "" : " · unavailable"}</option>)}</select>
-        {Object.entries(cap?.input?.schema?.properties || {}).map(([k,s]) => inputControl(k,s,values,setValues,cap.input.schema.required?.includes(k)))}
-        {Object.entries(cap?.optionsSchema?.properties || {}).map(([k,s]) => inputControl(k,s,options,setOptions))}
+        <ParameterForm schema={cap?.input?.schema} values={values} onChange={setValues} assets={assets} busy={busy} onUpload={async (key, file, set) => {
+          setBusy(true); setError("");
+          try {const asset = await uploadAsset3d(file, project); setAssets(a => [asset, ...a.filter(x => x.id !== asset.id)]); set(asset.id);}
+          catch(err) {setError(err.message);} finally {setBusy(false);}
+        }}/>
+        <ParameterForm schema={cap?.optionsSchema} values={options} onChange={setOptions} assets={assets} busy={busy}/>
       </>}
       {!ready && <p className="text-xs text-amber-300">Select the required inputs. Generation also requires an available provider.</p>}
       <Btn primary disabled={busy || !ready || (job && !terminal(job))} onClick={generate}>{busy ? "Submitting…" : "Run"}</Btn>

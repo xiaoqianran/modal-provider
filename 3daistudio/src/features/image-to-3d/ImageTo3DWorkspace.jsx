@@ -5,6 +5,8 @@ import {Badge,Btn,PanelLabel} from "../../components.jsx";
 import {Viewport3DUpload} from "../../three-viewport.jsx";
 import {AssetOperationsPanel} from "../operations/AssetOperationsPanel.jsx";
 import {useJob} from "../../hooks/useJob.js";
+import {AssetUploader} from "../../components/generation/AssetUploader.jsx";
+import {JobProgress} from "../../components/generation/JobProgress.jsx";
 import {
   fetchArtifactBlob3d,
   jobArtifactRef,
@@ -309,18 +311,7 @@ export function ImageTo3DWorkspace() {
               emptySub={artifactUrl ? "Generated artifact · drag to orbit" : "The GLB returned by modal-provider will appear here"}
             />
 
-            {running && (
-              <div className="absolute inset-x-4 bottom-4 rounded-xl border border-zinc-700/60 bg-zinc-950/90 p-3">
-                <div className="mb-2 flex items-center justify-between gap-3 text-xs text-zinc-300">
-                  <span>{phase === "artifact" ? "Downloading verified GLB…" : `Job ${jobStatus || "submitting"}…`}</span>
-                  <span>{elapsed}s</span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
-                  <div className="h-full w-1/3 animate-pulse rounded-full bg-indigo-500"/>
-                </div>
-                {job?.id && <div className="mt-2 truncate text-[10px] text-zinc-500">job: {job.id}</div>}
-              </div>
-            )}
+            {running && <JobProgress job={job} elapsed={elapsed} phase={phase}/>}
 
             {phase === "done" && artifactUrl && (
               <div className="absolute right-4 top-4 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-950/80 px-3 py-2 text-xs text-emerald-300">
@@ -361,13 +352,11 @@ export function ImageTo3DWorkspace() {
           </div>
 
           <PanelLabel required>Upload Image</PanelLabel>
-          <label
+          <AssetUploader
+            label="Upload Image"
+            accept="image/*"
+            onFile={chooseSource}
             className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 p-4 hover:border-zinc-600"
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              chooseSource(event.dataTransfer.files?.[0]);
-            }}
           >
             {sourceUrl ? (
               <>
@@ -382,8 +371,7 @@ export function ImageTo3DWorkspace() {
                 <span className="text-xs text-zinc-500">Click or drag & drop</span>
               </>
             )}
-            <input type="file" accept="image/*" className="hidden" onChange={(event) => chooseSource(event.target.files?.[0])}/>
-          </label>
+          </AssetUploader>
 
           <PanelLabel>Generation Profile</PanelLabel>
           <div className="flex flex-wrap gap-1.5">
