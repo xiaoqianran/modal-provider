@@ -13,17 +13,9 @@ from pathlib import Path
 import modal
 
 from .common import CLIENT_INPUT_NAMESPACE
+from .models import generation_routes
 
-ROUTES: dict[str, tuple[str, str, str]] = {
-    "fastsam3d-plus-plus": ("modal-3d-fastsam3d", "Model", "generate_job"),
-    "hunyuan2.1-plus-plus": ("modal-3d-hunyuan", "Model", "generate_job"),
-    "hermit-trellis2-plus-plus": (
-        "modal-3d-hermit-trellis2-plus-plus",
-        "Model",
-        "generate_job",
-    ),
-    "pixal3d": ("modal-3d-pixal3d", "Model", "generate_job"),
-}
+ROUTES: dict[str, tuple[str, str, str]] = generation_routes()
 
 WORKERS = dict(ROUTES)
 
