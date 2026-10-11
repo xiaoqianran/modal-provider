@@ -16,19 +16,19 @@ from modal_3d.operations import (
 
 class Hunyuan2MVContractTests(unittest.TestCase):
     def test_multiview_operation_routes_to_dedicated_worker(self):
-        self.assertEqual(worker_for("multiview_to_3d"), "modal-3d-hunyuan2mv")
+        self.assertEqual(worker_for("model_generate_multiview"), "modal-3d-hunyuan2mv")
         self.assertEqual(
-            required_roles_for("multiview_to_3d"),
+            required_roles_for("model_generate_multiview"),
             ["primary-glb", "quality-report"],
         )
 
     def test_front_is_required_and_other_official_views_are_optional(self):
         self.assertEqual(
-            required_inputs_for("multiview_to_3d"),
+            required_inputs_for("model_generate_multiview"),
             ["front"],
         )
         self.assertEqual(
-            input_mimes_for("multiview_to_3d"),
+            input_mimes_for("model_generate_multiview"),
             {
                 "front": "image/png",
                 "back": "image/png",
@@ -37,29 +37,29 @@ class Hunyuan2MVContractTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            set(validate_input_names("multiview_to_3d", {"front": {}})),
+            set(validate_input_names("model_generate_multiview", {"front": {}})),
             {"front"},
         )
         self.assertEqual(
             set(
                 validate_input_names(
-                    "multiview_to_3d",
+                    "model_generate_multiview",
                     {"front": {}, "left": {}, "back": {}, "right": {}},
                 )
             ),
             {"front", "left", "back", "right"},
         )
         with self.assertRaisesRegex(ValueError, "missing inputs"):
-            validate_input_names("multiview_to_3d", {"left": {}})
+            validate_input_names("model_generate_multiview", {"left": {}})
         with self.assertRaisesRegex(ValueError, "unknown inputs"):
             validate_input_names(
-                "multiview_to_3d",
+                "model_generate_multiview",
                 {"front": {}, "top": {}},
             )
 
     def test_full_quality_defaults_follow_official_multiview_example(self):
         self.assertEqual(
-            options_for("multiview_to_3d"),
+            options_for("model_generate_multiview"),
             {
                 "seed": 12345,
                 "num_inference_steps": 50,
@@ -76,7 +76,7 @@ class Hunyuan2MVContractTests(unittest.TestCase):
             if row["app"] == "modal-3d-hunyuan2mv"
         )
         self.assertEqual(target["module"], "modal_3d.hunyuan2mv_worker")
-        self.assertEqual(target["models"], ["multiview_to_3d"])
+        self.assertEqual(target["models"], ["model_generate_multiview"])
         self.assertEqual(
             target["weights"][0]["requiredPaths"],
             [

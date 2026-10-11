@@ -214,11 +214,11 @@ class Model:
     @modal.method()
     def run_job(self, request: dict, options: dict | None = None) -> dict:
         started = time.monotonic()
-        if not isinstance(request, dict) or request.get("operation") != "pose":
+        if not isinstance(request, dict) or request.get("operation") != "pose_apply":
             raise ValueError("pose worker only supports pose")
 
-        inputs = validate_input_names("pose", request.get("inputs"))
-        normalized = options_for("pose", options)
+        inputs = validate_input_names("pose_apply", request.get("inputs"))
+        normalized = options_for("pose_apply", options)
         root = Path("/artifacts").resolve()
         artifacts.reload()
 
@@ -230,8 +230,8 @@ class Model:
         if source.stat().st_size != source_desc["bytes"] or digest_file(source) != source_desc["sha256"]:
             raise ValueError("pose input integrity mismatch")
 
-        key = request_key("pose", {"asset": source_desc}, normalized)
-        destination = root / "operations" / "pose" / key
+        key = request_key("pose_apply", {"asset": source_desc}, normalized)
+        destination = root / "operations" / "pose_apply" / key
         manifest = destination / "result.json"
         if manifest.is_file():
             result = json.loads(manifest.read_text(encoding="utf-8"))
@@ -270,7 +270,7 @@ class Model:
                 json.dumps(
                     {
                         "schema": "modal-3d.quality-report.v1",
-                        "operation": "pose",
+                        "operation": "pose_apply",
                         "skeleton_profile": profile,
                         "bones": len(armature.pose.bones),
                         "skin_preserved": True,
@@ -288,8 +288,8 @@ class Model:
             ]
             result = {
                 "contract": RESULT_CONTRACT,
-                "operation": "pose",
-                "revision": revision_for("pose"),
+                "operation": "pose_apply",
+                "revision": revision_for("pose_apply"),
                 "request_key": key,
                 "inputs": {"asset": source_desc},
                 "options": normalized,

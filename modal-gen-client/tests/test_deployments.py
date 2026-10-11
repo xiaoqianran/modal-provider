@@ -785,7 +785,7 @@ def test_submission_status_selects_only_operation_runtime_target(monkeypatch):
     targets = (
         DeploymentTarget("modal-3d", "prep", "runtime.prep", required=True),
         DeploymentTarget("modal-3d", "model", "runtime.model", models=("one",)),
-        DeploymentTarget("modal-3d", "modal-3d-pose", "runtime.pose", models=("pose",)),
+        DeploymentTarget("modal-3d", "modal-3d-pose", "runtime.pose", models=("pose_apply",)),
     )
     service = DeploymentService(targets=targets)
     service._client = SimpleNamespace()

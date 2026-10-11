@@ -45,7 +45,7 @@ def deployment_manifest() -> dict[str, object]:
                 "secrets": ["huggingface"],
                 "module": "modal_3d.p3sam_worker",
                 "kind": "worker",
-                "models": ["segment_parts"],
+                "models": ["parts_segment"],
                 "revision": revision,
                 "weights": _weights(
                     "modal-3d-p3sam-weights",
@@ -57,7 +57,7 @@ def deployment_manifest() -> dict[str, object]:
                 "secrets": ["huggingface"],
                 "module": "modal_3d.xpart_worker",
                 "kind": "worker",
-                "models": ["complete_parts"],
+                "models": ["parts_complete"],
                 "revision": revision,
                 "weights": _weights(
                     "modal-3d-xpart-weights",
@@ -87,7 +87,7 @@ def deployment_manifest() -> dict[str, object]:
                 "app": "modal-3d-hunyuan2mv",
                 "module": "modal_3d.hunyuan2mv_worker",
                 "kind": "worker",
-                "models": ["multiview_to_3d"],
+                "models": ["model_generate_multiview"],
                 "revision": revision,
                 "weights": _weights(
                     "modal-3d-hunyuan2mv-weights",
@@ -101,7 +101,7 @@ def deployment_manifest() -> dict[str, object]:
                 "app": "modal-3d-tokenrig",
                 "module": "modal_3d.tokenrig_worker",
                 "kind": "worker",
-                "models": ["rig"],
+                "models": ["rig_generate"],
                 "revision": revision,
                 "weights": _weights(
                     "modal-3d-tokenrig-weights",
@@ -116,7 +116,7 @@ def deployment_manifest() -> dict[str, object]:
                 "app": "modal-3d-pose",
                 "module": "modal_3d.pose_worker",
                 "kind": "worker",
-                "models": ["pose"],
+                "models": ["pose_apply"],
                 "revision": revision,
                 "weightless": True,
                 "weights": [],

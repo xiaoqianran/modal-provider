@@ -27,7 +27,7 @@ def test_demo_asset_operations_end_to_end() -> None:
     operations = client.get("/v1/operations")
     assert operations.status_code == 200
     ids = {row["id"] for row in operations.json()["operations"]}
-    assert {"segment_parts", "filter_parts", "complete_parts", "texture_generate"} <= ids
+    assert {"parts_segment", "parts_filter", "parts_complete", "texture_generate"} <= ids
 
     generated = client.post(
         "/v1/jobs",
@@ -45,7 +45,7 @@ def test_demo_asset_operations_end_to_end() -> None:
     segmented = client.post(
         "/v1/operations/jobs",
         json={
-            "operation": "segment_parts",
+            "operation": "parts_segment",
             "inputs": {"asset": {"job_id": "job_demo_asset", "role": "primary-glb"}},
             "options": {},
             "job_id": "op_demo_segment",
@@ -73,7 +73,7 @@ def test_demo_asset_operations_end_to_end() -> None:
     filtered = client.post(
         "/v1/operations/jobs",
         json={
-            "operation": "filter_parts",
+            "operation": "parts_filter",
             "inputs": segmentation_inputs,
             "options": {"part_indices": [0, 1], "mode": "keep"},
             "job_id": "op_demo_filter",
@@ -85,7 +85,7 @@ def test_demo_asset_operations_end_to_end() -> None:
     completed = client.post(
         "/v1/operations/jobs",
         json={
-            "operation": "complete_parts",
+            "operation": "parts_complete",
             "inputs": segmentation_inputs,
             "options": {
                 "part_index": 0,

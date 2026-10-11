@@ -17,12 +17,12 @@ import xatlas
 from mathutils.bvhtree import BVHTree
 
 
-def filter_parts(asset_path, manifest_path, labels_path, options, output):
+def parts_filter(asset_path, manifest_path, labels_path, options, output):
     import trimesh
 
     mesh = trimesh.load(asset_path, force="mesh", process=False)
     if not isinstance(mesh, trimesh.Trimesh):
-        raise ValueError("filter_parts requires one triangle mesh")
+        raise ValueError("parts_filter requires one triangle mesh")
     labels_doc = json.loads(Path(labels_path).read_text(encoding="utf-8"))
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     labels = np.asarray(labels_doc.get("labels"), dtype=np.int64)
@@ -51,7 +51,7 @@ def filter_parts(asset_path, manifest_path, labels_path, options, output):
     result.export(output / "asset.glb")
     report = {
         "schema": "modal-3d.quality-report.v1",
-        "operation": "filter_parts",
+        "operation": "parts_filter",
         "mode": options["mode"],
         "selected_part_indices": sorted(ordinals),
         "selected_source_labels": sorted(selected),
@@ -339,8 +339,8 @@ def main(request):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     output, operation, options = Path(request["output"]), request["operation"], request["options"]
     inputs = request["inputs"]
-    if operation == "filter_parts":
-        filter_parts(inputs["asset"], inputs["parts_manifest"], inputs["face_labels"], options, output)
+    if operation == "parts_filter":
+        parts_filter(inputs["asset"], inputs["parts_manifest"], inputs["face_labels"], options, output)
         return
     objects = load(inputs.get("asset", inputs.get("target")))
     before = stats(objects)
@@ -352,7 +352,7 @@ def main(request):
     if operation in {"mesh_cleanup", "mesh_repair"}:
         for obj in objects:
             clean(obj, options, operation == "mesh_repair")
-    elif operation == "decimate":
+    elif operation == "mesh_decimate":
         if options["target_faces"] >= before["triangles"]:
             # A reduction target above the current triangle count is a semantic
             # no-op. Do not weld seams, apply transforms, or touch topology/UVs.
@@ -379,7 +379,7 @@ def main(request):
             report["warnings"].append(
                 "Decimation welds GLB seam vertices and changes topology; inspect achieved face count and rebake if needed"
             )
-    elif operation == "retopology":
+    elif operation == "mesh_retopologize":
         for obj in objects:
             # GLB duplicates vertices at UV/normal seams. QuadriFlow needs the
             # geometric surface welded; this operation already invalidates UVs.
@@ -409,7 +409,7 @@ def main(request):
         extra, report["materials"] = bake(sources, objects, options, output)
         for src in sources:
             bpy.data.objects.remove(src, do_unlink=True)
-    elif operation != "inspect_mesh":
+    elif operation != "mesh_inspect":
         raise ValueError("unsupported operation")
     report["after"] = stats(objects)
     distances = []
@@ -427,9 +427,9 @@ def main(request):
         raise ValueError("baking unexpectedly changed geometry")
     if "target_faces" in options:
         report["target_faces"] = options["target_faces"]
-        report["achieved_faces"] = report["after"]["polygons" if operation == "retopology" else "triangles"]
+        report["achieved_faces"] = report["after"]["polygons" if operation == "mesh_retopologize" else "triangles"]
     artifacts = save_assets(objects, output)
-    if operation == "decimate" and report.get("skipped"):
+    if operation == "mesh_decimate" and report.get("skipped"):
         # True no-op: keep the canonical primary GLB byte-for-byte identical.
         # The editable OBJ and quality report are auxiliary evidence only.
         shutil.copyfile(inputs["asset"], output / "asset.glb")

@@ -100,7 +100,7 @@ def test_operation_submit_is_idempotent_and_does_not_spawn_twice(tmp_path, monke
     bind_remote(monkeypatch, method)
 
     first = svc.operations.submit(
-        "decimate",
+        "mesh_decimate",
         {"asset": {"artifact_id": registered["id"]}},
         {"target_faces": 120},
         job_id="op_idempotent",
@@ -114,7 +114,7 @@ def test_operation_submit_is_idempotent_and_does_not_spawn_twice(tmp_path, monke
         lambda *args, **kwargs: PendingCall(),
     )
     second = svc.operations.submit(
-        "decimate",
+        "mesh_decimate",
         {"asset": {"artifact_id": registered["id"]}},
         {"target_faces": 120},
         job_id="op_idempotent",
@@ -131,7 +131,7 @@ def test_unknown_submission_never_blindly_respawns(tmp_path, monkeypatch):
     bind_remote(monkeypatch, method)
 
     first = svc.operations.submit(
-        "inspect_mesh",
+        "mesh_inspect",
         {"asset": {"artifact_id": registered["id"]}},
         job_id="op_unknown",
     )
@@ -153,7 +153,7 @@ def test_remote_python_exception_becomes_failed_job(tmp_path, monkeypatch):
     bind_remote(monkeypatch, method)
 
     submitted = svc.operations.submit(
-        "inspect_mesh",
+        "mesh_inspect",
         {"asset": {"artifact_id": registered["id"]}},
         job_id="op_runtime_error",
     )
@@ -238,7 +238,7 @@ def test_operation_artifact_download_checks_size_hash_and_type(tmp_path, monkeyp
     bind_remote(monkeypatch, method)
 
     svc.operations.submit(
-        "inspect_mesh",
+        "mesh_inspect",
         {"asset": {"artifact_id": registered["id"]}},
         job_id="op_download",
     )
@@ -252,7 +252,7 @@ def test_operation_artifact_download_checks_size_hash_and_type(tmp_path, monkeyp
     response = {
         "contract": RESULT_CONTRACT,
         "revision": REVISION,
-        "operation": "inspect_mesh",
+        "operation": "mesh_inspect",
         "request_key": state["request_key"],
         "artifacts": result_artifacts,
         "metrics": {},
@@ -288,7 +288,7 @@ def test_same_operation_job_id_rejects_changed_identity(tmp_path, monkeypatch):
     method = RemoteMethod(SpawnCall())
     bind_remote(monkeypatch, method)
     svc.operations.submit(
-        "decimate",
+        "mesh_decimate",
         {"asset": {"artifact_id": registered["id"]}},
         {"target_faces": 100},
         job_id="op_identity",
@@ -296,14 +296,14 @@ def test_same_operation_job_id_rejects_changed_identity(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="already used"):
         svc.operations.submit(
-            "decimate",
+            "mesh_decimate",
             {"asset": {"artifact_id": registered["id"]}},
             {"target_faces": 200},
             job_id="op_identity",
         )
 
 
-def test_filter_parts_accepts_json_sidecars(tmp_path, monkeypatch):
+def test_parts_filter_accepts_json_sidecars(tmp_path, monkeypatch):
     svc = service(tmp_path)
     asset = svc.operations.register(descriptor("b" * 64, role="primary-glb"))
     manifest = svc.operations.register(
@@ -316,14 +316,14 @@ def test_filter_parts_accepts_json_sidecars(tmp_path, monkeypatch):
     bind_remote(monkeypatch, method)
 
     result = svc.operations.submit(
-        "filter_parts",
+        "parts_filter",
         {
             "asset": {"artifact_id": asset["id"]},
             "parts_manifest": {"artifact_id": manifest["id"]},
             "face_labels": {"artifact_id": labels["id"]},
         },
         {"part_indices": [0, 1], "mode": "keep"},
-        job_id="op_filter_parts",
+        job_id="op_parts_filter",
     )
 
     assert result["status"] == "running"
@@ -372,7 +372,7 @@ def test_repeated_roles_support_artifact_id_selection(tmp_path, monkeypatch):
     bind_remote(monkeypatch, method)
 
     svc.operations.submit(
-        "inspect_mesh", {"asset": {"artifact_id": asset["id"]}},
+        "mesh_inspect", {"asset": {"artifact_id": asset["id"]}},
         job_id="op_repeated",
     )
     pending = svc.operations._get("op_repeated")
@@ -384,7 +384,7 @@ def test_repeated_roles_support_artifact_id_selection(tmp_path, monkeypatch):
     remote = {
         "contract": RESULT_CONTRACT,
         "revision": REVISION,
-        "operation": "inspect_mesh",
+        "operation": "mesh_inspect",
         "request_key": pending["request_key"],
         "artifacts": output,
         "metrics": {},
@@ -403,7 +403,7 @@ def test_repeated_roles_support_artifact_id_selection(tmp_path, monkeypatch):
         svc.operations.artifact("op_repeated", "primary-glb")
 
     child = svc.operations.submit(
-        "inspect_mesh",
+        "mesh_inspect",
         {"asset": {
             "job_id": "op_repeated",
             "role": "primary-glb",
@@ -414,7 +414,7 @@ def test_repeated_roles_support_artifact_id_selection(tmp_path, monkeypatch):
     assert child["status"] == "running"
 
     rejected = svc.operations.submit(
-        "inspect_mesh",
+        "mesh_inspect",
         {"asset": {"job_id": "op_repeated", "role": "primary-glb"}},
         job_id="op_ambiguous",
     )
@@ -425,7 +425,7 @@ def test_repeated_roles_support_artifact_id_selection(tmp_path, monkeypatch):
 def test_connector_input_types_reflect_multimodal_operation_schema():
     caps = {cap["operation"].split(".")[-2]: cap
             for cap in operation_jobs.connector_capabilities("available")}
-    assert caps["multiview_to_3d"]["input"]["types"] == ["image"]
+    assert caps["model_generate_multiview"]["input"]["types"] == ["image"]
     assert caps["texture_generate"]["input"]["types"] == ["image", "mesh"]
-    assert caps["segment_parts"]["input"]["types"] == ["mesh"]
-    assert caps["complete_parts"]["input"]["types"] == ["mesh", "structured"]
+    assert caps["parts_segment"]["input"]["types"] == ["mesh"]
+    assert caps["parts_complete"]["input"]["types"] == ["mesh", "structured"]

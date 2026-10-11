@@ -273,25 +273,25 @@ class Model:
     @modal.method()
     def run_job(self, request: dict, options: dict | None = None) -> dict:
         started = time.monotonic()
-        if not isinstance(request, dict) or request.get("operation") != "segment_parts":
-            raise ValueError("P3-SAM only supports segment_parts")
+        if not isinstance(request, dict) or request.get("operation") != "parts_segment":
+            raise ValueError("P3-SAM only supports parts_segment")
         inputs = request.get("inputs")
         if not isinstance(inputs, dict) or set(inputs) != {"asset"}:
-            raise ValueError("segment_parts requires exactly one asset input")
-        normalized = options_for("segment_parts", options)
+            raise ValueError("parts_segment requires exactly one asset input")
+        normalized = options_for("parts_segment", options)
 
         root = Path("/artifacts").resolve()
         artifacts.reload()
         desc = validate_descriptor(inputs["asset"])
         if desc["mime"] != MIMES[".glb"]:
-            raise ValueError("segment_parts input must be GLB")
+            raise ValueError("parts_segment input must be GLB")
         source = confined(root, desc["path"])
         validate_file(source, desc["mime"])
         if source.stat().st_size != desc["bytes"] or digest_file(source) != desc["sha256"]:
-            raise ValueError("segment_parts input integrity mismatch")
+            raise ValueError("parts_segment input integrity mismatch")
 
-        key = request_key("segment_parts", {"asset": desc}, normalized)
-        destination = root / "operations" / "segment_parts" / key
+        key = request_key("parts_segment", {"asset": desc}, normalized)
+        destination = root / "operations" / "parts_segment" / key
         manifest = destination / "result.json"
         if manifest.is_file():
             result = json.loads(manifest.read_text(encoding="utf-8"))
@@ -317,8 +317,8 @@ class Model:
 
             result = {
                 "contract": RESULT_CONTRACT,
-                "operation": "segment_parts",
-                "revision": revision_for("segment_parts"),
+                "operation": "parts_segment",
+                "revision": revision_for("parts_segment"),
                 "request_key": key,
                 "inputs": {"asset": desc},
                 "options": normalized,

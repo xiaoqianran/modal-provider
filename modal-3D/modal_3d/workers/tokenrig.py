@@ -252,11 +252,11 @@ class Model:
         import torch
 
         started = time.monotonic()
-        if not isinstance(request, dict) or request.get("operation") != "rig":
+        if not isinstance(request, dict) or request.get("operation") != "rig_generate":
             raise ValueError("TokenRig worker only supports rig")
 
-        inputs = validate_input_names("rig", request.get("inputs"))
-        normalized = options_for("rig", options)
+        inputs = validate_input_names("rig_generate", request.get("inputs"))
+        normalized = options_for("rig_generate", options)
         root = Path("/artifacts").resolve()
         artifacts.reload()
 
@@ -268,8 +268,8 @@ class Model:
         if source.stat().st_size != source_desc["bytes"] or digest_file(source) != source_desc["sha256"]:
             raise ValueError("TokenRig input integrity mismatch")
 
-        key = request_key("rig", {"asset": source_desc}, normalized)
-        destination = root / "operations" / "rig" / key
+        key = request_key("rig_generate", {"asset": source_desc}, normalized)
+        destination = root / "operations" / "rig_generate" / key
         manifest = destination / "result.json"
         if manifest.is_file():
             result = json.loads(manifest.read_text(encoding="utf-8"))
@@ -386,8 +386,8 @@ class Model:
             ]
             result = {
                 "contract": RESULT_CONTRACT,
-                "operation": "rig",
-                "revision": revision_for("rig"),
+                "operation": "rig_generate",
+                "revision": revision_for("rig_generate"),
                 "request_key": key,
                 "inputs": {"asset": source_desc},
                 "options": normalized,

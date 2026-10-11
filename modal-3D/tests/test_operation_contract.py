@@ -24,38 +24,38 @@ from modal_3d.operations import (
 
 
 class OperationContractTests(unittest.TestCase):
-    def test_segment_parts_uses_dedicated_gpu_worker_and_partset_roles(self):
+    def test_parts_segment_uses_dedicated_gpu_worker_and_partset_roles(self):
         capability = next(
-            item for item in operation_capabilities() if item["id"] == "segment_parts"
+            item for item in operation_capabilities() if item["id"] == "parts_segment"
         )
-        self.assertEqual(worker_for("segment_parts"), "modal-3d-p3sam")
+        self.assertEqual(worker_for("parts_segment"), "modal-3d-p3sam")
         self.assertEqual(capability["worker_app"], "modal-3d-p3sam")
         self.assertEqual(capability["execution"]["resource"], "gpu")
-        self.assertEqual(capability["revision"], revision_for("segment_parts"))
+        self.assertEqual(capability["revision"], revision_for("parts_segment"))
         self.assertEqual(
-            required_roles_for("segment_parts"),
+            required_roles_for("parts_segment"),
             ["primary-glb", "parts-manifest", "face-labels", "quality-report"],
         )
 
-    def test_complete_parts_uses_xpart_and_assembly_roles(self):
+    def test_parts_complete_uses_xpart_and_assembly_roles(self):
         capability = next(
-            item for item in operation_capabilities() if item["id"] == "complete_parts"
+            item for item in operation_capabilities() if item["id"] == "parts_complete"
         )
-        self.assertEqual(worker_for("complete_parts"), "modal-3d-xpart")
+        self.assertEqual(worker_for("parts_complete"), "modal-3d-xpart")
         self.assertEqual(capability["worker_app"], "modal-3d-xpart")
         self.assertEqual(capability["execution"]["resource"], "gpu")
-        self.assertEqual(capability["revision"], revision_for("complete_parts"))
+        self.assertEqual(capability["revision"], revision_for("parts_complete"))
         self.assertEqual(
             capability["inputs"], ["asset", "parts_manifest", "face_labels"]
         )
         self.assertEqual(
-            required_roles_for("complete_parts"),
+            required_roles_for("parts_complete"),
             ["primary-glb", "assembly-preview", "quality-report"],
         )
 
-    def test_filter_parts_declares_manifest_and_face_label_json_inputs(self):
+    def test_parts_filter_declares_manifest_and_face_label_json_inputs(self):
         self.assertEqual(
-            input_mimes_for("filter_parts"),
+            input_mimes_for("parts_filter"),
             {
                 "asset": "model/gltf-binary",
                 "parts_manifest": "application/json",
@@ -63,7 +63,7 @@ class OperationContractTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            required_roles_for("filter_parts"),
+            required_roles_for("parts_filter"),
             ["primary-glb", "quality-report"],
         )
 
@@ -108,7 +108,7 @@ class OperationContractTests(unittest.TestCase):
             "P3-SAM",
             "modal-3d-p3sam",
             "Semantic 3D part segmentation",
-            "segment_parts",
+            "parts_segment",
             [input_descriptor("asset", "mesh", artifact=GLB_ARTIFACT)],
             [
                 output_descriptor(
@@ -126,7 +126,7 @@ class OperationContractTests(unittest.TestCase):
             },
         )
         validated = validate_capability(capability)
-        self.assertEqual(validated["operation"], "segment_parts")
+        self.assertEqual(validated["operation"], "parts_segment")
         self.assertEqual(validated["inputs"][0]["kind"], "mesh")
         self.assertEqual(validated["outputs"][0]["kind"], "part_set")
         self.assertNotIn("input", validated)
@@ -174,8 +174,8 @@ class OperationContractTests(unittest.TestCase):
 
     def test_generic_operation_key_separates_operation_semantics(self):
         inputs = {"asset": "fastsam3d-plus-plus/example.glb"}
-        first = router.operation_job_key("tool", "segment_parts", inputs, {})
-        second = router.operation_job_key("tool", "retopology", inputs, {})
+        first = router.operation_job_key("tool", "parts_segment", inputs, {})
+        second = router.operation_job_key("tool", "mesh_retopologize", inputs, {})
         self.assertNotEqual(first, second)
 
     def test_operation_inputs_support_multiple_named_artifacts(self):

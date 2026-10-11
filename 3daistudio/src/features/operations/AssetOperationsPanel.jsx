@@ -130,7 +130,7 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
   };
 
   const runSegment = () => runOperation(
-    "segment_parts",
+    "parts_segment",
     {asset: assetRef},
     {},
     (finished) => setSegmentJob(finished),
@@ -146,7 +146,7 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
     try {
       const indices = parseIndices(partIndices);
       return runOperation(
-        "filter_parts",
+        "parts_filter",
         segmentationInputs,
         {part_indices: indices, mode: filterMode},
       );
@@ -157,7 +157,7 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
   };
 
   const runComplete = () => runOperation(
-    "complete_parts",
+    "parts_complete",
     segmentationInputs,
     {
       part_index: Math.max(0, Math.trunc(numberValue(partIndex, 0))),
@@ -258,10 +258,10 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
         </div>
         <Btn
           className="w-full"
-          disabled={running || !supported("segment_parts")}
+          disabled={running || !supported("parts_segment")}
           onClick={runSegment}
         >
-          {activeOperation === "segment_parts" ? "Segmenting…" : "Segment Current Model"}
+          {activeOperation === "parts_segment" ? "Segmenting…" : "Segment Current Model"}
         </Btn>
 
         {segmentJob && (
@@ -300,8 +300,8 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
             </div>
 
             <div className="mt-2 grid grid-cols-2 gap-2">
-              <Btn disabled={running || !supported("filter_parts")} onClick={runFilter}>
-                <Layers3 size={13}/> {activeOperation === "filter_parts" ? "Filtering…" : "Filter Parts"}
+              <Btn disabled={running || !supported("parts_filter")} onClick={runFilter}>
+                <Layers3 size={13}/> {activeOperation === "parts_filter" ? "Filtering…" : "Filter Parts"}
               </Btn>
               <Btn
                 disabled={running}
@@ -342,10 +342,10 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
             </div>
             <Btn
               className="mt-2 w-full"
-              disabled={running || !supported("complete_parts")}
+              disabled={running || !supported("parts_complete")}
               onClick={runComplete}
             >
-              <WandSparkles size={13}/> {activeOperation === "complete_parts" ? "Completing…" : "Complete Selected Part"}
+              <WandSparkles size={13}/> {activeOperation === "parts_complete" ? "Completing…" : "Complete Selected Part"}
             </Btn>
           </>
         )}

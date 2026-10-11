@@ -57,5 +57,5 @@ def test_connector_job_transition_accepts_recovery_and_processing_kind():
     JobService._assert_transition("accepted", "submission_unknown")
     JobService._assert_transition("submission_unknown", "running")
     assert _stage("submission_unknown") == "recovery"
-    assert _job_kind("modal-3d.asset.retopology.v1") == "asset-processing"
+    assert _job_kind("modal-3d.asset.mesh_retopologize.v1") == "asset-processing"
     assert _job_kind("modal-3d.asset.image_to_3d.v1") == "generation"

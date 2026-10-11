@@ -15,16 +15,16 @@ from modal_3d.operations import (
 
 
 def test_rig_and_pose_contracts_are_dedicated_workers():
-    assert worker_for("rig") == "modal-3d-tokenrig"
-    assert worker_for("pose") == "modal-3d-pose"
-    assert revision_for("rig").startswith("skintokens-273b691d")
-    assert revision_for("pose") == "blender-pose-v1"
-    assert required_roles_for("rig") == [
+    assert worker_for("rig_generate") == "modal-3d-tokenrig"
+    assert worker_for("pose_apply") == "modal-3d-pose"
+    assert revision_for("rig_generate").startswith("skintokens-273b691d")
+    assert revision_for("pose_apply") == "blender-pose-v1"
+    assert required_roles_for("rig_generate") == [
         "primary-glb",
         "rig-report",
         "quality-report",
     ]
-    assert required_roles_for("pose") == [
+    assert required_roles_for("pose_apply") == [
         "primary-glb",
         "pose-report",
         "quality-report",
@@ -32,7 +32,7 @@ def test_rig_and_pose_contracts_are_dedicated_workers():
 
 
 def test_rig_defaults_match_official_cli_defaults():
-    assert options_for("rig") == {
+    assert options_for("rig_generate") == {
         "top_k": 5,
         "top_p": 0.95,
         "temperature": 1.0,
@@ -44,28 +44,28 @@ def test_rig_defaults_match_official_cli_defaults():
 
 
 def test_pose_profiles_are_explicit_and_bounded():
-    assert options_for("pose") == {
+    assert options_for("pose_apply") == {
         "preset": "t_pose",
         "skeleton_profile": "auto",
     }
     for preset in ("t_pose", "a_pose", "rest"):
-        assert options_for("pose", {"preset": preset})["preset"] == preset
-    assert options_for("pose", {"skeleton_profile": "tokenrig"})["skeleton_profile"] == "tokenrig"
+        assert options_for("pose_apply", {"preset": preset})["preset"] == preset
+    assert options_for("pose_apply", {"skeleton_profile": "tokenrig"})["skeleton_profile"] == "tokenrig"
     with pytest.raises(ValueError):
-        options_for("pose", {"preset": "dance"})
+        options_for("pose_apply", {"preset": "dance"})
 
 
 def test_deployment_manifest_has_tokenrig_and_weightless_pose():
     targets = {row["app"]: row for row in deployment_manifest()["targets"]}
     tokenrig = targets["modal-3d-tokenrig"]
-    assert tokenrig["models"] == ["rig"]
+    assert tokenrig["models"] == ["rig_generate"]
     assert tokenrig["weights"][0]["requiredPaths"] == [
         "tokenrig/experiments/skin_vae_2_10_32768/last.ckpt",
         "tokenrig/experiments/articulation_xl_quantization_256_token_4/grpo_1400.ckpt",
         "tokenrig/models/Qwen3-0.6B/config.json",
     ]
     pose = targets["modal-3d-pose"]
-    assert pose["models"] == ["pose"]
+    assert pose["models"] == ["pose_apply"]
     assert pose["weightless"] is True
     assert pose["weights"] == []
 

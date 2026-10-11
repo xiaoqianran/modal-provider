@@ -202,11 +202,11 @@ class Model:
         from PIL import Image
 
         started = time.monotonic()
-        if not isinstance(request, dict) or request.get("operation") != "multiview_to_3d":
-            raise ValueError("Hunyuan3D-2mv worker only supports multiview_to_3d")
+        if not isinstance(request, dict) or request.get("operation") != "model_generate_multiview":
+            raise ValueError("Hunyuan3D-2mv worker only supports model_generate_multiview")
 
-        inputs = validate_input_names("multiview_to_3d", request.get("inputs"))
-        normalized = options_for("multiview_to_3d", options)
+        inputs = validate_input_names("model_generate_multiview", request.get("inputs"))
+        normalized = options_for("model_generate_multiview", options)
 
         root = Path("/artifacts").resolve()
         artifacts.reload()
@@ -221,8 +221,8 @@ class Model:
         if len(set(hashes)) != len(hashes):
             raise ValueError("multi-view inputs must not contain duplicate images")
 
-        key = request_key("multiview_to_3d", checked, normalized)
-        destination = root / "operations" / "multiview_to_3d" / key
+        key = request_key("model_generate_multiview", checked, normalized)
+        destination = root / "operations" / "model_generate_multiview" / key
         result_path = destination / "result.json"
         if result_path.is_file():
             result = json.loads(result_path.read_text(encoding="utf-8"))
@@ -310,8 +310,8 @@ class Model:
             ]
             result = {
                 "contract": RESULT_CONTRACT,
-                "operation": "multiview_to_3d",
-                "revision": revision_for("multiview_to_3d"),
+                "operation": "model_generate_multiview",
+                "revision": revision_for("model_generate_multiview"),
                 "request_key": key,
                 "inputs": checked,
                 "options": normalized,

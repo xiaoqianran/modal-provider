@@ -164,7 +164,7 @@ def test_multiview_optional_images_work_through_connector(tmp_path, source_png):
     ops = Operations()
     provider = Modal3DProvider(SimpleNamespace(operations=ops))
     result = provider.submit(
-        operation="modal-3d.asset.multiview_to_3d.v1",
+        operation="modal-3d.asset.model_generate_multiview.v1",
         inputs={"front": source},
         profile="recommended",
         options={},
@@ -201,4 +201,4 @@ def test_operation_descriptor_survives_no_generation_models(monkeypatch):
     doc = provider.descriptor()
     assert doc["status"] == "available"
     assert doc["capabilities"][0]["status"] == "disabled"
-    assert any(cap["operation"] == "modal-3d.asset.segment_parts.v1" for cap in doc["capabilities"])
+    assert any(cap["operation"] == "modal-3d.asset.parts_segment.v1" for cap in doc["capabilities"])

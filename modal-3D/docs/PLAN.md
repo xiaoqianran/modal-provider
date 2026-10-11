@@ -95,20 +95,20 @@ Artifact identity、内容幂等、多产物、依赖/取消/rebind/恢复。Pro
 因为 inspect/cleanup/repair/QuadriFlow/xatlas/rebake 共用 Blender/xatlas 运行时；API 能力仍逐项独立，
 没有把这些操作合并成一个强制流水线。
 
-- `inspect_mesh`：面数、组件、边界、非流形、退化面、材质、UV、包围盒。
+- `mesh_inspect`：面数、组件、边界、非流形、退化面、材质、UV、包围盒。
 - `mesh_cleanup` / `mesh_repair`：明确操作开关，保留原资产，不自动删除有意义的小部件。
 - `decimate`：目标面数/比例、边界和材质接缝保护，目标不可达时报告。
-- `retopology`：QuadriFlow 主后端，Instant Meshes 对照，三角和四边形输出分别声明。
+- `mesh_retopologize`：QuadriFlow 主后端，Instant Meshes 对照，三角和四边形输出分别声明。
 - `uv_unwrap`：xatlas，图集分辨率、padding、分组、像素密度目标与质量报告。
 - `texture_bake`：源高模/带纹理模型 → 目标 Mesh/UV，处理投射距离、遮挡、normal 和 PBR 通道。
 
 验收：四种生成器代表产物走通“GLB → 减面或重拓扑 → UV → 重烘焙 → 下载”；源四边面文件回读；记录形状误差、四边面比例、UV 重叠/拉伸、纹理丢失和接缝。
 
 2026-09-22 首轮远端 smoke：真实 GLB 在 Modal `main` 上完成
-`inspect_mesh → retopology → uv_unwrap → texture_bake`。最终 revision
+`mesh_inspect → mesh_retopologize → uv_unwrap → texture_bake`。最终 revision
 `mesh-operations.v1-bpy420-xatlas009-r2` 首次无缓存远端调用约
 9.423s / 4.453s / 3.961s / 4.704s；inspect 将 GLB seam 顶点与几何拓扑分开统计，
-样例为 1 component / 0 boundary / 0 non-manifold；100/100 retopology faces 为 quad，
+样例为 1 component / 0 boundary / 0 non-manifold；100/100 mesh_retopologize faces 为 quad，
 UV utilization≈0.7061；rebake 产出 baseColor/roughness/metallic/normal 四张贴图，
 质量报告从共享 Volume 回读成功。第二次相同输入/参数四阶段均命中内容缓存（约 0.58–0.87s/阶段）。
 这证明 Worker 与共享 Artifact 闭环已上线；“四种生成器代表资产”的完整质量矩阵仍属于 P1 扩展验收，
@@ -117,14 +117,14 @@ UV utilization≈0.7061；rebake 产出 baseColor/roughness/metallic/normal 四�
 ### P2：部件拆分与条件补全
 
 状态：✅ 模型主链首轮闭环。已部署独立 `modal-3d-p3sam` 与 `modal-3d-xpart`；
-`complete_parts` 直接消费 P3-SAM 的 PartSet/face labels/bbox，不在 X-Part 内重复加载 P3-SAM。
+`parts_complete` 直接消费 P3-SAM 的 PartSet/face labels/bbox，不在 X-Part 内重复加载 P3-SAM。
 客户端部件合并/排除等交互仍属于后续产品层完善。
 
 建议服务：`modal-3d-p3sam`、`modal-3d-xpart`，分别隔离环境和权重。
 
-- `segment_parts`：Mesh → 标签/特征 → 源面映射 → 独立部件、PartSet、彩色预览。
+- `parts_segment`：Mesh → 标签/特征 → 源面映射 → 独立部件、PartSet、彩色预览。
 - 客户端支持部件选择、合并/排除、单部件下载；连通组件与语义部件分开声明。
-- `complete_parts`：选定部件 + X-Part 实际需要的源模型条件 → 完整部件与装配预览。
+- `parts_complete`：选定部件 + X-Part 实际需要的源模型条件 → 完整部件与装配预览。
 - 保留原坐标变换、切分结果、补全结果及改变区域；新增表面进入 P1/P3 补 UV 和纹理。
 
 验收：“拆分 → 选部件 → 补全 → 原位置装配”无整体坐标漂移；记录分割覆盖率、碎片、补全边界与重叠。light 版不满足要求的类别标为实验或不支持，不宣称完整版效果。
@@ -181,7 +181,7 @@ weighted vertices、0 invalid weights，推理约 35.75s / worker total 52.82s�
 
 建议服务：`modal-3d-hunyuan2mv`。P0 后可独立实施，默认排在资产加工主线之后。
 
-- `multiview_to_3d`：按官方后端接同一物体视图集合，输出一个资产。
+- `model_generate_multiview`：按官方后端接同一物体视图集合，输出一个资产。
 - 校验必需视角、重复图、主体、比例、姿态一致性；不承诺任意相册自动摄影测量。
 - 规范化保留多视图关系，不逐图任意拉伸；相机数据按后端要求传递。
 - 独立锁环境和权重，几何产物交 P3；原版 TRELLIS 多图作对照，不直接认定 TRELLIS.2 兼容。
@@ -263,7 +263,7 @@ weighted vertices、0 invalid weights，推理约 35.75s / worker total 52.82s�
 
 1. 补完 P0 协议草稿、通用 runner、多产物 manifest 与兼容性审查。
 2. 3D Client 接 Mesh Artifact、operation options、多结果和共享产物引用。
-3. 首个真实 `inspect_mesh` / `decimate` Worker 跑通“生成 GLB → 新 Job → 加工产物”。
+3. 首个真实 `mesh_inspect` / `decimate` Worker 跑通“生成 GLB → 新 Job → 加工产物”。
 4. 增加 QuadriFlow、xatlas、rebake，交付独立网格与 UV 闭环。
 5. 再接 P3-SAM / X-Part，复用输入、任务、版本和产物机制。
 

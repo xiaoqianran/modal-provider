@@ -34,23 +34,23 @@ BAKE_OPTIONS = {"resolution": number(1024, 64, 4096, True),
                 "padding": number(8, 1, 64, True),
                 "ray_distance": number(0.05, 0.000001, 1000)}
 SPECS = {
-    "inspect_mesh": {"label": "Inspect mesh", "inputs": ["asset"], "options": {}},
+    "mesh_inspect": {"label": "Inspect mesh", "inputs": ["asset"], "options": {}},
     "mesh_cleanup": {"label": "Clean mesh", "inputs": ["asset"], "options": {
         "merge_distance": number(0.00001, 0, 0.1),
         "remove_loose": {"type": "boolean", "default": True}}},
     "mesh_repair": {"label": "Repair mesh", "inputs": ["asset"], "options": {
         "merge_distance": number(0.00001, 0, 0.1),
         "max_hole_edges": number(8, 3, 100, True)}},
-    "decimate": {"label": "Decimate mesh", "inputs": ["asset"], "options": {
+    "mesh_decimate": {"label": "Decimate mesh", "inputs": ["asset"], "options": {
         "target_faces": number(20000, 4, 2000000, True)}},
-    "retopology": {"label": "QuadriFlow retopology", "inputs": ["asset"], "options": {
+    "mesh_retopologize": {"label": "QuadriFlow retopology", "inputs": ["asset"], "options": {
         "target_faces": number(4000, 16, 100000, True),
         "preserve_boundary": {"type": "boolean", "default": True},
         "preserve_sharp": {"type": "boolean", "default": True},
         "seed": number(0, 0, 2147483647, True)}},
     "uv_unwrap": {"label": "xatlas UV unwrap", "inputs": ["asset"], "options": UV_OPTIONS},
     "texture_bake": {"label": "Rebake PBR", "inputs": ["source", "target"], "options": BAKE_OPTIONS},
-    "segment_parts": {
+    "parts_segment": {
         "label": "P3-SAM part segmentation",
         "inputs": ["asset"],
         "options": {
@@ -66,7 +66,7 @@ SPECS = {
         "resource": "gpu",
         "required_roles": ["primary-glb", "parts-manifest", "face-labels", "quality-report"],
     },
-    "complete_parts": {
+    "parts_complete": {
         "label": "X-Part lite part completion",
         "inputs": ["asset", "parts_manifest", "face_labels"],
         "input_mimes": {
@@ -85,7 +85,7 @@ SPECS = {
         "resource": "gpu",
         "required_roles": ["primary-glb", "assembly-preview", "quality-report"],
     },
-    "filter_parts": {
+    "parts_filter": {
         "label": "Select / merge / exclude parts",
         "inputs": ["asset", "parts_manifest", "face_labels"],
         "input_mimes": {"asset": MIMES[".glb"], "parts_manifest": MIMES[".json"],
@@ -108,7 +108,7 @@ SPECS = {
         "resource": "gpu",
         "required_roles": ["primary-glb", "material-report", "quality-report"],
     },
-    "multiview_to_3d": {
+    "model_generate_multiview": {
         "label": "Hunyuan3D-2mv multi-view to 3D",
         "inputs": ["front", "back", "left", "right"],
         "required_inputs": ["front"],
@@ -130,7 +130,7 @@ SPECS = {
         "resource": "gpu",
         "required_roles": ["primary-glb", "quality-report"],
     },
-    "rig": {
+    "rig_generate": {
         "label": "TokenRig automatic rigging",
         "inputs": ["asset"],
         "options": {
@@ -147,7 +147,7 @@ SPECS = {
         "resource": "gpu",
         "required_roles": ["primary-glb", "rig-report", "quality-report"],
     },
-    "pose": {
+    "pose_apply": {
         "label": "Blender rig pose",
         "inputs": ["asset"],
         "options": {

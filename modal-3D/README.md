@@ -24,7 +24,7 @@ Current 3D generation workers:
 Asset-processing worker:
 
 - `modal-3d-mesh` (CPU): inspect, cleanup/repair, decimation, QuadriFlow
-  retopology, xatlas UV unwrap and texture rebake. These remain separate
+  mesh_retopologize, xatlas UV unwrap and texture rebake. These remain separate
   operations while sharing one Blender/xatlas runtime.
 
 Optional preprocessing worker:
@@ -85,7 +85,7 @@ New asset-processing capabilities use the additive modal-3d.operations.v1
 metadata carried by the same capability document:
 
     capability
-      operation: image_to_3d | segment_parts | retopology | uv | texture | rig | pose | ...
+      operation: image_to_3d | parts_segment | mesh_retopologize | uv | texture | rig | pose | ...
       inputs:
         - name: asset
           kind: mesh | textured_mesh | part_set | rigged_mesh | ...
@@ -104,7 +104,7 @@ below /artifacts; the legacy image generation route remains additionally
 confined to client-inputs/.
 
 This split is deliberate: generation models remain backward compatible while
-P3-SAM, X-Part, retopology, UV, texture, rigging and pose workers can be added
+P3-SAM, X-Part, mesh_retopologize, UV, texture, rigging and pose workers can be added
 without pretending that they consume a 1024x1024 image.
 
 Each image-to-3D generation worker exposes only the direct generation method:
@@ -120,7 +120,7 @@ The CPU asset-processing worker exposes `Model.run_job` instead:
 ```python
 cls = modal.Cls.from_name("modal-3d-mesh", "Model")
 call = cls().run_job.spawn(
-    {"operation": "retopology", "inputs": {"asset": artifact_descriptor}},
+    {"operation": "mesh_retopologize", "inputs": {"asset": artifact_descriptor}},
     {"target_faces": 4000},
 )
 ```

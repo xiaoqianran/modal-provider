@@ -270,20 +270,20 @@ class Model:
     @modal.method()
     def run_job(self, request: dict, options: dict | None = None) -> dict:
         started = time.monotonic()
-        if not isinstance(request, dict) or request.get("operation") != "complete_parts":
-            raise ValueError("X-Part worker only supports complete_parts")
+        if not isinstance(request, dict) or request.get("operation") != "parts_complete":
+            raise ValueError("X-Part worker only supports parts_complete")
         inputs = request.get("inputs")
         required_inputs = {"asset", "parts_manifest", "face_labels"}
         if not isinstance(inputs, dict) or set(inputs) != required_inputs:
-            raise ValueError("complete_parts requires asset, parts_manifest, face_labels")
-        normalized = options_for("complete_parts", options)
+            raise ValueError("parts_complete requires asset, parts_manifest, face_labels")
+        normalized = options_for("parts_complete", options)
 
         root = Path("/artifacts").resolve()
         artifacts.reload()
         checked = {name: validate_descriptor(inputs[name]) for name in required_inputs}
         source_desc = checked["asset"]
         if source_desc["mime"] != MIMES[".glb"]:
-            raise ValueError("complete_parts asset must be GLB")
+            raise ValueError("parts_complete asset must be GLB")
         source = confined(root, source_desc["path"])
         validate_file(source, source_desc["mime"])
         if source.stat().st_size != source_desc["bytes"] or digest_file(source) != source_desc["sha256"]:
@@ -291,8 +291,8 @@ class Model:
 
         manifest_doc = _read_json(root, checked["parts_manifest"])
         labels_doc = _read_json(root, checked["face_labels"])
-        key = request_key("complete_parts", checked, normalized)
-        destination = root / "operations" / "complete_parts" / key
+        key = request_key("parts_complete", checked, normalized)
+        destination = root / "operations" / "parts_complete" / key
         result_path = destination / "result.json"
         if result_path.is_file():
             result = json.loads(result_path.read_text(encoding="utf-8"))
@@ -313,8 +313,8 @@ class Model:
             ]
             result = {
                 "contract": RESULT_CONTRACT,
-                "operation": "complete_parts",
-                "revision": revision_for("complete_parts"),
+                "operation": "parts_complete",
+                "revision": revision_for("parts_complete"),
                 "request_key": key,
                 "inputs": checked,
                 "options": normalized,

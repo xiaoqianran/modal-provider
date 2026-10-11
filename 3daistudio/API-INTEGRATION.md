@@ -47,7 +47,7 @@ CORS：`MODAL_2D_CORS_ORIGINS`，默认 `*`。
 ### 资产后处理（modal-3D operations）
 
 `POST /v1/assets` → `POST /v1/operations/jobs`  
-operation 包括 `uv_unwrap`、`inspect_mesh`、`filter_parts`、`texture_generate` 等（以 `/v1/operations` 返回为准）。
+operation 包括 `uv_unwrap`、`mesh_inspect`、`parts_filter`、`texture_generate` 等（以 `/v1/operations` 返回为准）。
 
 `texture_generate` 当前真实链路：GLB + reference PNG → Hunyuan3D-Paint 2.1 → textured GLB + material-report + quality-report；支持 `preserve_geometry=true` 严格几何保持校验。
 
