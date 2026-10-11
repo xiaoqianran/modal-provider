@@ -50,9 +50,11 @@ def validate_worker_modules(package_root: Path | None = None) -> tuple[str, ...]
             errors.append(f"missing worker module: {worker.module}")
             continue
         tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
-        if not any(isinstance(node, (ast.Assign, ast.AnnAssign)) and (
+        has_reexport = any(isinstance(node, ast.ImportFrom) and any(alias.name == "app" for alias in node.names) for node in tree.body)
+        if not has_reexport and not any(isinstance(node, (ast.Assign, ast.AnnAssign)) and (
             any(isinstance(t, ast.Name) and t.id == "app" for t in node.targets)
             if isinstance(node, ast.Assign) else isinstance(node.target, ast.Name) and node.target.id == "app"
         ) for node in tree.body):
             errors.append(f"worker module has no app binding: {worker.module}")
     return tuple(errors)
+
