@@ -33,13 +33,15 @@ export async function pollJob3d(id, {intervalMs = 2000, timeoutMs = 3600000, onU
   for (;;) {
     signal?.throwIfAborted();
     const job = await getJob3d(id);
+    signal?.throwIfAborted();
     onUpdate?.(job);
     if (terminal(job)) return job;
     if (Date.now() - started > timeoutMs) throw new Error("Task still running. Follow it in Dashboard.");
     await new Promise((resolve, reject) => {
-      const abort = () => {clearTimeout(timer); reject(new DOMException("Aborted", "AbortError"));};
+      const abort = () => {clearTimeout(timer); signal?.removeEventListener("abort", abort); reject(new DOMException("Aborted", "AbortError"));};
       const timer = setTimeout(() => {signal?.removeEventListener("abort", abort); resolve();}, intervalMs);
       signal?.addEventListener("abort", abort, {once: true});
+      if (signal?.aborted) abort();
     });
   }
 }

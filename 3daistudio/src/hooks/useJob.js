@@ -9,11 +9,14 @@ export function useJob({intervalMs = 2000, enabled = true} = {}) {
   const [job, setJob] = React.useState(null);
   const [error, setError] = React.useState("");
   const [jobId, setJobId] = React.useState(null);
+  const currentId = React.useRef(null);
 
   const track = React.useCallback(value => {
+    const nextId = typeof value === "string" ? value : value?.id || null;
+    currentId.current = nextId;
     setError("");
     setJob(value && typeof value === "object" ? value : null);
-    setJobId(typeof value === "string" ? value : value?.id || null);
+    setJobId(nextId);
   }, []);
 
   React.useEffect(() => {
@@ -23,12 +26,12 @@ export function useJob({intervalMs = 2000, enabled = true} = {}) {
     const refresh = async () => {
       try {
         const next = await getJob3d(jobId);
-        if (!active) return;
+        if (!active || currentId.current !== jobId) return;
         setJob(next);
         setError("");
         if (!terminal(next)) timeout = setTimeout(refresh, intervalMs);
       } catch (err) {
-        if (!active) return;
+        if (!active || currentId.current !== jobId) return;
         setError(err.message || String(err));
         timeout = setTimeout(refresh, intervalMs);
       }
@@ -43,14 +46,16 @@ export function useJob({intervalMs = 2000, enabled = true} = {}) {
   const cancel = React.useCallback(async () => {
     if (!jobId) return null;
     const cancelled = await cancelJob(jobId);
-    setJob(cancelled);
+    if (currentId.current === jobId) setJob(cancelled);
     return cancelled;
   }, [jobId]);
 
   const waitFor = React.useCallback(async (id, {signal, intervalMs: waitInterval = intervalMs, timeoutMs} = {}) => {
     setError("");
     try {
-      return await pollJob3d(id, {intervalMs: waitInterval, timeoutMs, signal, onUpdate: track});
+      return await pollJob3d(id, {intervalMs: waitInterval, timeoutMs, signal, onUpdate: next => {
+        if (currentId.current === id) track(next);
+      }});
     } catch (err) {
       if (err?.name !== "AbortError") setError(err.message || String(err));
       throw err;

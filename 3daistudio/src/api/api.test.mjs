@@ -76,3 +76,67 @@ test("pollJob3d stops local waiting when page aborts without cancelling remote j
     globalThis.fetch = previousFetch;
   }
 });
+
+test("restoring a running job only performs GET requests and eventually returns its artifact", async () => {
+  const previousFetch = globalThis.fetch;
+  const statuses = ["queued", "running", "succeeded"];
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({url, method: options.method || "GET"});
+    const status = statuses.shift();
+    return {ok: true, json: async () => ({job: {id: "recover-42", status, result: status === "succeeded" ? {artifacts: [{id: "asset-42", role: "primary-glb"}]} : null}})};
+  };
+  try {
+    const updates = [];
+    const finished = await jobs.pollJob3d("recover-42", {intervalMs: 1, onUpdate: job => updates.push(job.status)});
+    assert.equal(finished.result.artifacts[0].id, "asset-42");
+    assert.deepEqual(updates, ["queued", "running", "succeeded"]);
+    assert.deepEqual(calls.map(call => call.method), ["GET", "GET", "GET"]);
+    assert(calls.every(call => call.url === "/api/v1/jobs/recover-42"));
+  } finally {globalThis.fetch = previousFetch;}
+});
+
+test("network errors while polling do not create a duplicate submission", async () => {
+  const previousFetch = globalThis.fetch;
+  let count = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    assert.equal(options.method || "GET", "GET");
+    assert.equal(url, "/api/v1/jobs/recover-42");
+    if (++count === 1) throw new TypeError("Network offline");
+    return {ok: true, json: async () => ({job: {id: "recover-42", status: "succeeded"}})};
+  };
+  try {
+    await assert.rejects(jobs.getJob3d("recover-42"), /Network offline/);
+    assert.equal((await jobs.getJob3d("recover-42")).status, "succeeded");
+    assert.equal(count, 2);
+  } finally {globalThis.fetch = previousFetch;}
+});
+
+test("abort after in-flight GET suppresses stale job updates", async () => {
+  const previousFetch = globalThis.fetch;
+  const controller = new AbortController();
+  const updates = [];
+  globalThis.fetch = async () => {
+    controller.abort();
+    return {ok: true, json: async () => ({job: {id: "stale", status: "succeeded"}})};
+  };
+  try {
+    await assert.rejects(jobs.pollJob3d("stale", {signal: controller.signal, onUpdate: job => updates.push(job)}), {name: "AbortError"});
+    assert.deepEqual(updates, []);
+  } finally {globalThis.fetch = previousFetch;}
+});
+
+test("retrying a network-failed submission reuses its original idempotency key", async () => {
+  const previousFetch = globalThis.fetch;
+  const keys = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "/api/v1/jobs");
+    keys.push(options.headers["Idempotency-Key"]);
+    if (keys.length === 1) throw new TypeError("Lost response");
+    return {ok: true, json: async () => ({job: {id: "original", status: "queued"}})};
+  };
+  try {
+    assert.equal((await jobs.submitJob({operation: "test"}, "stable-456")).id, "original");
+    assert.deepEqual(keys, ["stable-456", "stable-456"]);
+  } finally {globalThis.fetch = previousFetch;}
+});
