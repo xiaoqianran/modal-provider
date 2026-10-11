@@ -1,5 +1,5 @@
 import React from "react";
-import {cancelJob, getJob3d, terminal} from "../api/jobs.js";
+import {cancelJob, getJob3d, pollJob3d, terminal} from "../api/jobs.js";
 
 /**
  * Observe a server-owned Job without resubmitting it.
@@ -47,5 +47,15 @@ export function useJob({intervalMs = 2000, enabled = true} = {}) {
     return cancelled;
   }, [jobId]);
 
-  return {job, jobId, error, track, cancel};
+  const waitFor = React.useCallback(async (id, {signal, intervalMs: waitInterval = intervalMs, timeoutMs} = {}) => {
+    setError("");
+    try {
+      return await pollJob3d(id, {intervalMs: waitInterval, timeoutMs, signal, onUpdate: track});
+    } catch (err) {
+      if (err?.name !== "AbortError") setError(err.message || String(err));
+      throw err;
+    }
+  }, [intervalMs, track]);
+
+  return {job, jobId, error, track, cancel, waitFor};
 }

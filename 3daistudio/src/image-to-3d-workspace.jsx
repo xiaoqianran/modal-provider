@@ -9,7 +9,6 @@ import {
   jobArtifactRef,
   health3d,
   listModels3d,
-  pollJob3d,
   submitImageTo3d,
   errorMessage,
 } from "./api/modal.js";
@@ -86,7 +85,7 @@ export function ImageTo3DWorkspace() {
   const [currentAssetRef, setCurrentAssetRef] = React.useState(null);
   const [generationJobId, setGenerationJobId] = React.useState(null);
   const [providerState, setProviderState] = React.useState("checking");
-  const {job, track: setJob} = useJob({enabled: false});
+  const {job, track: setJob, waitFor} = useJob({enabled: false, intervalMs: 1500});
   const [phase, setPhase] = React.useState("idle");
   const [error, setError] = React.useState("");
   const [elapsed, setElapsed] = React.useState(0);
@@ -191,10 +190,8 @@ export function ImageTo3DWorkspace() {
       setJob(submitted);
       setPhase("running");
 
-      const finished = await pollJob3d(submitted.id, {
-        intervalMs: 1500,
+      const finished = await waitFor(submitted.id, {
         timeoutMs: 20 * 60 * 1000,
-        onUpdate: setJob,
         signal: controller.signal,
       });
       const status = (finished.status || finished.state || "").toLowerCase();

@@ -6,7 +6,6 @@ import {
   fetchArtifactBlob3d,
   jobArtifactRef,
   listOperations3d,
-  pollJob3d,
   submitOperation3d,
   uploadAsset3d,
 } from "./api/modal.js";
@@ -42,7 +41,7 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
   const [available, setAvailable] = React.useState([]);
   const [segmentJob, setSegmentJob] = React.useState(null);
   const [activeOperation, setActiveOperation] = React.useState("");
-  const {job: operationJob, track: setOperationJob} = useJob({enabled: false});
+  const {job: operationJob, track: setOperationJob, waitFor} = useJob({enabled: false, intervalMs: 1200});
   const abortRef = React.useRef(null);
   React.useEffect(() => () => abortRef.current?.abort(), []);
   const [error, setError] = React.useState("");
@@ -99,10 +98,8 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
     try {
       const submitted = await submitOperation3d({operation, inputs, options});
       setOperationJob(submitted);
-      const finished = await pollJob3d(submitted.id, {
-        intervalMs: 1200,
+      const finished = await waitFor(submitted.id, {
         timeoutMs: 30 * 60 * 1000,
-        onUpdate: setOperationJob,
         signal: controller.signal,
       });
       if (String(finished.status || "").toLowerCase() !== TERMINAL_OK) {
@@ -192,10 +189,8 @@ export function AssetOperationsPanel({assetRef, assetLabel, onArtifactReady}) {
         options: {preserve_geometry: true},
       });
       setOperationJob(submitted);
-      const finished = await pollJob3d(submitted.id, {
-        intervalMs: 1200,
+      const finished = await waitFor(submitted.id, {
         timeoutMs: 30 * 60 * 1000,
-        onUpdate: setOperationJob,
         signal: controller.signal,
       });
       if (String(finished.status || "").toLowerCase() !== TERMINAL_OK) {
