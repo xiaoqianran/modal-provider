@@ -11,16 +11,14 @@ AgentScape
 modal-provider
 ├─ modal-gen-client/      optional local security gateway
 ├─ modal-2D/              image Provider + local Client adapter (modal_2d.client)
-├─ modal-2D-client/       legacy rollback source; no longer installed by Hub
 ├─ modal-3D/              3D Provider + local Client adapter (modal_3d.client)
-├─ modal-3D-client/       legacy rollback source; no longer installed by Hub
 ├─ modal-world/          HYWorld2 generation/reconstruction Provider + lightweight World contracts
 ├─ modal-fire3d/         independent FIRE3D reconstruction runtime and adapter
 ├─ modal-EmbodiedGen/     EmbodiedGen fork；其 modal/ 仅负责 EmbodiedGen 的 Modal 集成
 └─ modal-build/           通用 CUDA/PyTorch 可复现构建与 release artifacts
 ```
 
-这些目录是 **monorepo 内部 package / integration / build boundary**。其中 `modal-world` 是正式、canonical 的生产 World Provider；仓库根目录之外的 `modal-comfyui-hyworld2` 仅用于 HY-World 2.0 的 ComfyUI 可视化、手工调试和实验验证，不承担 AgentScape 生产 World contract。2D Client 已迁入 `modal-2D/modal_2d/client/`，作为 `modal-2d[client]` 的子包，不再由 Hub 安装单独的 pip Distribution；旧 `modal-2D-client/` 暂作为回退来源，禁止同时安装新旧 Provider 插件。3D Client 也已迁入 `modal-3D/modal_3d/client/`，作为 `modal-3d[client]` 子包；旧 `modal-3D-client/` 仅用于回退。
+这些目录是 **monorepo 内部 package / integration / build boundary**。其中 `modal-world` 是正式、canonical 的生产 World Provider；仓库根目录之外的 `modal-comfyui-hyworld2` 仅用于 HY-World 2.0 的 ComfyUI 可视化、手工调试和实验验证，不承担 AgentScape 生产 World contract。2D/3D Client 已分别迁入 `modal-2D/modal_2d/client/` 与 `modal-3D/modal_3d/client/`，通过 `modal-2d[client]`、`modal-3d[client]` 提供本地控制能力。旧独立 Client 目录已从主仓移除，历史独立 Git 仓库仍保留以便回溯；迁移前的工作目录已在 PC2 的 `D:\tmp\modal-provider-retired-clients-20261011` 备份。运行时不要同时安装新旧同名 Provider 插件。
 
 ## 部署前置条件：必须创建 Hugging Face Secret
 
@@ -133,7 +131,7 @@ https://pypi.org/simple
 只检查本次涉及的 package：
 
 ```bash
-./scripts/check-standalone-sync.sh modal-2D modal-2D-client modal-gen-client
+./scripts/check-standalone-sync.sh modal-2D modal-3D modal-gen-client
 ```
 
 安全同步必须使用仓库内置脚本，而不是整目录覆盖：

@@ -242,7 +242,7 @@ export function ImageTo3DWorkspace() {
 
           <Badge>IMAGE TO 3D · LIVE PROVIDER</Badge>
           <h1 className="mt-2 text-2xl font-semibold text-zinc-50">Turn Images Into 3D Assets</h1>
-          <p className="text-sm text-zinc-400">modal-3D-client → Modal GPU → verified GLB → Three.js viewport</p>
+          <p className="text-sm text-zinc-400">modal_3d.client → Modal GPU → verified GLB → Three.js viewport</p>
 
           <div className="relative mt-4 min-h-[380px] flex-1">
             <Viewport3DUpload
@@ -367,7 +367,7 @@ export function ImageTo3DWorkspace() {
           <Btn primary className="w-full !py-2.5" disabled={running || !sourceFile || providerState !== "ready" || !models.length} onClick={runGenerate}>
             {running ? "Generating…" : artifactUrl ? "Generate Again" : "Generate 3D Model"}
             <span className="text-[10px] opacity-80">
-              {providerState === "disconnected" ? "Connect Modal credentials in modal-3D-client" : "Real modal-provider job"}
+              {providerState === "disconnected" ? "Connect Modal credentials in the Provider client" : "Real modal-provider job"}
             </span>
           </Btn>
 

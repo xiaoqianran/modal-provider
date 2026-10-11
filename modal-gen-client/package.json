@@ -5,6 +5,7 @@
     "lint": "eslint modal_gen/ui/assets/**/*.js"
   },
   "devDependencies": {
-    "eslint": "^10.12.0"
+    "eslint": "^10.12.0",
+    "playwright": "^1.64.0"
   }
 }

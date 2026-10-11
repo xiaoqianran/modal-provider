@@ -3,7 +3,7 @@
 ## 结论
 
 **好对接，但只覆盖「生成能力」子集，不是官网全量后端。**  
-推荐路径：本地 React → **modal-*-client REST（Sidecar）** → Modal GPU Provider。  
+推荐路径：本地 React → **modal-gen-client 统一 Connector API**（或可选 Provider 本地 REST）→ Modal GPU Provider。
 难度：**中等偏易**（核心 2D/3D 生成链路清晰）；难点在 **UI 模型名映射** 与 **异步 Job 轮询/产物下载**。
 
 ## Monorepo 角色（`wk08/modal-provider`）
@@ -11,16 +11,16 @@
 | 包 | 作用 | 与 UI 关系 |
 |----|------|------------|
 | `modal-gen-client` | Provider Hub（统一 Job/Artifact） | 可选总入口 |
-| `modal-2D-client` | 文生图 Sidecar | Image Studio Generate |
-| `modal-3D-client` | 图生 3D Sidecar | Image to 3D / 部分 Text 工作流 |
-| `modal-2D` / `modal-3D` | Modal GPU Provider | 不直接被浏览器调用 |
+| `modal_2d.client`（`modal-2D` 子包） | 文生图本地 Adapter | Image Studio Generate |
+| `modal_3d.client`（`modal-3D` 子包） | 图生 3D 本地 Adapter | Image to 3D / 部分 Text 工作流 |
+| `modal-2D` / `modal-3D` | GPU Provider + 可选本地 Adapter | GPU Worker 不直接被浏览器调用 |
 | `modal-world` / `EmbodiedGen` / `fire3d` | 世界/具身/重建 | 超出当前 3daistudio UI 范围 |
 
 根 README 验收记录：**PNG→GLB 约 42s**、**prompt→PNG 约 10s**（需 Modal + HF Secret）。
 
 ## 已有 HTTP 契约（对接面）
 
-### modal-3D-client（默认 CORS `*`，端口 3213）
+### modal_3d.client（可选独立 REST，端口 3213）
 
 ```text
 GET  /health
@@ -34,7 +34,7 @@ POST /modal/connect           {token_id, token_secret}
 
 离线演示：`MODAL_3D_CLIENT_DEMO=1`（假 capability + 内存 Job）。
 
-### modal-2D-client
+### modal_2d.client
 
 ```text
 POST /v1/jobs
@@ -72,7 +72,7 @@ operation 包括 `uv_unwrap`、`inspect_mesh`、`filter_parts`、`texture_genera
   hooks/useGenerateJob  submit → poll → artifact URL/blob
   three-viewport        GET artifact blob → useGLTF
 
-modal-2D-client :3212   modal-3D-client :3213
+modal_2d.client :3212    modal_3d.client :3213
         │                      │
         └──────── Modal GPU ───┘
 ```
@@ -88,9 +88,10 @@ modal-2D-client :3212   modal-3D-client :3213
 ### 服务端启动（演示）
 
 ```bash
-# modal-3D-client
-cd ../modal-3D-client
-MODAL_3D_CLIENT_DEMO=1 MODAL_3D_CLIENT_PORT=3213 uv run python -m modal_3d_client
+# 可选的 3D Provider 本地 REST（Linux/macOS）
+cd ../modal-3D
+uv sync --extra client --group dev
+MODAL_3D_CLIENT_DEMO=1 MODAL_3D_CLIENT_PORT=3213 uv run python -m modal_3d.client
 # 真实 Modal 时去掉 DEMO，并 /modal/connect 填 token
 ```
 
@@ -107,6 +108,6 @@ MODAL_3D_CLIENT_DEMO=1 MODAL_3D_CLIENT_PORT=3213 uv run python -m modal_3d_clien
 
 - **UI 壳 + Image to 3D / 文生图**：好对接，Sidecar REST + CORS 已齐，还有 demo 模式可先不接 GPU。  
 - **「model-provider 里的全部」= 官网所有功能**：不行；缺账号、项目库、Flow、Video、Community 等。  
-- **现实做法**：3daistudio 继续当壳；**核心生成按钮** 接 `modal-2D/3D-client`；其余保持 mock。
+- **现实做法**：3daistudio 继续当壳；**核心生成按钮** 接 `modal-gen-client` 的 Connector API，或接 Provider 子包的可选本地 REST；其余按功能逐步实现。
 
 下一步若实施：先在 `src/api/modal.js` + `ImageTo3D` 接 `/v1/jobs` + 本地 DEMO 联调。

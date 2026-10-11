@@ -4,7 +4,8 @@
  * 默认对真实 Agent（Modal 已连通、可能有真实 Job）运行。
  * Modal 凭据从 ~/.modal.toml 的 active profile 读取，不写死在脚本里。
  */
-const { chromium } = require('/workspace/wk/modal-3D-client/node_modules/playwright');
+// Optional manual UI audit: install Playwright in the Node resolution path first.
+const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 

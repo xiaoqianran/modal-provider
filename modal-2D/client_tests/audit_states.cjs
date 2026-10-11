@@ -1,7 +1,8 @@
 /* 状态完备性审查：empty / offline / disconnected / long-content / overflow。
  * 与 audit.cjs 分工：那个审"正常流"，这个审"异常与边界"。
  */
-const { chromium } = require('/workspace/wk/modal-3D-client/node_modules/playwright');
+// Optional manual UI audit: install Playwright in the Node resolution path first.
+const { chromium } = require('playwright');
 
 const BASE = 'http://127.0.0.1:3212/';
 const TOKEN = 'dev-session-token';

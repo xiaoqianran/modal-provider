@@ -1,9 +1,10 @@
 // Render → Critique → Fix review harness for the bundled web UI.
 //
-// Usage (from the modal-3D-client repo root, with the demo server running):
-//   MODAL_3D_CLIENT_DEMO=1 uv run python -m modal_3d_client   # in another shell
-//   npm --prefix .pw install playwright                         # one-time, dev only
-//   node .pw/ui-review.mjs
+// Usage (from the modal-3D repo root, with the demo server running):
+//   uv sync --extra client --group dev
+//   MODAL_3D_CLIENT_DEMO=1 uv run python -m modal_3d.client  # another shell
+//   npm ci --prefix client_tests                             # one-time, dev only
+//   node client_tests/ui-review.mjs
 //
 // Emits screenshots and a JSON findings report to $SHOT_DIR (default /tmp/m3d-shots).
 import { chromium } from 'playwright';

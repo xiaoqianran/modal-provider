@@ -1,4 +1,5 @@
-const { chromium } = require('/workspace/wk/modal-3D-client/node_modules/playwright');
+// Optional manual screenshots: install Playwright in the Node resolution path first.
+const { chromium } = require('playwright');
 
 const BASE = 'http://127.0.0.1:3212/';
 const OUT = '/tmp/shots';

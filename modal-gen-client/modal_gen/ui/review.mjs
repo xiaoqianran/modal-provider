@@ -1,5 +1,4 @@
-import pkg from "/workspace/wk/modal-3D-client/node_modules/playwright/index.js";
-const { chromium } = pkg;
+import { chromium } from "playwright";
 
 const BASE = "http://127.0.0.1:48124/ui/";
 import { mkdirSync } from "node:fs";
