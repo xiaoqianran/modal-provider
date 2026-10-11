@@ -22,7 +22,7 @@ function isCommunityPath(pathname){
   return pathname.includes("Community");
 }
 
-function Divider(){return <div className="mx-3 my-1 border-t border-zinc-800" aria-hidden/>;}
+function Divider(){return <div className="studio-nav-divider" aria-hidden/>;}
 
 function NavItem({to,label,Icon,badge,onClick,expandable,open,innerRef}){
   const content=<>
