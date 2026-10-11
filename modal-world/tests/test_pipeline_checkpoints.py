@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import json
 
-from modal_world.pipelines import checkpoints
 from modal_world import worldgen_job
+from modal_world.pipelines import checkpoints
 
 
 def test_legacy_checkpoint_exports_are_preserved():

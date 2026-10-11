@@ -21,14 +21,11 @@ def test_pipeline_uses_stage45_by_default_and_preserves_legacy_fallback():
     assert "worldgen_garden_stage0.remote" in section
     assert '"modal-world-runtime-compile", "compile_world_runtime"' in section
     assert ").remote(job_id=job_id, force=bool(force), steps=steps)" in section
-    assert "runtime_dir = runtime_result_dir(target, steps)" in section
-    assert 'runtime_dir / "environment.ply"' in section
-    assert 'runtime_dir / "semantics.json"' in section
-    assert "stage5_artifacts(target, steps).spz" in section
-    assert 'navigation_path.is_file()' in section
-    assert 'role="world-mesh"' in section
-    assert 'role="world-semantics"' in section
-    assert 'role="world-visual"' in section
+    assert "artifacts = collect_world_artifacts(target, job_id, steps)" in section
+    artifact_source = Path("modal_world/pipelines/artifacts.py").read_text()
+    for expected in ('runtime_dir / "environment.ply"', 'runtime_dir / "semantics.json"', 'stage5_artifacts(target, steps).spz', 'navigation_path.is_file()', 'role="world-mesh"', 'role="world-semantics"', 'role="world-visual"'):
+        assert expected in artifact_source
+
 
 
 def test_pipeline_force_propagates_across_every_generation_stage():

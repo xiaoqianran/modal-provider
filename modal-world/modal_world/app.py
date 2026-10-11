@@ -20,6 +20,7 @@ from .hyworld2_runtime import (
     hyworld2_worldgen_stage5_image,
     hyworld2_worldmirror_image,
 )
+from .pipelines.artifacts import collect_world_artifacts
 from .service import capabilities as local_capabilities
 from .stage45_core import run_stage4_core, run_stage5_core, run_stage5_smoke_core
 from .worldgen_job import (
@@ -27,8 +28,6 @@ from .worldgen_job import (
     fingerprint_files,
     manifest_matches,
     resolve_worldgen_job_root,
-    runtime_result_dir,
-    stage5_artifacts,
     write_stage_manifest,
 )
 from .worldgen_policy import sanitize_semantic_labels
@@ -1196,25 +1195,6 @@ def worldgen_case000_stage5_h100_smoke(job_id: str = "case000") -> dict:
     }
 
 
-def _runtime_world_artifact(path, *, job_id: str, role: str, mime: str) -> dict:
-    import hashlib
-
-    if not path.is_file() or path.stat().st_size <= 0:
-        raise RuntimeError(f"World artifact missing: {path}")
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(4 * 1024 * 1024), b""):
-            digest.update(chunk)
-    return {
-        "id": f"{job_id}_{role.replace('-', '_')}",
-        "role": role,
-        "mime": mime,
-        "bytes": path.stat().st_size,
-        "sha256": digest.hexdigest(),
-        "path": path.relative_to("/worldgen").as_posix(),
-    }
-
-
 @app.function(
     image=base_image,
     cpu=1.0,
@@ -1299,43 +1279,7 @@ def worldgen_pipeline(
 
     worldgen_outputs.reload()
     target = resolve_worldgen_job_root(job_id)
-    runtime_dir = runtime_result_dir(target, steps)
-    artifacts = [
-        _runtime_world_artifact(
-            runtime_dir / "environment.ply",
-            job_id=job_id,
-            role="world-mesh",
-            mime="model/ply",
-        ),
-        _runtime_world_artifact(
-            runtime_dir / "semantics.json",
-            job_id=job_id,
-            role="world-semantics",
-            mime="application/json",
-        ),
-        _runtime_world_artifact(
-            stage5_artifacts(target, steps).spz,
-            job_id=job_id,
-            role="world-visual",
-            mime="model/spz",
-        ),
-        _runtime_world_artifact(
-            runtime_dir / "world.json",
-            job_id=job_id,
-            role="world-manifest",
-            mime="application/json",
-        ),
-    ]
-    navigation_path = runtime_dir / "navigation.ply"
-    if navigation_path.is_file():
-        artifacts.append(
-            _runtime_world_artifact(
-                navigation_path,
-                job_id=job_id,
-                role="world-navigation",
-                mime="model/ply",
-            )
-        )
+    artifacts = collect_world_artifacts(target, job_id, steps)
     return {
         "model": "hyworld2",
         "job_id": job_id,
