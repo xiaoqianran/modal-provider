@@ -364,3 +364,68 @@ def test_texture_generate_requires_png_reference(tmp_path, monkeypatch):
             {"preserve_geometry": True},
             job_id="op_texture_bad_mime",
         )
+
+def test_repeated_roles_support_artifact_id_selection(tmp_path, monkeypatch):
+    svc = service(tmp_path)
+    asset = svc.operations.register(descriptor("a" * 64, role="primary-glb"))
+    method = RemoteMethod(SpawnCall("fc-repeated"))
+    bind_remote(monkeypatch, method)
+
+    svc.operations.submit(
+        "inspect_mesh", {"asset": {"artifact_id": asset["id"]}},
+        job_id="op_repeated",
+    )
+    pending = svc.operations._get("op_repeated")
+    output = [
+        descriptor("b" * 64, role="primary-glb"),
+        descriptor("c" * 64, role="primary-glb"),
+        descriptor("d" * 64, role="quality-report", mime="application/json"),
+    ]
+    remote = {
+        "contract": RESULT_CONTRACT,
+        "revision": REVISION,
+        "operation": "inspect_mesh",
+        "request_key": pending["request_key"],
+        "artifacts": output,
+        "metrics": {},
+        "timing": {},
+    }
+    monkeypatch.setattr(
+        operation_jobs.modal.FunctionCall, "from_id",
+        lambda *args, **kwargs: ResultCall(remote),
+    )
+    done = svc.operations.poll("op_repeated")
+    assert done["status"] == "succeeded"
+    assert len(done["result"]["artifacts"]) == 3
+    assert all(artifact["id"].startswith("art_") for artifact in done["result"]["artifacts"])
+
+    with pytest.raises(ValueError, match="ambiguous artifact role"):
+        svc.operations.artifact("op_repeated", "primary-glb")
+
+    child = svc.operations.submit(
+        "inspect_mesh",
+        {"asset": {
+            "job_id": "op_repeated",
+            "role": "primary-glb",
+            "artifact_id": "art_" + "c" * 64,
+        }},
+        job_id="op_selected",
+    )
+    assert child["status"] == "running"
+
+    rejected = svc.operations.submit(
+        "inspect_mesh",
+        {"asset": {"job_id": "op_repeated", "role": "primary-glb"}},
+        job_id="op_ambiguous",
+    )
+    assert rejected["status"] == "failed"
+    assert rejected["error_code"] == "input.invalid"
+
+
+def test_connector_input_types_reflect_multimodal_operation_schema():
+    caps = {cap["operation"].split(".")[-2]: cap
+            for cap in operation_jobs.connector_capabilities("available")}
+    assert caps["multiview_to_3d"]["input"]["types"] == ["image"]
+    assert caps["texture_generate"]["input"]["types"] == ["image", "mesh"]
+    assert caps["segment_parts"]["input"]["types"] == ["mesh"]
+    assert caps["complete_parts"]["input"]["types"] == ["mesh", "structured"]

@@ -140,7 +140,7 @@ class OperationService:
                 desc = self.asset(ref["artifact_id"])
                 if desc["mime"] != expected_mimes[name]:
                     raise ValueError(f"{name} must be {expected_mimes[name]}")
-            elif set(ref) <= {"job_id", "role"} and ref.get("job_id") and ref.get("role"):
+            elif set(ref) <= {"job_id", "role", "artifact_id"} and ref.get("job_id") and ref.get("role"):
                 parent = ref["job_id"]
                 if parent == local_id:
                     raise ValueError("job cannot depend on itself")
@@ -191,8 +191,13 @@ class OperationService:
                     public = self.upload(path.read_bytes())
                     rows = [self.asset(public["id"])]
             matched = [a for a in rows if a.get("role", "primary-glb") == ref["role"]]
+            if ref.get("artifact_id"):
+                matched = [a for a in matched if a["id"] == ref["artifact_id"]]
             if len(matched) != 1:
-                raise ValueError(f"parent artifact role not found: {ref['role']}")
+                raise ValueError(
+                    f"parent artifact must resolve uniquely: {ref['role']} "
+                    "(specify artifact_id for repeated roles)"
+                )
             resolved[name] = validate_descriptor(matched[0])
             if resolved[name]["mime"] != input_mimes_for(state["operation"])[name]:
                 raise ValueError(f"parent artifact MIME mismatch: {name}")
@@ -274,10 +279,12 @@ class OperationService:
                 rows = [validate_descriptor(a) for a in value["artifacts"]]
                 roles = [a["role"] for a in rows]
                 required = set(state.get("required_roles") or ["primary-glb", "quality-report"])
-                if not required.issubset(roles) or len(set(roles)) != len(roles):
-                    raise ValueError("missing or duplicate artifact roles")
+                if not required.issubset(roles) or len({a["sha256"] for a in rows}) != len(rows):
+                    raise ValueError("missing required roles or duplicate artifact identities")
+                # Return the registered public IDs, not only worker-side descriptors.
+                # Dependent jobs and the Connector require these stable artifact identities.
                 for desc in rows:
-                    self.register(desc)
+                    desc["id"] = self.register(desc)["id"]
                 state.update(status="succeeded", result={"artifacts": rows, "metrics": value.get("metrics", {}),
                              "timing": value.get("timing", {}), "request_key": value["request_key"]}, error_code=None)
             except (ValueError, KeyError, TypeError, AttributeError) as exc:
@@ -322,9 +329,14 @@ class OperationService:
         state = self._get(job_id)
         if state["status"] != "succeeded":
             raise RuntimeError("artifact not ready")
-        desc = next((a for a in state["result"]["artifacts"] if a["role"] == role or a["id"] == role), None)
-        if desc is None:
+        matches = [a for a in state["result"]["artifacts"] if a["id"] == role]
+        if not matches:
+            matches = [a for a in state["result"]["artifacts"] if a["role"] == role]
+        if not matches:
             raise KeyError(role)
+        if len(matches) != 1:
+            raise ValueError("ambiguous artifact role; use an artifact id")
+        desc = matches[0]
         destination = artifacts._cache_path(desc["sha256"])
         if not destination.is_file():
             fd, name = tempfile.mkstemp(dir=destination.parent, suffix=".part")
@@ -371,6 +383,11 @@ def connector_capabilities(status):
     for cap in capabilities():
         op = cap["id"]
         input_mimes = input_mimes_for(op)
+        input_types = sorted({
+            "image" if mime.startswith("image/") else
+            "mesh" if mime.startswith("model/") else "structured"
+            for mime in input_mimes.values()
+        })
         refs = {name: {"type": "object", "required": ["id", "role", "mime", "hash"],
                 "additionalProperties": False, "properties": {
                     "id": {"type": "string", "minLength": 1}, "role": {"type": "string"},
@@ -380,9 +397,10 @@ def connector_capabilities(status):
         required = required_roles_for(op)
         result.append({"operation": cap["operation"], "version": "1", "displayName": cap["name"],
             "category": "asset-processing", "status": status,
-            "input": {"types": ["mesh"], "schema": {"type": "object", "additionalProperties": False,
+            "input": {"types": input_types, "schema": {"type": "object", "additionalProperties": False,
                 "required": required_inputs_for(op), "properties": refs},
                 "limits": {"maxSourceBytes": MAX_BYTES}},
+            "runtimeTarget": cap["worker_app"],
             "output": {"roles": required, "required": required, "optional": []},
             "profiles": {"recommended": {}},
             "optionsSchema": {"type": "object", "additionalProperties": False, "properties": SPECS[op]["options"]},

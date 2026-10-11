@@ -129,3 +129,76 @@ def test_provider_materializes_and_uploads_only_when_shared_source_is_missing(
     assert resolver.resolve_calls == 1
     assert uploads == [(source_png, resolver.sha256)]
     assert jobs.calls == [(artifacts.source_remote_path(resolver.sha256), resolver.sha256)]
+
+
+def test_multiview_optional_images_work_through_connector(tmp_path, source_png):
+    from types import SimpleNamespace
+
+    class Operations:
+        def __init__(self):
+            self.refs = None
+            self.uploaded = 0
+
+        def asset(self, artifact_id):
+            raise KeyError(artifact_id)
+
+        def upload(self, data, **kwargs):
+            self.uploaded += 1
+            return {"id": "art_" + hashlib.sha256(data).hexdigest()}
+
+        def submit(self, name, refs, options, job_id):
+            self.refs = refs
+            return {
+                "id": job_id,
+                "status": "queued",
+                "model": name,
+                "result": None,
+                "error_code": None,
+                "retryable": False,
+            }
+
+    source_path = tmp_path / "front.png"
+    source_path.write_bytes(source_png)
+    resolver = Resolver(source_png, source_path)
+    source, context = request(resolver)
+    ops = Operations()
+    provider = Modal3DProvider(SimpleNamespace(operations=ops))
+    result = provider.submit(
+        operation="modal-3d.asset.multiview_to_3d.v1",
+        inputs={"front": source},
+        profile="recommended",
+        options={},
+        context=context,
+    )
+    assert result["status"] == "queued"
+    assert list(ops.refs) == ["front"]
+    assert ops.uploaded == 1
+
+
+def test_provider_job_id_is_scoped_by_owner_and_origin():
+    from types import SimpleNamespace
+
+    from modal_3d_client.provider import _provider_job_id
+
+    one = SimpleNamespace(request_id="same", owner_client="alpha", owner_origin="https://a")
+    two = SimpleNamespace(request_id="same", owner_client="beta", owner_origin="https://b")
+    assert _provider_job_id(one, "op") == _provider_job_id(one, "op")
+    assert _provider_job_id(one, "op") != _provider_job_id(two, "op")
+    assert _provider_job_id(one, "op") != _provider_job_id(one, "3d")
+
+
+def test_operation_descriptor_survives_no_generation_models(monkeypatch):
+    from types import SimpleNamespace
+
+    from modal_3d_client import provider as provider_module
+
+    monkeypatch.setattr(
+        provider_module.capabilities,
+        "capabilities_document",
+        lambda: {"contract": "modal-3d.capabilities.v3", "models": []},
+    )
+    provider = Modal3DProvider(SimpleNamespace())
+    doc = provider.descriptor()
+    assert doc["status"] == "available"
+    assert doc["capabilities"][0]["status"] == "disabled"
+    assert any(cap["operation"] == "modal-3d.asset.segment_parts.v1" for cap in doc["capabilities"])

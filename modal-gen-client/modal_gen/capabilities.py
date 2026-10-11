@@ -150,7 +150,11 @@ class CapabilityRegistry:
                 model = default_model.strip()
 
         try:
-            readiness = self.deployments.submission_status(provider_id, model or None)
+            target = capability.get("runtimeTarget")
+            if isinstance(target, str) and target:
+                readiness = self.deployments.submission_status(provider_id, runtime_target=target)
+            else:
+                readiness = self.deployments.submission_status(provider_id, model or None)
         except Exception as exc:
             raise ProviderError(
                 "JOB_RUNTIME_UNAVAILABLE", f"Provider Runtime 状态校验失败: {exc}", 409
@@ -159,7 +163,7 @@ class CapabilityRegistry:
         projected = project_runtime_readiness(descriptor, readiness)
         projected_capability = self._operation(projected, operation)
         if (
-            projected.get("status") != "available"
+            projected.get("status") not in {"available", "degraded"}
             or projected_capability.get("status") != "available"
         ):
             raise ProviderError("JOB_RUNTIME_UNAVAILABLE", "Provider Runtime 当前不可提交", 409)
@@ -308,7 +312,10 @@ class CapabilityRegistry:
         for provider in providers:
             if not isinstance(provider, dict) or provider.get("id") != provider_id:
                 continue
-            if provider.get("status") != "available" or provider.get("health") == "unavailable":
+            if (
+                provider.get("status") not in {"available", "degraded"}
+                or provider.get("health") == "unavailable"
+            ):
                 raise ProviderError("JOB_CAPABILITY_UNAVAILABLE", "Provider 当前不可用", 409)
             capabilities = provider.get("capabilities")
             if not isinstance(capabilities, list):

@@ -777,3 +777,25 @@ def test_runtime_status_reports_missing_prerequisites(monkeypatch):
     assert row["runnable"] is False
     assert row["prerequisites"]["status"] == "missing"
     assert row["prerequisiteError"] == "required deployment prerequisites are missing"
+
+def test_submission_status_selects_only_operation_runtime_target(monkeypatch):
+    from types import SimpleNamespace
+
+    targets = (
+        DeploymentTarget("modal-3d", "prep", "runtime.prep", required=True),
+        DeploymentTarget("modal-3d", "model", "runtime.model", models=("one",)),
+        DeploymentTarget("modal-3d", "modal-3d-pose", "runtime.pose", models=("pose",)),
+    )
+    service = DeploymentService(targets=targets)
+    service._client = SimpleNamespace()
+    seen = []
+
+    def status(target, _client, environment_name=None):
+        seen.append(target.app_name)
+        return {"provider": target.provider, "app": target.app_name,
+                "status": "current", "models": list(target.models), "runnable": True}
+    monkeypatch.setattr(service, "_target_status", status)
+
+    result = service.submission_status("modal-3d", runtime_target="modal-3d-pose")
+    assert seen == ["modal-3d-pose"]
+    assert result["providers"][0]["apps"][0]["app"] == "modal-3d-pose"

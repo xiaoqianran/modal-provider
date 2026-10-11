@@ -298,11 +298,21 @@ class DeploymentService:
         rows = [self._target_status(target, client) for target in self._targets(provider)]
         return self._summary(rows)
 
-    def submission_status(self, provider: str, model: str | None = None) -> dict[str, object]:
+    def submission_status(
+        self, provider: str, model: str | None = None, *, runtime_target: str | None = None
+    ) -> dict[str, object]:
         """Read only the runtime targets required for one submission."""
 
         client = self._require_client()
         targets = self._targets(provider)
+        if runtime_target is not None:
+            selected = tuple(target for target in targets if target.app_name == runtime_target)
+            if not selected:
+                raise ConnectorError(
+                    "DEPLOYMENT_TARGET_UNKNOWN", f"未知 Runtime target: {runtime_target}", 422
+                )
+            rows = [self._target_status(target, client) for target in selected]
+            return {"connected": True, **self._summary(rows)}
         model_targets = tuple(
             target for target in targets if model is not None and model in target.models
         )

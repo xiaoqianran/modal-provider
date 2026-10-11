@@ -206,3 +206,33 @@ def test_submission_runtime_gate_rejects_missing_selected_worker(tmp_path):
         assert getattr(exc, "code", None) == "JOB_RUNTIME_UNAVAILABLE"
     else:
         raise AssertionError("missing worker must block submission")
+
+def test_runtime_gate_uses_exact_worker_for_advanced_operation(tmp_path):
+    class OperationAdapter(Adapter):
+        def descriptor(self):
+            result = super().descriptor()
+            result["capabilities"].append({
+                "operation": "segment_parts", "status": "available",
+                "runtimeTarget": "modal-3d-p3sam",
+                "input": {"schema": {"properties": {}}},
+            })
+            return result
+
+    class OperationDeployments(Deployments):
+        connected = True
+
+        def manages_provider(self, provider):
+            return provider == "modal-x"
+
+        def submission_status(self, provider, model=None, *, runtime_target=None):
+            assert provider == "modal-x"
+            assert model is None
+            assert runtime_target == "modal-3d-p3sam"
+            return {"providers": [{"apps": [
+                {"app": "modal-3d-p3sam", "status": "current", "runnable": True}
+            ]}]}
+
+    registry = CapabilityRegistry(
+        Store(tmp_path / "db.sqlite3"), [OperationAdapter()], OperationDeployments()
+    )
+    registry.ensure_submission_ready("modal-x", "segment_parts", {})

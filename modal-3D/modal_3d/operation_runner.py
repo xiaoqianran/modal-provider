@@ -136,8 +136,8 @@ def run_operation_job(volume, operation, inputs, options=None, *, root="/artifac
                 "mediaType": mime, "bytes": source.stat().st_size, "sha256": digest,
                 "digest": f"sha256:{digest}", "filename": source.name,
                 "path": (destination / source.name).relative_to(root).as_posix()})
-        if not artifacts or len({a["role"] for a in artifacts}) != len(artifacts):
-            raise ValueError("operation must produce unique artifact roles")
+        if not artifacts or len({a["id"] for a in artifacts}) != len(artifacts):
+            raise ValueError("operation must produce distinct artifact identities")
         result = {"contract": RESULT_CONTRACT, "operation": operation, "revision": revision_for(operation),
                   "request_key": key, "inputs": checked, "options": options,
                   "artifacts": artifacts, "metrics": runtime.get("metrics", {}),

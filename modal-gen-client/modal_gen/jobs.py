@@ -14,10 +14,31 @@ from .storage import Store
 
 _TERMINAL = {"succeeded", "failed", "cancelled", "expired"}
 _ALLOWED_TRANSITIONS = {
-    "accepted": {"queued", "running", "connection_required", "cancel_requested", *_TERMINAL},
-    "queued": {"running", "connection_required", "cancel_requested", *_TERMINAL},
-    "running": {"connection_required", "cancel_requested", *_TERMINAL},
-    "connection_required": {"accepted", "queued", "running", "cancel_requested", *_TERMINAL},
+    "accepted": {
+        "queued",
+        "running",
+        "submission_unknown",
+        "connection_required",
+        "cancel_requested",
+        *_TERMINAL,
+    },
+    "queued": {
+        "running",
+        "submission_unknown",
+        "connection_required",
+        "cancel_requested",
+        *_TERMINAL,
+    },
+    "running": {"submission_unknown", "connection_required", "cancel_requested", *_TERMINAL},
+    "connection_required": {
+        "accepted",
+        "queued",
+        "running",
+        "submission_unknown",
+        "cancel_requested",
+        *_TERMINAL,
+    },
+    "submission_unknown": {"running", "connection_required", "cancel_requested", *_TERMINAL},
     "cancel_requested": {"connection_required", *_TERMINAL},
 }
 _SAFE_ID_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
@@ -187,7 +208,7 @@ class JobService:
             "id": row["id"],
             "provider": row["provider"],
             "operation": row["operation"],
-            "kind": "generation",
+            "kind": _job_kind(str(row["operation"])),
             "requestHash": row["request_hash"],
             "idempotencyKey": row["idempotency_key"],
             "contractVersion": row["contract_version"],
@@ -227,6 +248,8 @@ class JobService:
         status = provider_job.status
         if status not in {
             "running",
+            "queued",
+            "submission_unknown",
             "succeeded",
             "failed",
             "cancel_requested",
@@ -396,11 +419,19 @@ def _safe_id(value: str, code: str) -> str:
     return text
 
 
+def _job_kind(operation: str) -> str:
+    # Historical image generation remains generation; advanced operations process assets.
+    if operation.startswith("modal-3d.asset.") and operation != "modal-3d.asset.image_to_3d.v1":
+        return "asset-processing"
+    return "generation"
+
+
 def _stage(status: str) -> str:
     return {
         "accepted": "submitted",
         "queued": "queued",
         "running": "running",
+        "submission_unknown": "recovery",
         "connection_required": "connection",
         "cancel_requested": "cancelling",
         "succeeded": "artifact",

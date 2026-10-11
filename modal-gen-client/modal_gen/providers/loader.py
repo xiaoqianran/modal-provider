@@ -15,6 +15,8 @@ from .protocol import (
 
 _ENTRYPOINT_GROUP = "modal_gen.providers"
 _STATUSES = {
+    "queued",
+    "submission_unknown",
     "running",
     "succeeded",
     "failed",

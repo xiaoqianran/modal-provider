@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -42,8 +43,7 @@ class Modal3DProvider:
         except capabilities.CapabilityError:
             return self.unavailable_descriptor()
         enabled = [item for item in document["models"] if item.get("status") == "enabled"]  # type: ignore[index]
-        if not enabled:
-            return self.unavailable_descriptor()
+        # Advanced operations remain discoverable when no image model is enabled.
         profiles = _common_profiles(enabled)
         return _descriptor(
             model_ids=[str(item["id"]) for item in enabled],
@@ -108,14 +108,22 @@ class Modal3DProvider:
         options: dict[str, object],
         context: object,
     ) -> dict[str, object]:
-        from modal_3d.operations import MAX_BYTES, SPECS, input_mimes_for, options_for
+        from modal_3d.operations import (
+            MAX_BYTES,
+            SPECS,
+            input_mimes_for,
+            options_for,
+            validate_input_names,
+        )
+
         operation_names = {f"modal-3d.asset.{name}.v1": name for name in SPECS}
         if operation in operation_names:
             name = operation_names[operation]
             try:
                 options_for(name, options)
-                if profile not in (None, "recommended") or set(inputs) != set(SPECS[name]["inputs"]):
-                    raise ValueError("invalid operation profile or inputs")
+                if profile not in (None, "recommended"):
+                    raise ValueError("invalid operation profile")
+                validate_input_names(name, inputs)
                 refs = {}
                 expected_mimes = input_mimes_for(name)
                 resolver = getattr(context, "artifacts", None)
@@ -124,11 +132,19 @@ class Modal3DProvider:
                 for key, source in inputs.items():
                     if not isinstance(source, dict):
                         raise TypeError("artifact identity required")
-                    scope = {"owner_client": str(getattr(context, "owner_client", "")),
-                             "owner_origin": str(getattr(context, "owner_origin", ""))}
+                    scope = {
+                        "owner_client": str(getattr(context, "owner_client", "")),
+                        "owner_origin": str(getattr(context, "owner_origin", "")),
+                    }
                     described = resolver.describe_input(str(source.get("id", "")), **scope)
-                    if (described.mime != expected_mimes[key] or described.bytes > MAX_BYTES
-                        or any(source.get(field) != getattr(described, field) for field in ("id", "role", "mime", "hash"))):
+                    if (
+                        described.mime != expected_mimes[key]
+                        or described.bytes > MAX_BYTES
+                        or any(
+                            source.get(field) != getattr(described, field)
+                            for field in ("id", "role", "mime", "hash")
+                        )
+                    ):
                         raise ValueError("artifact identity mismatch")
                     artifact_id = "art_" + described.hash.removeprefix("sha256:")
                     try:
@@ -143,8 +159,11 @@ class Modal3DProvider:
                             filename=Path(local.path).name,
                         )
                     refs[key] = {"artifact_id": artifact_id}
-                return _job(self.jobs.operations.submit(name, refs, options,
-                    job_id=_provider_job_id(context, "op")))
+                return _job(
+                    self.jobs.operations.submit(
+                        name, refs, options, job_id=_provider_job_id(context, "op")
+                    )
+                )
             except (ValueError, TypeError, KeyError, ContractError) as exc:
                 raise ProviderFault("PROVIDER_REQUEST_INVALID", str(exc), 422) from exc
         if operation != OPERATION:
@@ -249,6 +268,7 @@ def _descriptor(
     revision: str,
 ) -> dict[str, object]:
     from .operation_jobs import connector_capabilities
+
     return {
         "id": "modal-3d",
         "displayName": "Modal 3D",
@@ -264,7 +284,7 @@ def _descriptor(
                 "version": "1",
                 "displayName": "Image to 3D",
                 "category": "asset-generation",
-                "status": status,
+                "status": "available" if model_ids and status == "available" else "disabled",
                 "input": {
                     "types": ["image"],
                     "schema": {
@@ -297,7 +317,8 @@ def _descriptor(
                 "support": {"cancel": True, "resume": True, "idempotency": True},
                 "artifactTransport": "connector-artifact",
             }
-        ] + connector_capabilities(status),
+        ]
+        + connector_capabilities(status),
     }
 
 
@@ -345,7 +366,17 @@ def _match_source(source: dict[str, object], artifact: object) -> None:
 
 def _provider_job_id(context: object, prefix: str) -> str:
     request_id = str(getattr(context, "request_id", ""))
-    digest = hashlib.sha256(request_id.encode()).hexdigest()[:32]
+    scoped = json.dumps(
+        {
+            "provider": "modal-3d",
+            "owner_client": str(getattr(context, "owner_client", "")),
+            "owner_origin": str(getattr(context, "owner_origin", "")),
+            "request_id": request_id,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(scoped.encode()).hexdigest()[:32]
     return f"{prefix}_{digest}"
 
 

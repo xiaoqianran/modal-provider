@@ -103,8 +103,27 @@ def project_runtime_readiness(
         return projected
 
     any_available = False
+    unavailable_count = 0
     for capability in capabilities:
         if not isinstance(capability, dict):
+            continue
+        target = capability.get("runtimeTarget")
+        if isinstance(target, str) and target:
+            matched = [state for state in states if state.app == target]
+            runnable = bool(matched) and all(state.runnable for state in matched)
+            capability["runtimeTargetReadiness"] = {
+                "app": target, "runnable": runnable,
+                "state": matched[0].model_state if matched else "not_deployed",
+            }
+            if runnable:
+                capability["status"] = "available"
+                any_available = True
+            else:
+                capability["status"] = "disabled"
+                capability["runtimeBlockers"] = [state.blocker() for state in matched] or [
+                    {"app": target, "status": "missing", "error": None}
+                ]
+                unavailable_count += 1
             continue
         model_schema = _model_schema(capability)
         if model_schema is None:
@@ -123,6 +142,7 @@ def project_runtime_readiness(
 
         if not runnable_models:
             capability["status"] = "disabled"
+            unavailable_count += 1
             continue
         any_available = True
         if required_blockers:
@@ -132,7 +152,7 @@ def project_runtime_readiness(
     if not any_available:
         projected["status"] = "disabled"
         projected["health"] = "unavailable"
-    elif required_blockers:
+    elif required_blockers or unavailable_count:
         projected["status"] = "degraded"
         projected["health"] = "degraded"
         projected["runtimeBlockers"] = required_blockers

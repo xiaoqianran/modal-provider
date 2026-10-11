@@ -39,3 +39,21 @@ def test_connection_error_exposes_type_but_not_provider_message():
     assert "ValueError" in str(captured.value)
     assert "credential contents" not in str(captured.value)
     assert "secret-value" not in str(captured.value)
+
+def test_loader_preserves_queued_and_unknown_operation_jobs():
+    from modal_gen.providers.loader import LibraryProviderAdapter
+    adapter = LibraryProviderAdapter(BrokenConnectionProvider())
+    for state in ("queued", "submission_unknown", "running"):
+        normalized = adapter._job({"id": "op_a", "status": state, "artifacts": []})
+        assert normalized.status == state
+
+
+def test_connector_job_transition_accepts_recovery_and_processing_kind():
+    from modal_gen.jobs import JobService, _job_kind, _stage
+
+    JobService._assert_transition("accepted", "queued")
+    JobService._assert_transition("accepted", "submission_unknown")
+    JobService._assert_transition("submission_unknown", "running")
+    assert _stage("submission_unknown") == "recovery"
+    assert _job_kind("modal-3d.asset.retopology.v1") == "asset-processing"
+    assert _job_kind("modal-3d.asset.image_to_3d.v1") == "generation"
