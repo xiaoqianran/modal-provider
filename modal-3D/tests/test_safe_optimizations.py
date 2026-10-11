@@ -26,7 +26,7 @@ class PixalSafeOptimizationTests(unittest.TestCase):
         np.testing.assert_array_equal(direct, legacy)
 
     def test_shared_backbones_keep_branch_specific_conditioners(self) -> None:
-        source = Path(pixal3d.__file__).read_text(encoding="utf-8")
+        source = (Path(pixal3d.__file__).parent / "workers" / "pixal3d.py").read_text(encoding="utf-8")
         self.assertIn("return_value=shared_dino", source)
         self.assertIn("model.naf_model = shared_naf", source)
         self.assertIn("DINO sharing invariant failed", source)
@@ -36,18 +36,18 @@ class PixalSafeOptimizationTests(unittest.TestCase):
 
     def test_hermit_and_pixal_pin_uv_build_tool(self) -> None:
         for module in (pixal3d,):
-            source = Path(module.__file__).read_text(encoding="utf-8")
+            source = (Path(module.__file__).parent / "workers" / {"fastsam3d_plus_plus": "fastsam3d", "hunyuan2_1_plus_plus": "hunyuan21", "hermit_trellis2_plus_plus": "trellis2", "pixal3d": "pixal3d"}[module.__name__.rsplit(".", 1)[-1]]).with_suffix(".py").read_text(encoding="utf-8")
             self.assertIn("python -m pip install uv==0.12.5", source)
             self.assertNotIn("pip install --upgrade uv", source)
 
         from modal_3d import hermit_trellis2_plus_plus
 
-        source = Path(hermit_trellis2_plus_plus.__file__).read_text(encoding="utf-8")
+        source = (Path(hermit_trellis2_plus_plus.__file__).parent / "workers" / "trellis2.py").read_text(encoding="utf-8")
         self.assertIn("python -m pip install uv==0.12.5", source)
         self.assertNotIn("pip install --upgrade uv", source)
 
     def test_pixal_release_wheel_download_retries_transient_failures(self) -> None:
-        source = Path(pixal3d.__file__).read_text(encoding="utf-8")
+        source = (Path(pixal3d.__file__).parent / "workers" / "pixal3d.py").read_text(encoding="utf-8")
         self.assertIn("--retry 5 --retry-all-errors --retry-delay 2", source)
 
     def test_hunyuan_profile_patch_is_instrumentation_only(self) -> None:

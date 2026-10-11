@@ -200,9 +200,9 @@ class CapabilityContractTests(unittest.TestCase):
 
     def test_full_quality_implementation_parameters_remain_unchanged(self) -> None:
         """Performance work must not silently trade away geometry or texture quality."""
-        hunyuan_source = Path(hunyuan2_1_plus_plus.__file__).read_text(encoding="utf-8")
-        trellis_source = Path(hermit_trellis2_plus_plus.__file__).read_text(encoding="utf-8")
-        pixal_source = Path(pixal3d.__file__).read_text(encoding="utf-8")
+        hunyuan_source = (Path(hunyuan2_1_plus_plus.__file__).parent / "workers" / "hunyuan21.py").read_text(encoding="utf-8")
+        trellis_source = (Path(hermit_trellis2_plus_plus.__file__).parent / "workers" / "trellis2.py").read_text(encoding="utf-8")
+        pixal_source = (Path(pixal3d.__file__).parent / "workers" / "pixal3d.py").read_text(encoding="utf-8")
 
         self.assertIn("Hunyuan3DPaintConfig(max_num_view=6, resolution=512)", hunyuan_source)
         self.assertIn('"num_inference_steps": 50', hunyuan_source)

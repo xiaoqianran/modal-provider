@@ -62,7 +62,7 @@ class DirectEntrypointContractTests(unittest.TestCase):
         # `Model` is a modal.Cls, not a plain class, so assert against source.
         for model_id, module in WORKERS:
             with self.subTest(model=model_id):
-                source = Path(module.__file__).read_text(encoding="utf-8")
+                source = (Path(module.__file__).parent / "workers" / {"fastsam3d_plus_plus": "fastsam3d", "hunyuan2_1_plus_plus": "hunyuan21", "hermit_trellis2_plus_plus": "trellis2", "pixal3d": "pixal3d"}[module.__name__.rsplit(".", 1)[-1]]).with_suffix(".py").read_text(encoding="utf-8")
                 self.assertIn("@modal.method()", source)
                 self.assertIn("def generate_job(self, input_path: str", source)
                 self.assertIn("run_generation_job(", source)
@@ -82,7 +82,7 @@ class DirectEntrypointContractTests(unittest.TestCase):
     def test_no_worker_registers_a_cpu_adapter_function(self) -> None:
         for model_id, module in WORKERS:
             with self.subTest(model=model_id):
-                source = Path(module.__file__).read_text(encoding="utf-8")
+                source = (Path(module.__file__).parent / "workers" / {"fastsam3d_plus_plus": "fastsam3d", "hunyuan2_1_plus_plus": "hunyuan21", "hermit_trellis2_plus_plus": "trellis2", "pixal3d": "pixal3d"}[module.__name__.rsplit(".", 1)[-1]]).with_suffix(".py").read_text(encoding="utf-8")
                 self.assertNotIn("register_worker_entrypoint", source)
                 self.assertNotIn("@modal.concurrent", source)
                 self.assertNotIn("add_local_python_source", source)

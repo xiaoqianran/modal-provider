@@ -14,7 +14,7 @@ class WindowsDeployContractTests(unittest.TestCase):
         self.assertEqual(str(fastsam3d_plus_plus.SRC), "/opt/fastsam3d-plus-plus")
         self.assertEqual(str(fastsam3d_plus_plus.MODEL_DIR), "/models/sam3d")
         self.assertEqual(str(fastsam3d_plus_plus.PIPELINE), "/models/sam3d/checkpoints/pipeline.fast.yaml")
-        source = Path(fastsam3d_plus_plus.__file__).read_text(encoding="utf-8")
+        source = (Path(fastsam3d_plus_plus.__file__).parent / "workers" / "fastsam3d.py").read_text(encoding="utf-8")
         self.assertIn("OmegaConf.load(str(PIPELINE))", source)
         # ARTIFACT_ROOT must stay a plain string: a Windows Path captured here
         # cannot be unpickled inside Modal's Linux containers.

@@ -33,7 +33,7 @@ class FastSAM3DParityTests(unittest.TestCase):
             fastsam._asset_policy("shortcut")
 
     def test_full_postprocess_runtime_dependencies_are_present(self) -> None:
-        source = Path(fastsam.__file__).read_text(encoding="utf-8")
+        source = (Path(fastsam.__file__).parent / "workers" / "fastsam3d.py").read_text(encoding="utf-8")
         for dependency in (
             "igraph==0.11.8",
             "open3d==0.18.0",
@@ -53,7 +53,7 @@ class FastSAM3DParityTests(unittest.TestCase):
         self.assertIn("python -m pip check", source)
 
     def test_full_pipeline_keeps_gaussian_decoder_configuration(self) -> None:
-        source = Path(fastsam.__file__).read_text(encoding="utf-8")
+        source = (Path(fastsam.__file__).parent / "workers" / "fastsam3d.py").read_text(encoding="utf-8")
         self.assertIn('"checkpoints/slat_decoder_gs_4.yaml"', source)
         self.assertIn('"checkpoints/slat_decoder_gs_4.ckpt"', source)
         self.assertNotIn("slat_decoder_gs_4_config_path: null", source)
