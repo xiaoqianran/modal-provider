@@ -4,9 +4,10 @@ import {Btn} from "./components.jsx";
 import {Viewport3DUpload} from "./three-viewport.jsx";
 import {errorMessage} from "./api/client.js";
 import {capabilities, listCapabilities3d, TEXT_IMAGE, IMAGE_3D} from "./api/capabilities.js";
-import {submitJob, cancelJob, terminal, getJob3d, listJobs} from "./api/jobs.js";
+import {submitJob, cancelJob, terminal, listJobs} from "./api/jobs.js";
 import {uploadAsset3d, assetContentUrl, listAssets} from "./api/assets.js";
 import {listProjects, createProject as createStudioProject} from "./api/projects.js";
+import {useJob} from "./hooks/useJob.js";
 
 const fieldClass = "w-full rounded-lg border border-zinc-700 bg-zinc-900 p-2 text-sm";
 const panelClass = "rounded-xl border border-zinc-800 bg-zinc-950/40 p-4";
@@ -74,7 +75,7 @@ export function StudioWorkbench({mode = "operations"}) {
   const [imageModel, setImageModel] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
-  const [job, setJob] = React.useState(null);
+  const {job, error: jobError, track: trackJob, cancel: cancelTrackedJob} = useJob();
   React.useEffect(() => {
     let live = true;
     Promise.all([listCapabilities3d(), listAssets(), listProjects()]).then(([snapshot, a, p]) => {
@@ -100,15 +101,6 @@ export function StudioWorkbench({mode = "operations"}) {
     setValues(defaults);
     setOptions(Object.fromEntries(Object.entries(cap?.optionsSchema?.properties || {}).filter(([, s]) => s.default !== undefined).map(([k, s]) => [k, s.default])));
   }, [cap, search]);
-  React.useEffect(() => {
-    if (!job || terminal(job)) return;
-    let live = true;
-    const id = setInterval(async () => {
-      try {const next = await getJob3d(job.id); if (live) setJob(next);}
-      catch (err) {if (live) setError(err.message);}
-    }, 2000);
-    return () => {live = false; clearInterval(id);};
-  }, [job?.id, job?.status]);
   const inputControl = (key, schema, current, setter, required = false) => {
     const value = current[key];
     const set = v => setter(old => ({...old, [key]: v}));
@@ -129,7 +121,7 @@ export function StudioWorkbench({mode = "operations"}) {
     try {
       const spec = mode === "text" ? {operation: "studio.text_to_3d.v1", inputs: {prompt, model, imageModel}}
         : {operation, inputs: Object.fromEntries(Object.entries(values).filter(([,v]) => v !== "").map(([k,v]) => [k, cap.input.schema.properties[k].type === "object" ? {artifact_id: v} : v])), options};
-      setJob(await submitJob({...spec, ...(project ? {projectId: project} : {})}));
+      trackJob(await submitJob({...spec, ...(project ? {projectId: project} : {})}));
     } catch (err) {setError(err.message);} finally {setBusy(false);}
   };
   const ready = mode === "text" ? imageCap?.available && modelCap?.available && !!prompt.trim() && model && imageModel : cap?.available;
@@ -148,11 +140,11 @@ export function StudioWorkbench({mode = "operations"}) {
       </>}
       {!ready && <p className="text-xs text-amber-300">Select the required inputs. Generation also requires an available provider.</p>}
       <Btn primary disabled={busy || !ready || (job && !terminal(job))} onClick={generate}>{busy ? "Submitting…" : "Run"}</Btn>
-      {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
+      {(error || jobError) && <p role="alert" className="text-sm text-red-300">{error || jobError}</p>}
       <NavLink className="block text-sm text-indigo-300" to="/Dashboard">View all tasks and assets →</NavLink>
     </section>
     <section className={panelClass}>
-      {job ? <><p className="mb-2 text-sm">{job.status} · {job.stage}</p>{job.error && <p role="alert" className="text-amber-300">{errorMessage(job.error)}</p>}{!terminal(job) && <Btn onClick={async () => {try {setJob(await cancelJob(job.id));} catch(err) {setError(err.message);}}}>Cancel</Btn>}</> : <p className="text-zinc-400">Results appear here. Tasks are also saved in Dashboard.</p>}
+      {job ? <><p className="mb-2 text-sm">{job.status} · {job.stage}</p>{job.error && <p role="alert" className="text-amber-300">{errorMessage(job.error)}</p>}{!terminal(job) && <Btn onClick={async () => {try {await cancelTrackedJob();} catch(err) {setError(err.message);}}}>Cancel</Btn>}</> : <p className="text-zinc-400">Results appear here. Tasks are also saved in Dashboard.</p>}
       {output?.mime === "model/gltf-binary" && <div className="h-[550px]"><Viewport3DUpload externalUrl={assetContentUrl(output.id)} externalName={output.role}/></div>}
       {output?.mime === "image/png" && <img className="max-h-[550px] w-full object-contain" src={assetContentUrl(output.id)} alt="Generated image"/>}
       {job?.result?.artifacts?.map(a => <a key={a.id} className="mr-4 inline-block text-sm text-indigo-300" href={assetContentUrl(a.id)} download>Download {a.role}</a>)}
